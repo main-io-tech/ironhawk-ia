@@ -98,6 +98,7 @@ class IronHawkPlatformTest : BasePlatformTestCase() {
             IronHawkSystem.ATTACK.enabled = false
             val defense = tab.html()
             assertTrue("Contenção da IA" in defense && "Proteções das missões" !in defense && "Spec Kit" !in defense)
+            assertTrue("a Defesa também roda no devcontainer", "📦 Devcontainer" in defense && "Na aba, no devcontainer" in defense)
         } finally {
             Disposer.dispose(tab)
         }

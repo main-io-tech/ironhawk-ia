@@ -202,8 +202,9 @@ class ArsenalWeb(project: Project) : WebTab(project) {
         append("<div class=\"field\"><label>CLI</label>")
         append(WebUi.seg("provider", AgentProvider.entries.map { it.name to "${esc(it.title)} <span class=\"muted\">(${esc(it.executables.first())})</span>" }, d.provider.name, send = "form"))
         append("</div>")
-        if (IronHawkSystem.ATTACK.enabled && d.provider == AgentProvider.ANTIGRAVITY) {
-            append(notice("warn", "🚀", "O <b>Antigravity</b> não lança as missões do Ataque: o Spec Kit não tem integração para ele. Para o Lançador, escolha o Cursor ou o Claude Code."))
+        if (d.provider == AgentProvider.ANTIGRAVITY) {
+            append(notice("warn", "📦", "O <b>Antigravity</b> não está no devcontainer: com ele, a IA só roda no terminal da IDE." +
+                if (IronHawkSystem.ATTACK.enabled) " Ele também não lança as missões do Ataque, porque o Spec Kit não tem integração para ele." else ""))
         }
         if (AgentLaunch.wslSupported) {
             append("<div class=\"field\"><label>Onde está o CLI</label>")
@@ -298,7 +299,7 @@ class ArsenalWeb(project: Project) : WebTab(project) {
             append(
                 notice(
                     "info", "🔐",
-                    "<b>Defesa:</b> nas tarefas que alteram arquivos rodando na aba, como Disparar com IA, não há janela para aprovar cada passo: o Cursor " +
+                    "<b>Defesa na aba:</b> só no <b>devcontainer</b> do projeto. Nas tarefas que alteram arquivos, como Disparar com IA, não há janela para aprovar cada passo: o Cursor " +
                         "roda com <code>--force</code> (edita e roda comandos sem perguntar), o Claude Code com <code>--permission-mode acceptEdits</code> " +
                         "(edita sem perguntar; comandos de terminal só os liberados nas configurações dele ou com <code>--allowedTools</code> nos " +
                         "argumentos extras) e o Antigravity com <code>--dangerously-skip-permissions</code>. " +
@@ -328,17 +329,18 @@ class ArsenalWeb(project: Project) : WebTab(project) {
     /** As proteções dos dois sistemas num cartão: a contenção da Defesa, as proteções das missões e o devcontainer do Ataque. */
     private fun protectionsCard(): String = buildString {
         append("<div class=\"card2\"><h3>🛡️ Proteções</h3><div class=\"desc\">O que impede a IA de danificar a máquina ou perder o seu trabalho.</div>")
+        append(containerPart())
         if (IronHawkSystem.DEFENSE.enabled) append(containmentPart())
-        if (IronHawkSystem.ATTACK.enabled) append(guardPart()).append(containerPart())
+        if (IronHawkSystem.ATTACK.enabled) append(guardPart())
         append("</div>")
     }
 
     private fun containmentPart(): String = buildString {
         append("<div class=\"part\"><h4>🧯 Contenção da IA ").append(tag(IronHawkSystem.DEFENSE)).append("</h4>")
         append("<div class=\"desc\">Sempre ligada: antes de cada tarefa que altera arquivos, uma foto do projeto no git, sem mexer no ")
-        append("seu índice nem na branch (sem git, no Local History), e o aviso do fim traz <b>Desfazer Alterações da IA</b>; na aba, a IA roda sem <code>git push</code> e sem os tokens e senhas ")
-        append("do ambiente que o CLI não usa; o Claude Code recusa comandos destrutivos e mexer no <code>.git</code> e nas chaves do usuário; ")
-        append("no WSL, o Cursor roda no sandbox dele; e a IA é parada na hora se tentar apagar pastas, descartar alterações do git, ")
+        append("seu índice nem na branch (sem git, no Local History), e o aviso do fim traz <b>Desfazer Alterações da IA</b>; na aba, a IA roda no ")
+        append("devcontainer, sem <code>git push</code> e só com a credencial do CLI; o Claude Code recusa comandos destrutivos e mexer no <code>.git</code>; ")
+        append("e a IA é parada na hora se tentar apagar pastas, descartar alterações do git, ")
         append("reescrever o histórico, rodar como administrador, formatar disco, baixar e executar scripts, ou escrever fora do projeto ou no <code>.git</code>.</div>")
         append("</div>")
     }
@@ -350,9 +352,9 @@ class ArsenalWeb(project: Project) : WebTab(project) {
         val exists = config != null
         val problems = config?.let { file -> DevContainer.audit(runCatching { Files.readString(file) }.getOrDefault("")) }.orEmpty()
         val cursor = AgentSettings.provider == AgentProvider.CURSOR
-        append("<div class=\"part\"><h4>📦 Devcontainer ").append(tag(IronHawkSystem.ATTACK)).append("</h4>")
-        append("<div class=\"desc\">A única forma de a IA rodar sem perguntar: as missões na aba rodam num container ")
-        append("que só enxerga a pasta do projeto. Sem ele, as missões só saem pelo terminal, com você aprovando os comandos.</div>")
+        append("<div class=\"part\"><h4>📦 Devcontainer</h4>")
+        append("<div class=\"desc\">Na aba, a IA dos dois sistemas roda num container que só enxerga a pasta do projeto, a única forma de ela ")
+        append("rodar sem perguntar. Sem ele, a IA só roda no terminal da IDE, com você aprovando os passos.</div>")
         append("<div class=\"chips\" style=\"margin:0 0 10px\">")
         append(if (cli != null) WebUi.chip("CLI", "devcontainer ✓", "green") else WebUi.chip("CLI", "devcontainer não instalado", "red"))
         append(

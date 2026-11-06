@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * O devcontainer das missões na aba, a única forma de a IA rodar sem perguntar. O container só enxerga a pasta do
+ * O devcontainer onde a IA dos dois sistemas roda na aba, a única forma de ela rodar sem perguntar. O container só enxerga a pasta do
  * projeto, com o `.git/config` e os hooks só leitura, porque o Git desta máquina roda o que estiver neles. A
  * configuração é conferida antes de subir ([audit]) e o container de pé, pelo `docker inspect` ([isolation]): nada
  * de modo privilegiado, de rede, processos ou dispositivos da máquina, nem de pasta da máquina fora do projeto.
@@ -76,7 +76,7 @@ object DevContainer {
     fun problem(root: Path, provider: AgentProvider): String? {
         if (cli() == null) return "O CLI de devcontainers não foi encontrado. $CLI_HINT"
         val file = config(root)
-        if (!Files.isRegularFile(file)) return "O projeto ainda não tem o devcontainer do Tomahawk ($CONFIG)."
+        if (!Files.isRegularFile(file)) return "O projeto ainda não tem o devcontainer da IA ($CONFIG)."
         audit(runCatching { Files.readString(file) }.getOrDefault("")).firstOrNull()?.let { return "O devcontainer não isola a máquina: $it." }
         if (provider == AgentProvider.CURSOR && !TomahawkSettings.hasCursorApiKey) {
             return "No devcontainer, o Cursor CLI entra pela chave de API: informe a chave no Arsenal."
@@ -117,10 +117,10 @@ object DevContainer {
             "npm install -g @anthropic-ai/claude-code",
         ).joinToString(" && ")
         return """
-            |// O devcontainer das missões na aba do Tomahawk IA: só aqui a IA roda sem perguntar.
+            |// O devcontainer da IA do IronHawk, na aba, no Iron Dome e no Tomahawk: só aqui a IA roda sem perguntar.
             |// O container só enxerga a pasta do projeto; o .git/config e os hooks ficam só leitura, porque o Git da sua
             |// máquina roda o que estiver neles. Acrescente as ferramentas do projeto em "features", se a IA precisar delas.
-            |// O Tomahawk recusa initializeCommand, modo privilegiado, capacidades extras, rede ou processos da máquina e
+            |// O IronHawk recusa initializeCommand, modo privilegiado, capacidades extras, rede ou processos da máquina e
             |// pastas da máquina fora do projeto (como o socket do Docker).
             |{
             |  "name": "Tomahawk IA",
@@ -194,7 +194,7 @@ object DevContainer {
     fun up(root: Path, log: (String) -> Unit, cancelled: () -> Boolean): Session {
         val cli = cli()?.toString() ?: throw IllegalStateException("O CLI de devcontainers não foi encontrado. $CLI_HINT")
         val config = config(root)
-        if (!Files.isRegularFile(config)) throw IllegalStateException("O projeto não tem o devcontainer do Tomahawk ($CONFIG).")
+        if (!Files.isRegularFile(config)) throw IllegalStateException("O projeto não tem o devcontainer da IA ($CONFIG).")
         audit(Files.readString(config)).takeIf { it.isNotEmpty() }?.let { throw IllegalStateException("O devcontainer não isola a máquina: ${it.joinToString("; ")}.") }
         val git = Files.isDirectory(root.resolve(".git"))
         if (git) Files.createDirectories(root.resolve(".git").resolve("hooks"))
@@ -212,7 +212,7 @@ object DevContainer {
         val deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(UP_TIMEOUT_MINUTES)
         while (!process.waitFor(200, TimeUnit.MILLISECONDS)) {
             val why = when {
-                cancelled() -> "A missão foi abortada enquanto o devcontainer subia."
+                cancelled() -> "A IA foi parada enquanto o devcontainer subia."
                 System.nanoTime() > deadline -> "O devcontainer não subiu em $UP_TIMEOUT_MINUTES minutos."
                 else -> null
             } ?: continue

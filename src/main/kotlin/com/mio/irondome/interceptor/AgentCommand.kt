@@ -28,7 +28,7 @@ enum class AgentProvider(val title: String, val executables: List<String>, val i
 
 /** Onde a IA roda quando um botão a chama. */
 enum class AgentRunMode(val label: String) {
-    BACKGROUND("Na aba, em segundo plano"),
+    BACKGROUND("Na aba, no devcontainer"),
     TERMINAL("No terminal da IDE"),
     ASK("Perguntar a cada vez"),
 }
@@ -200,8 +200,7 @@ object AgentCommand {
     /** O que [provider] pode fazer sem perguntar numa tarefa que altera arquivos, rodando na aba. */
     fun writePermissions(provider: AgentProvider): String = when (provider) {
         AgentProvider.CURSOR ->
-            "o Cursor roda com --force: edita arquivos e roda comandos de terminal sem pedir aprovação, exceto os negados nas configurações do CLI " +
-                "(no WSL, dentro do sandbox dele)"
+            "o Cursor roda com --force: edita arquivos e roda comandos de terminal sem pedir aprovação, exceto os negados nas configurações do CLI"
         AgentProvider.CLAUDE ->
             "o Claude Code roda com --permission-mode acceptEdits: edita arquivos sem pedir aprovação, e os comandos de terminal " +
                 "que não estão liberados nas configurações dele são recusados"

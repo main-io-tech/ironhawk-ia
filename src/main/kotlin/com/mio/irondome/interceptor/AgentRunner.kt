@@ -28,6 +28,7 @@ import com.mio.irondome.base.IronDomeIcons
 import com.mio.irondome.base.rootDir
 import com.mio.irondome.base.rootPath
 import com.mio.irondome.radar.ReviewCommentService
+import com.mio.tomahawk.run.DevContainer
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -36,6 +37,7 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import com.mio.tomahawk.run.AgentProvider as ContainerProvider
 
 /**
  * O que a IA fez: [answer] é a resposta final; [files] os arquivos que ela escreveu ou editou;
@@ -158,6 +160,12 @@ class AgentRunner(private val project: Project) {
             }
             else -> null
         }
+        if (terminal == null) {
+            containerProblem(provider, Path.of(root))?.let { why ->
+                if (!unattended) notifyNoContainer(why, Path.of(root))
+                return false
+            }
+        }
         if (task.write && terminal == null && !confirmWrite(task, provider)) return false
         FileDocumentManager.getInstance().saveAllDocuments()
         val checkpoint = if (task.write) checkpoint(task) else null
@@ -167,7 +175,7 @@ class AgentRunner(private val project: Project) {
         runCatching { AgentActivity.started(project, task) }.onFailure { LOG.warn("O ícone da IA trabalhando não pôde ser trocado", it) }
         project.messageBus.syncPublisher(RUNS).changed()
         val work: () -> AgentResult = if (terminal == null) {
-            { execute(task, provider, launch, root, current) }
+            { execute(task, provider, root, current) }
         } else {
             val answer = answerFile(task) ?: run {
                 finish(failure(task, provider, "O projeto não tem pasta no disco."), actions, unattended, onDone, checkpoint)
@@ -324,7 +332,8 @@ class AgentRunner(private val project: Project) {
         if (!AgentSettings.confirmWrites) return true
         return MessageDialogBuilder.yesNo(
             "A IA Vai Alterar Arquivos",
-            "\"${task.title}\" roda na aba, em segundo plano, sem janela para aprovar cada passo: ${AgentCommand.writePermissions(provider)}.\n\n" +
+            "\"${task.title}\" roda na aba, no devcontainer do projeto, sem janela para aprovar cada passo: ${AgentCommand.writePermissions(provider)}. " +
+                "O container só enxerga a pasta do projeto.\n\n" +
                 "No terminal da IDE, a IA pede aprovação a cada passo: escolha onde ela roda no Arsenal.",
         )
             .yesText("Rodar")
@@ -347,7 +356,7 @@ class AgentRunner(private val project: Project) {
         return when (
             Messages.showDialog(
                 project,
-                "Rodar \"${task.title}\" na aba, em segundo plano, ou no terminal da IDE, onde dá para acompanhar e conversar com a IA?",
+                "Rodar \"${task.title}\" na aba, no devcontainer do projeto, ou no terminal da IDE, onde dá para acompanhar e conversar com a IA?",
                 "Onde Rodar a IA",
                 arrayOf("Na Aba", "No Terminal", "Cancelar"),
                 0,
@@ -401,16 +410,31 @@ class AgentRunner(private val project: Project) {
         return AgentResult(task, provider, answer, error, state.cancelled, emptySet(), emptyList(), null, duration, transcript)
     }
 
-    private fun execute(task: AgentTask, provider: AgentProvider, launch: AgentLaunch, root: String, state: AgentProgress): AgentResult {
+    /** Por que a IA não pode rodar na aba agora, ou nulo: na aba, ela só roda no devcontainer do projeto. */
+    private fun containerProblem(provider: AgentProvider, root: Path): String? {
+        val inside = containerProvider(provider)
+            ?: return "O ${provider.title} não está no devcontainer: na aba, a IA roda com o Cursor ou o Claude Code."
+        return DevContainer.problem(root, inside)
+    }
+
+    private fun containerProvider(provider: AgentProvider) = ContainerProvider.entries.firstOrNull { it.name == provider.name }
+
+    /** Na aba, no devcontainer do projeto, que só enxerga a pasta dele; fora da EDT, porque subir o container demora. */
+    private fun execute(task: AgentTask, provider: AgentProvider, root: String, state: AgentProgress): AgentResult {
         val started = System.nanoTime()
         val timeout = AgentSettings.timeoutMinutes
+        val inside = containerProvider(provider) ?: return failure(task, provider, containerProblem(provider, Path.of(root)).orEmpty())
+        state.step = "Subindo o devcontainer"
+        val session = DevContainer.up(Path.of(root), { state.detail = it.take(160) }, { state.cancelled })
+        val workspace = session.path(root)
         val command = AgentCommand.build(
-            provider, launch.executable, task, launch.workspace(root), AgentSettings.model, timeout, AgentCommand.splitArgs(AgentSettings.extraArgs),
-            sandbox = launch.sandboxAvailable,
+            provider, provider.executables.first(), task, workspace, AgentSettings.model, timeout, AgentCommand.splitArgs(AgentSettings.extraArgs),
         )
-        val key = if (provider == AgentProvider.CURSOR) AgentSettings.cursorApiKey else null
-        val roots = listOf(root, launch.workspace(root)).distinct()
+        val env = DevContainer.credentials(inside) + AgentGuard.gitEnvironment
+        val roots = listOf(root, workspace).distinct()
         val blocked = AtomicReference<String?>()
+        state.step = "Iniciando ${provider.title} no devcontainer"
+        state.detail = ""
 
         val text = StringBuilder()
         var answer: String? = null
@@ -422,8 +446,12 @@ class AgentRunner(private val project: Project) {
         var cancelled = false
         var error: String? = null
         try {
-            val process = launch.process(command, root, key, provider).createProcess()
+            val process = session.exec(command, env).createProcess()
             process.outputStream.close()
+            val stop = {
+                kill(process)
+                session.stop()
+            }
             val errors = Thread {
                 process.errorStream.bufferedReader(StandardCharsets.UTF_8).forEachLine { synchronized(stderr) { stderr.appendLine(it) } }
             }.apply { isDaemon = true; start() }
@@ -438,7 +466,7 @@ class AgentRunner(private val project: Project) {
                         }
                         is AgentEvent.Tool -> if (event.started) {
                             AgentGuard.violation(event, roots)?.let { reason ->
-                                if (blocked.compareAndSet(null, reason)) kill(process)
+                                if (blocked.compareAndSet(null, reason)) stop()
                             }
                             val what = listOfNotNull(TOOL_LABELS[event.kind] ?: event.kind, event.path ?: event.command?.take(80)).joinToString(" ")
                             tools += what
@@ -457,12 +485,12 @@ class AgentRunner(private val project: Project) {
             while (!process.waitFor(200, TimeUnit.MILLISECONDS)) {
                 if (state.cancelled) {
                     cancelled = true
-                    kill(process)
+                    stop()
                     break
                 }
                 if (System.nanoTime() > deadline) {
                     error = "Passou do limite de $timeout minutos: a execução foi interrompida."
-                    kill(process)
+                    stop()
                     break
                 }
             }
@@ -482,7 +510,7 @@ class AgentRunner(private val project: Project) {
             if (!cancelled && error == null && failed) error = AgentVerifier.explain(provider, answer?.takeIf { it.isNotBlank() } ?: "A IA informou um erro.")
         } catch (e: Exception) {
             LOG.warn("Falha ao rodar ${command.firstOrNull()}", e)
-            error = "Não foi possível rodar ${launch.description}: ${e.message ?: e.javaClass.simpleName}"
+            error = "Não foi possível rodar o ${provider.title} no devcontainer: ${e.message ?: e.javaClass.simpleName}"
         }
         val finalAnswer = answer?.takeIf { it.isNotBlank() } ?: text.toString().trim()
         val duration = Duration.ofNanos(System.nanoTime() - started)
@@ -576,6 +604,26 @@ class AgentRunner(private val project: Project) {
                 ShowSettingsUtil.getInstance().showSettingsDialog(project, AgentConfigurable::class.java)
             })
             .notify(project)
+    }
+
+    /** Sem o devcontainer pronto, a IA não roda na aba: cria o devcontainer, ou ela roda no terminal, escolhido no Arsenal. */
+    private fun notifyNoContainer(why: String, root: Path) {
+        val notification = NotificationGroupManager.getInstance().getNotificationGroup("Iron Dome IA")
+            .createNotification(
+                "Na aba, a IA só roda no devcontainer",
+                escape("$why O container só enxerga a pasta do projeto. No terminal da IDE, você aprova os passos da IA: escolha onde ela roda no Arsenal."),
+                NotificationType.WARNING,
+            )
+            .setIcon(IronDomeIcons.arsenal)
+        if (DevContainer.cli() != null && !Files.isRegularFile(DevContainer.config(root))) {
+            notification.addAction(NotificationAction.createSimpleExpiring("Criar o devcontainer") {
+                runCatching { DevContainer.create(root) }
+                    .onSuccess { open(it) }
+                    .onFailure { notify("Não deu para criar o devcontainer", it.message ?: it.javaClass.simpleName, NotificationType.ERROR) }
+            })
+        }
+        notification.addAction(NotificationAction.createSimpleExpiring("Abrir Arsenal") { InterceptorTab.show(project) })
+        notification.notify(project)
     }
 
     private fun notify(title: String, content: String, type: NotificationType) {

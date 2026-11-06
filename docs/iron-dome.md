@@ -601,8 +601,12 @@ vem do `wsl.exe`, sem as internas do Docker Desktop). O plugin roda o CLI dentro
 `/mnt/c/...` e repassa a chave de API do Cursor pelo ambiente. Vale para o teste, para a aba e para o terminal, e a
 configuração automática procura também nas distribuições do WSL quando não acha o CLI no Windows.
 
-Em **Onde rodar a IA** (na aba Arsenal ou em Settings), escolha **Na aba, em segundo plano**, **No terminal
-da IDE** ou **Perguntar a cada vez**. No terminal, cada pedido abre uma aba do terminal com o CLI à vista: o Cursor
+Em **Onde rodar a IA** (na aba Arsenal ou em Settings), escolha **Na aba, no devcontainer**, **No terminal
+da IDE** ou **Perguntar a cada vez**. Na aba, a IA sempre roda no devcontainer do projeto
+(`.devcontainer/tomahawk/devcontainer.json`, o mesmo das missões do Tomahawk), que só enxerga a pasta do projeto: o
+plugin sobe o container (ou reaproveita o que está de pé), confere o isolamento e roda o Cursor ou o Claude Code lá
+dentro. Sem o devcontainer, a IA não roda na aba, e o aviso oferece criá-lo; o Antigravity não está no container e
+só roda no terminal. No terminal, cada pedido abre uma aba do terminal com o CLI à vista: o Cursor
 abre interativo, para acompanhar e conversar com a IA (vale o login do `agent login`; a chave de API não vai para o
 terminal, para não ficar no histórico do shell), e o Antigravity roda o pedido e mostra a resposta. A IA grava a
 resposta final em `iron-dome/ia/respostas/`, e o plugin segue dali como na aba: os rascunhos do Revisar com IA, a
