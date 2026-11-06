@@ -33,6 +33,6 @@ interface EditorCardProvider {
     fun cards(project: Project, path: String, document: Document): List<EditorCard>
 
     companion object {
-        val EP_NAME = ExtensionPointName.create<EditorCardProvider>("com.mio.irondome.editorCardProvider")
+        val EP_NAME = ExtensionPointName.create<EditorCardProvider>("com.mio.ironhawk.editorCardProvider")
     }
 }

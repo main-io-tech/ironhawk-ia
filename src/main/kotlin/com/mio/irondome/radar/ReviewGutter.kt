@@ -11,6 +11,7 @@ import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.util.Key
+import com.mio.ironhawk.IronHawkSystem
 import javax.swing.Icon
 
 /** Botões "+" (comentar) e "-" (remover comentário) que aparecem na margem da linha sob o mouse. */
@@ -26,7 +27,7 @@ object ReviewGutter {
             (!IdeSupport.isLimited(RADAR) && editor.editorKind == EditorKind.MAIN_EDITOR && project != null && !project.isDisposed)
                 .also { editor.putUserData(commentable, it) }
         }
-        return mainEditor && service(editor)?.accepts(editor.document) == true
+        return mainEditor && IronHawkSystem.DEFENSE.enabled && service(editor)?.accepts(editor.document) == true
     }
 
     fun showAt(editor: Editor, line: Int) {

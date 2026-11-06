@@ -9,6 +9,7 @@ import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
+import com.mio.ironhawk.IronHawkSystem
 
 /**
  * Analisa as dependências pelo menu de contexto: no editor, da classe sob o cursor; no Project view,
@@ -20,6 +21,7 @@ class ShowDependencyDiagramAction : DumbAwareAction() {
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
+        if (!IronHawkSystem.DEFENSE.showIn(e)) return
         e.presentation.isEnabledAndVisible = target(e) != null
     }
 

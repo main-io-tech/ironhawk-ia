@@ -6,11 +6,13 @@ import com.intellij.ide.projectView.ProjectViewNode
 import com.intellij.ide.projectView.ProjectViewNodeDecorator
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
+import com.mio.ironhawk.IronHawkSystem
 
 /** Na árvore do projeto, quantos comentários pendentes cada arquivo ou pacote tem na revisão aberta. */
 class TargetDecorator : ProjectViewNodeDecorator {
 
     override fun decorate(node: ProjectViewNode<*>, data: PresentationData) {
+        if (!IronHawkSystem.DEFENSE.enabled) return
         val project = node.project?.takeIf { !it.isDisposed } ?: return
         val file = node.virtualFile ?: return
         val count = project.service<ReviewCommentService>().openCommentCount(file)

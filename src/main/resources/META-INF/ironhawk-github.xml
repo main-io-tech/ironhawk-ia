@@ -1,15 +1,18 @@
+<!-- Com os plugins Git e GitHub: a Patrulha do Iron Dome e a Extração e o Rádio do Tomahawk. -->
 <idea-plugin>
     <depends>Git4Idea</depends>
 
-    <extensions defaultExtensionNs="com.mio.irondome">
+    <extensions defaultExtensionNs="com.mio.ironhawk">
         <toolWindowTab implementation="com.mio.irondome.patrulha.PatrulhaTab"/>
         <editorCardProvider implementation="com.mio.irondome.patrulha.PullRequestCards"/>
         <editorCardProvider implementation="com.mio.irondome.patrulha.PullRequestDiscussionCards"/>
+        <pullRequestGateway implementation="com.mio.tomahawk.delivery.github.GitHubPullRequests"/>
     </extensions>
 
     <extensions defaultExtensionNs="com.intellij">
         <editorFactoryListener implementation="com.mio.irondome.patrulha.ChangedLinesEditorListener"/>
         <postStartupActivity implementation="com.mio.irondome.patrulha.AutoReplyStartup"/>
+        <postStartupActivity implementation="com.mio.tomahawk.delivery.github.RadarStartup"/>
     </extensions>
 
     <actions>

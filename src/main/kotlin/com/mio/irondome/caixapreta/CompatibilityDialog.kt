@@ -27,6 +27,7 @@ import com.mio.irondome.base.IdeSupport
 import com.mio.irondome.base.IronDomeIcons
 import com.mio.irondome.base.Pill
 import com.mio.irondome.base.Tone
+import com.mio.ironhawk.IronHawkSystem
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.Font
@@ -60,6 +61,7 @@ class CheckCompatibilityAction : DumbAwareAction() {
 class CompatibilityStartup : ProjectActivity {
 
     override suspend fun execute(project: Project) {
+        if (!IronHawkSystem.DEFENSE.enabled) return
         val env = Compatibility.environment(project)
         val limited = Compatibility.limited(env)
         if (limited.isNotEmpty() && !IdeSupport.limitedNotified) {

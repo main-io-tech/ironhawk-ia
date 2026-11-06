@@ -39,7 +39,7 @@ import javax.swing.SwingUtilities
 internal class BugContext(val activeTab: Mechanism?, val entries: List<Pair<String, String>>) {
 
     companion object {
-        private const val PLUGIN_ID = "com.mio.irondome"
+        private const val PLUGIN_ID = "com.mio.ironhawk"
 
         fun collect(project: Project): BugContext {
             val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ReviewToolWindowFactory.ID)

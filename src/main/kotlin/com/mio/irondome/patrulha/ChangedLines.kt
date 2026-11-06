@@ -25,6 +25,7 @@ import com.intellij.util.ui.JBUI
 import com.mio.irondome.base.Tone
 import com.mio.irondome.radar.ReviewCommentService
 import com.mio.irondome.radar.ReviewCommentsListener
+import com.mio.ironhawk.IronHawkSystem
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
 import java.awt.Color
@@ -179,6 +180,7 @@ class ChangedLines(private val project: Project) {
 class ChangedLinesEditorListener : EditorFactoryListener {
 
     override fun editorCreated(event: EditorFactoryEvent) {
+        if (!IronHawkSystem.DEFENSE.enabled) return
         val project = event.editor.project?.takeIf { !it.isDisposed } ?: return
         ChangedLines.getInstance(project).editorCreated(event.editor)
     }
@@ -190,6 +192,7 @@ class ChangedLinesRefresher(private val project: Project) : ReviewCommentsListen
     override fun commentsChanged() = ChangedLines.getInstance(project).refresh()
 
     override fun repositoryChanged(repository: GitRepository) {
+        if (!IronHawkSystem.DEFENSE.enabled) return
         ApplicationManager.getApplication().invokeLater({ ChangedLines.getInstance(project).refresh() }, project.disposed)
     }
 }

@@ -1,0 +1,7 @@
+<!-- Com o plugin de terminal, a IA do Interceptador e as missões do Lançador podem rodar no terminal da IDE. -->
+<idea-plugin>
+    <extensions defaultExtensionNs="com.mio.ironhawk">
+        <agentTerminal implementation="com.mio.irondome.interceptor.IdeAgentTerminal"/>
+        <launchTerminal implementation="com.mio.tomahawk.run.IdeLaunchTerminal"/>
+    </extensions>
+</idea-plugin>

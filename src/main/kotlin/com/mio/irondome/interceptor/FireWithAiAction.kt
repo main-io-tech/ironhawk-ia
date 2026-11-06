@@ -17,6 +17,7 @@ import com.mio.irondome.radar.ReviewComment
 import com.mio.irondome.radar.ReviewCommentService
 import java.awt.datatransfer.StringSelection
 import java.nio.file.Path
+import com.mio.ironhawk.IronHawkSystem
 
 /**
  * Dispara todos os alvos, como o Disparar Todos, e entrega a ordem de interceptação para a IA executar:
@@ -27,6 +28,7 @@ class FireWithAiAction : DumbAwareAction() {
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
+        if (!IronHawkSystem.DEFENSE.showIn(e)) return
         val project = e.project
         if (project == null) {
             e.presentation.isEnabledAndVisible = false

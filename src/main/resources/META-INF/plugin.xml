@@ -1,90 +1,62 @@
 <idea-plugin>
-    <id>com.mio.irondome</id>
-    <name>Iron Dome IA</name>
+    <id>com.mio.ironhawk</id>
+    <name>IronHawk IA</name>
     <vendor>Mio</vendor>
 
     <description><![CDATA[
-    <p>An air defense system for your code: mark the bugs like in a pull request review and let an AI
-    assistant intercept them. Inline comments are exported to a Markdown file that any AI tool can read,
-    apply and mark as resolved.</p>
-    <p><b>Nenhum bug passa pelo domo.</b> Revise o código como num pull request e deixe a IA
-    interceptar as correções.</p>
-    <p>Marque qualquer linha ou trecho como alvo direto no editor. Ao salvar, o Iron Dome IA envia as
-    ordens de interceptação em <code>iron-dome/ordem-interceptacao-&lt;id&gt;.md</code>, com cada comentário e
-    o código citado, prontas para qualquer assistente de IA ler, aplicar e marcar como resolvidas.</p>
-    <h3>Mecanismos de defesa</h3>
+    <p>Defense and attack for your code with AI: review the code like a pull request and let an AI assistant
+    intercept the bugs (Iron Dome), and drive Spec-Driven Development with GitHub Spec Kit through your AI coding
+    agent CLI (Tomahawk). Enable either system or both.</p>
+    <p><b>A resistência do ferro na defesa, a precisão do gavião no ataque.</b> O IronHawk IA junta dois sistemas,
+    que podem ser ligados e desligados em Settings &gt; Tools &gt; IronHawk IA.</p>
+    <h3>🛡️ Defesa: Iron Dome</h3>
+    <p>Revise o código como num pull request e deixe a IA interceptar as correções. Marque qualquer linha ou trecho
+    como alvo no editor; ao salvar, as ordens de interceptação vão para <code>iron-dome/ordem-interceptacao-&lt;id&gt;.md</code>,
+    prontas para qualquer assistente de IA ler, aplicar e marcar como resolvidas.</p>
     <ul>
-      <li><b>📡 Radar:</b> marque os alvos com o <b>+</b> da margem, duplo clique no número da linha
-        ou <kbd>Ctrl+Alt+Shift+M</kbd>. Os comentários acompanham o código quando linhas entram ou
-        saem, e o ciclo é completo: pendentes, resolvidos pela IA (em verde), editáveis e removíveis
-        com desfazer. Pelo botão direito, marque também um arquivo ou pacote inteiro como alvo.</li>
-      <li><b>🎯 Centro de Comando:</b> cada comentário vira uma ordem com dois modos, <i>Aplicar
-        direto</i> ou <i>Discutir antes de alterar</i>, em que a IA explica os motivos do código atual e o
-        impacto de manter, alterar ou remover, traz até 5 opções com prévia da alteração e discute com você
-        até a decisão final. Funciona com Cursor, Claude Code ou qualquer outro assistente.</li>
-      <li><b>🤝 Sem fogo amigo:</b> a IA é instruída a perguntar antes de aplicar comentários que se
-        contradizem ou se cruzam.</li>
-      <li><b>💥 Raio de Impacto:</b> para classes Java e Kotlin, quantas classes dependem de cada uma
-        (aferentes), de quantas ela depende (eferentes), o risco de alterá-la e os testes que formam o
-        seu escudo, com ciclos e alterações não commitadas destacados.</li>
-      <li><b>👁️ Sentinela:</b> vigia o perímetro dos arquivos não commitados, agrupados por pacote,
-        com o diff de cada um a um clique.</li>
-      <li><b>🛡️ Escudo:</b> executa todos os testes JUnit do projeto e mostra o que passou ou falhou, com
-        as classes agrupadas pela chave do <code>@DisplayName("[Chave] Descrição")</code>, o aviso das classes
-        fora dessa convenção e o motivo e a pilha de cada falha.</li>
-      <li><b>🛰️ Patrulha:</b> revise os pull requests abertos no GitHub comentando o código no modo revisão do PR, envie
-        os pedidos de alteração como revisão e confira depois, no código e nas conversas do PR, se
-        cada um foi atendido.</li>
-      <li><b>🧠 Inteligência da IA:</b> o risco do Raio de Impacto usa o histórico do git, a IA recebe o dossiê de
-        cada classe e aprende com o que o time aceita e descarta, e dois comentários no mesmo trecho viram um aviso
-        com a síntese pela IA.</li>
+      <li><b>📡 Radar:</b> marque os alvos com o <b>+</b> da margem, duplo clique no número da linha ou
+        <kbd>Ctrl+Alt+Shift+M</kbd>, e acompanhe pendentes e resolvidos.</li>
+      <li><b>🎯 Centro de Comando:</b> cada comentário vira uma ordem, <i>Aplicar direto</i> ou <i>Discutir antes de
+        alterar</i>, para Cursor, Claude Code ou qualquer outro assistente.</li>
+      <li><b>💥 Raio de Impacto:</b> dependências, risco e testes de cada classe Java e Kotlin.</li>
+      <li><b>👁️ Sentinela:</b> os arquivos não commitados, com o diff a um clique.</li>
+      <li><b>🛡️ Escudo:</b> os testes JUnit do projeto agrupados pelo <code>@DisplayName</code>.</li>
+      <li><b>🛰️ Patrulha:</b> revisão dos pull requests do GitHub, com as respostas da IA nas conversas.</li>
+      <li><b>🧠 Inteligência da IA:</b> risco com o histórico do git, dossiê das classes e aprendizado do time.</li>
+    </ul>
+    <h3>🚀 Ataque: Tomahawk</h3>
+    <p>Conduz a missão SDD do <a href="https://github.com/github/spec-kit">Spec Kit</a> etapa por etapa: dispara os
+    comandos <code>/speckit</code> pelo Cursor CLI ou pelo Claude Code, avalia os artefatos e monitora cada execução.</p>
+    <ul>
+      <li><b>🚀 Lançador:</b> a missão da feature ativa em nove etapas, com a próxima em destaque.</li>
+      <li><b>🛬 Extração:</b> o commit, o push e o pull request no GitHub no fim da missão.</li>
+      <li><b>📻 Rádio:</b> os comentários dos seus PRs, com a resposta escrita pela IA.</li>
+      <li><b>🎯 Avaliação:</b> spec, plano, tarefas e checklists gerados em <code>specs/NNN-feature/</code>.</li>
+      <li><b>📡 Telemetria:</b> o log ao vivo de cada passo da IA e o histórico das execuções.</li>
     </ul>
     ]]></description>
 
     <change-notes><![CDATA[
     <h3>0.1.0</h3>
     <ul>
-      <li>Primeira versão: comentários inline, modos de aplicação, edição, remoção e exportação da
-        revisão em Markdown.</li>
-      <li>Instruções para a IA detectar contradições e cruzamentos entre comentários antes de alterar
-        os arquivos.</li>
-      <li>Novo nome, Iron Dome IA, com o código organizado em mecanismos de defesa: Radar, Centro de
-        Comando, Raio de Impacto e Sentinela.</li>
-      <li>Comentários de arquivo ou pacote inteiro, pelo botão direito na árvore do projeto, na aba do
-        editor ou na aba Sentinela.</li>
-      <li>Abas Radar, Sentinela e Raio de Impacto com ícones coloridos, e ações e status com nomes do
-        tema: Marcar Alvo, Disparar, Na mira, Interceptado.</li>
-      <li>Aba Escudo: executa os testes JUnit e agrupa o resultado pela chave do <code>@DisplayName</code> das
-        classes, avisando as que estão fora da convenção.</li>
-      <li>Radar, Sentinela e Escudo com cabeçalho de resumo, indicadores e barra de proporção por status, e
-        etiquetas coloridas nas árvores.</li>
-      <li>Sentinela agrupada por raiz de código e pacote, só pacote ou tipo de alteração, com busca e filtros.</li>
-      <li>Caixa-Preta: Reportar Bug gera um .md com o ponto do plugin onde o bug aconteceu, print e gravação
-        em GIF da IDE e os erros do log, e envia ao Linear.</li>
-      <li>Verificar Compatibilidade: ao abrir o projeto, avisa os mecanismos que não vão funcionar nesta IDE e por
-        quê, e mostra os erros recentes do plugin no log. Uma aba que não abre mostra o erro no lugar dela, sem
-        derrubar as outras abas nem o botão de bug.</li>
-      <li>Interceptados podem ser ocultados e mostrados de novo no editor, pelo cartão, pela aba Radar ou pelas
-        ações Ocultar e Mostrar Alvos Interceptados, inclusive os de revisões encerradas.</li>
-      <li>Patrulha: revisa os pull requests abertos no GitHub no modo revisão do PR, envia os comentários como revisão com
-        a conta do IntelliJ e guarda os pedidos em iron-dome/pull-requests para verificar no código e nas
-        conversas do PR se foram atendidos.</li>
-      <li>Inteligência da IA: risco com histórico do git, dossiê das classes, aprendizado com o feedback do time e
-        aviso de comentários no mesmo trecho com síntese pela IA, em Settings > Tools > Iron Dome IA > Inteligência da IA.</li>
+      <li>Primeira versão do IronHawk IA: o Iron Dome IA (defesa) e o Tomahawk IA (ataque) num plugin só, cada sistema
+        ligado ou desligado em Settings &gt; Tools &gt; IronHawk IA.</li>
     </ul>
     ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.vcs</depends>
-    <!-- mio-review-ia, o nome antigo: registra os mesmos componentes (AiReviewComments) e não pode rodar junto -->
+    <!-- Os plugins que viraram o IronHawk registram os mesmos componentes e não podem rodar junto. -->
+    <incompatible-with>com.mio.irondome</incompatible-with>
+    <incompatible-with>com.mio.tomahawk</incompatible-with>
     <incompatible-with>com.mio.review</incompatible-with>
     <depends optional="true" config-file="raio-de-impacto-java.xml">com.intellij.java</depends>
     <!-- Da 2026.2 em diante o navegador embutido (JCEF) do diagrama vem neste plugin; antes, da plataforma. -->
     <depends optional="true" config-file="raio-de-impacto-jcef.xml">com.intellij.modules.jcef</depends>
     <depends optional="true" config-file="escudo-junit.xml">JUnit</depends>
-    <depends optional="true" config-file="patrulha-git.xml">Git4Idea</depends>
-    <depends optional="true" config-file="patrulha-github.xml">org.jetbrains.plugins.github</depends>
-    <depends optional="true" config-file="interceptador-terminal.xml">org.jetbrains.plugins.terminal</depends>
+    <depends optional="true" config-file="ironhawk-git.xml">Git4Idea</depends>
+    <depends optional="true" config-file="ironhawk-github.xml">org.jetbrains.plugins.github</depends>
+    <depends optional="true" config-file="ironhawk-terminal.xml">org.jetbrains.plugins.terminal</depends>
 
     <extensionPoints>
         <extensionPoint name="toolWindowTab"
@@ -96,8 +68,24 @@
         <extensionPoint name="agentTerminal"
                         interface="com.mio.irondome.interceptor.AgentTerminal"
                         dynamic="true"/>
+        <extensionPoint name="launchTerminal"
+                        interface="com.mio.tomahawk.run.LaunchTerminal"
+                        dynamic="true"/>
+        <extensionPoint name="pullRequestGateway"
+                        interface="com.mio.tomahawk.delivery.PullRequestGateway"
+                        dynamic="true"/>
     </extensionPoints>
 
+    <!-- IronHawk: os interruptores dos sistemas e a Caixa-Preta, comum aos dois. -->
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationConfigurable parentId="tools"
+                                 instance="com.mio.ironhawk.IronHawkConfigurable"
+                                 id="com.mio.ironhawk.settings"
+                                 displayName="IronHawk IA"/>
+        <errorHandler implementation="com.mio.irondome.caixapreta.IronDomeErrorSubmitter"/>
+    </extensions>
+
+    <!-- Defesa: Iron Dome. -->
     <extensions defaultExtensionNs="com.intellij">
         <editorFactoryListener implementation="com.mio.irondome.radar.ReviewEditorFactoryListener"/>
         <editorFactoryMouseListener implementation="com.mio.irondome.radar.ReviewMouseListener"/>
@@ -108,8 +96,7 @@
         <notificationGroup id="Iron Dome IA: Gravação" displayType="STICKY_BALLOON"/>
         <postStartupActivity implementation="com.mio.irondome.caixapreta.CompatibilityStartup"/>
         <postStartupActivity implementation="com.mio.irondome.defesa.DefenseStartup"/>
-        <errorHandler implementation="com.mio.irondome.caixapreta.IronDomeErrorSubmitter"/>
-        <applicationConfigurable parentId="tools"
+        <applicationConfigurable parentId="com.mio.ironhawk.settings"
                                  instance="com.mio.irondome.caixapreta.LinearConfigurable"
                                  id="com.mio.irondome.settings"
                                  displayName="Iron Dome IA"/>
@@ -125,6 +112,20 @@
                     anchor="right"
                     icon="/icons/toolWindow.svg"
                     factoryClass="com.mio.irondome.base.ReviewToolWindowFactory"/>
+    </extensions>
+
+    <!-- Ataque: Tomahawk. -->
+    <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup id="Tomahawk IA" displayType="BALLOON"/>
+        <fileEditorProvider implementation="com.mio.tomahawk.view.ArtifactEditorProvider"/>
+        <applicationConfigurable parentId="com.mio.ironhawk.settings"
+                                 instance="com.mio.tomahawk.settings.TomahawkConfigurable"
+                                 id="com.mio.tomahawk.settings"
+                                 displayName="Tomahawk IA"/>
+        <toolWindow id="Tomahawk IA"
+                    anchor="right"
+                    icon="/icons/tomahawkToolWindow.svg"
+                    factoryClass="com.mio.tomahawk.base.TomahawkToolWindowFactory"/>
     </extensions>
 
     <applicationListeners>
@@ -203,23 +204,32 @@
                 text="Iron Dome IA: Mostrar Alvos Interceptados"
                 description="Volta a mostrar no editor os alvos interceptados que foram ocultados"
                 icon="AllIcons.Actions.Show"/>
+
+        <action id="Tomahawk.InitSpecKit"
+                class="com.mio.tomahawk.run.InitSpecKitAction"
+                text="Tomahawk IA: Inicializar Spec Kit"
+                description="Roda specify init --here no terminal da IDE, com a integração do CLI de IA configurado"
+                icon="/icons/lancador.svg">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+
         <action id="IronDome.ReportBug"
                 class="com.mio.irondome.caixapreta.ReportBugAction"
-                text="Reportar Bug do Iron Dome IA"
+                text="Reportar Bug do IronHawk IA"
                 description="Gera um .md dizendo onde o bug aconteceu no plugin, com print, gravação em GIF e os erros do log, e envia ao Linear"
                 icon="/icons/caixaPreta.svg">
             <add-to-group group-id="HelpMenu" anchor="last"/>
         </action>
         <action id="IronDome.CheckCompatibility"
                 class="com.mio.irondome.caixapreta.CheckCompatibilityAction"
-                text="Iron Dome IA: Verificar Compatibilidade"
+                text="IronHawk IA: Verificar Compatibilidade"
                 description="Mostra o que cada mecanismo precisa da IDE, o que está faltando e os erros recentes do plugin no log"
                 icon="AllIcons.Nodes.Plugin">
             <add-to-group group-id="HelpMenu" anchor="last"/>
         </action>
         <action id="IronDome.ShowErrorLog"
                 class="com.mio.irondome.caixapreta.ShowErrorLogAction"
-                text="Iron Dome IA: Ver Logs de Erro"
+                text="IronHawk IA: Ver Logs de Erro"
                 description="Lista os erros e avisos do plugin no log da IDE, com a pilha completa, para copiar ou reportar"
                 icon="AllIcons.Actions.ShowAsTree">
             <add-to-group group-id="HelpMenu" anchor="last"/>

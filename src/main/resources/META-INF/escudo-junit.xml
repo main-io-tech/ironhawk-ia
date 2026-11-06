@@ -1,5 +1,5 @@
 <idea-plugin>
-    <extensions defaultExtensionNs="com.mio.irondome">
+    <extensions defaultExtensionNs="com.mio.ironhawk">
         <toolWindowTab implementation="com.mio.irondome.escudo.TestsTab"/>
     </extensions>
 </idea-plugin>

@@ -29,10 +29,13 @@ import com.mio.irondome.interceptor.InterceptorTab
 import com.mio.irondome.interceptor.InterceptorWeb
 import com.mio.irondome.radar.CommentsPanel
 import com.mio.irondome.sentinela.ChangesPanel
+import com.mio.ironhawk.IronHawkSystem
 import javax.swing.Icon
 import javax.swing.JComponent
 
 class ReviewToolWindowFactory : ToolWindowFactory, DumbAware {
+
+    override fun shouldBeAvailable(project: Project) = IronHawkSystem.DEFENSE.enabled
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         // Arrastar uma aba reordena, e levá-la para um lado divide o painel: dois mecanismos lado a lado.

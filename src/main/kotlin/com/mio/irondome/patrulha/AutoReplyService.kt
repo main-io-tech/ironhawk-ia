@@ -22,6 +22,7 @@ import com.mio.irondome.interceptor.AgentResult
 import com.mio.irondome.interceptor.AgentRunner
 import com.mio.irondome.interceptor.AgentSettings
 import com.mio.irondome.interceptor.AgentTask
+import com.mio.ironhawk.IronHawkSystem
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -382,6 +383,7 @@ class AutoReplyService(private val project: Project) : PersistentStateComponent<
 /** Retoma o monitor ao abrir o projeto, nos PRs que ficaram ligados. */
 class AutoReplyStartup : ProjectActivity {
     override suspend fun execute(project: Project) {
+        if (!IronHawkSystem.DEFENSE.enabled) return
         AutoReplyService.getInstance(project).ensureScheduled()
         // Uma revisão que continuou aberta de uma sessão anterior também deixa o modo revisão do GitHub desligado.
         if (PatrulhaService.getInstance(project).reviewing() != 0) IdeEditorReview.suspend(project)

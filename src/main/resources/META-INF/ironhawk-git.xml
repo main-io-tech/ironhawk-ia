@@ -1,0 +1,2 @@
+<!-- Só torna as classes do Git visíveis ao plugin; a Patrulha e a entrega do PR são registradas em ironhawk-github.xml. -->
+<idea-plugin/>

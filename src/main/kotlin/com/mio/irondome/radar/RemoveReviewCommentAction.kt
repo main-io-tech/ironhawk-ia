@@ -4,6 +4,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.DumbAwareAction
+import com.mio.ironhawk.IronHawkSystem
 
 /**
  * Remove os comentários não resolvidos que cruzam a seleção ou a linha do cursor: os ainda não salvos
@@ -14,6 +15,7 @@ class RemoveReviewCommentAction : DumbAwareAction() {
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
+        if (!IronHawkSystem.DEFENSE.showIn(e)) return
         val project = e.project
         val editor = e.editorAndFile()?.first
         e.presentation.isEnabledAndVisible = project != null && editor != null &&

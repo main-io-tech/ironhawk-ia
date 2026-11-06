@@ -4,6 +4,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.DumbAwareAction
+import com.mio.ironhawk.IronHawkSystem
 
 /** Oculta do editor todos os alvos interceptados; [ShowResolvedCommentsAction] traz de volta. */
 class RemoveResolvedCommentsAction : DumbAwareAction() {
@@ -11,6 +12,7 @@ class RemoveResolvedCommentsAction : DumbAwareAction() {
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
+        if (!IronHawkSystem.DEFENSE.showIn(e)) return
         val project = e.project
         e.presentation.isEnabled = project != null &&
             project.service<ReviewCommentService>().resolvedComments().isNotEmpty()
@@ -27,6 +29,7 @@ class ShowResolvedCommentsAction : DumbAwareAction() {
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
+        if (!IronHawkSystem.DEFENSE.showIn(e)) return
         val project = e.project
         e.presentation.isEnabled = project != null &&
             project.service<ReviewCommentService>().hiddenComments().isNotEmpty()

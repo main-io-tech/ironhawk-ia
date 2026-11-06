@@ -12,6 +12,7 @@ import com.intellij.openapi.project.Project
 import com.mio.irondome.base.IronDomeIcons
 import com.mio.irondome.base.plural
 import com.mio.irondome.radar.ReviewCommentService
+import com.mio.ironhawk.IronHawkSystem
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
 
@@ -23,6 +24,7 @@ import git4idea.repo.GitRepositoryChangeListener
 class ReviewBranchWatcher(private val project: Project) : GitRepositoryChangeListener {
 
     override fun repositoryChanged(repository: GitRepository) {
+        if (!IronHawkSystem.DEFENSE.enabled) return
         ApplicationManager.getApplication().invokeLater({ check(repository) }, project.disposed)
     }
 

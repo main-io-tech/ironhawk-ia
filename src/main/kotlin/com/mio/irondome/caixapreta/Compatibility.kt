@@ -54,7 +54,7 @@ data class Environment(
 
 object Compatibility {
 
-    private const val PLUGIN_ID = "com.mio.irondome"
+    private const val PLUGIN_ID = "com.mio.ironhawk"
     private const val JAVA_PLUGIN = "com.intellij.java"
     private const val JUNIT_PLUGIN = "JUnit"
     private const val GIT_PLUGIN = "Git4Idea"

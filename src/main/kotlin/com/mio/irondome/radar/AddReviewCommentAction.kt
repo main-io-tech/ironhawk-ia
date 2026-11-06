@@ -4,12 +4,14 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.DumbAwareAction
+import com.mio.ironhawk.IronHawkSystem
 
 class AddReviewCommentAction : DumbAwareAction() {
 
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
+        if (!IronHawkSystem.DEFENSE.showIn(e)) return
         val project = e.project
         val target = e.editorAndFile()
         e.presentation.isVisible = project != null && target != null

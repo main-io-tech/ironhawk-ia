@@ -7,6 +7,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.vcsUtil.VcsUtil
 import com.mio.irondome.radar.editorAndFile
+import com.mio.ironhawk.IronHawkSystem
 
 /** Na barra do editor, só aparece se o arquivo aberto tiver alterações não commitadas. */
 class ShowFileDiffAction : DumbAwareAction() {
@@ -14,6 +15,7 @@ class ShowFileDiffAction : DumbAwareAction() {
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
+        if (!IronHawkSystem.DEFENSE.showIn(e)) return
         val project = e.project
         val file = e.editorAndFile()?.second
         e.presentation.isEnabledAndVisible = project != null && file != null && ChangeDiff.changeOf(project, file) != null

@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.Toggleable
 import com.intellij.openapi.project.DumbAwareAction
+import com.mio.ironhawk.IronHawkSystem
 
 /**
  * As ações do editor sobre os comentários do PR em revisão: os não enviados, os pedidos enviados e as conversas.
@@ -16,6 +17,7 @@ abstract class PullRequestEditorAction : DumbAwareAction() {
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
     final override fun update(e: AnActionEvent) {
+        if (!IronHawkSystem.DEFENSE.showIn(e)) return
         val patrulha = e.project?.let(PatrulhaService::getInstance)
         val number = patrulha?.reviewing() ?: 0
         e.presentation.isEnabledAndVisible = number != 0

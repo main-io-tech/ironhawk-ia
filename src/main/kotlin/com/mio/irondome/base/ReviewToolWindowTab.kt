@@ -18,6 +18,6 @@ interface ReviewToolWindowTab {
     fun createComponent(project: Project, toolWindow: ToolWindow): JComponent
 
     companion object {
-        val EP_NAME = ExtensionPointName<ReviewToolWindowTab>("com.mio.irondome.toolWindowTab")
+        val EP_NAME = ExtensionPointName<ReviewToolWindowTab>("com.mio.ironhawk.toolWindowTab")
     }
 }

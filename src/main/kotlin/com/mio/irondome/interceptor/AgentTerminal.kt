@@ -19,7 +19,7 @@ interface AgentTerminal {
     fun run(project: Project, workDir: String, title: String, command: String)
 
     companion object {
-        val EP = ExtensionPointName<AgentTerminal>("com.mio.irondome.agentTerminal")
+        val EP = ExtensionPointName<AgentTerminal>("com.mio.ironhawk.agentTerminal")
 
         fun available(): AgentTerminal? = EP.extensionList.firstOrNull()
     }

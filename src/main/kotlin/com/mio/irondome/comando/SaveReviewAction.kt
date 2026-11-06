@@ -15,6 +15,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.mio.irondome.radar.ReviewCommentService
 import com.mio.irondome.radar.editorAndFile
 import java.nio.file.Path
+import com.mio.ironhawk.IronHawkSystem
 
 /** Salva os documentos e regrava o `.md` da revisão aberta com os comentários de todos os arquivos. */
 class SaveReviewAction : DumbAwareAction() {
@@ -23,6 +24,7 @@ class SaveReviewAction : DumbAwareAction() {
 
     /** Na barra do editor, só aparece se houver pendências fora do arquivo aberto, que tem o próprio botão. */
     override fun update(e: AnActionEvent) {
+        if (!IronHawkSystem.DEFENSE.showIn(e)) return
         val project = e.project
         if (project == null) {
             e.presentation.isEnabledAndVisible = false
@@ -54,6 +56,7 @@ class SaveFileReviewAction : DumbAwareAction() {
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
     override fun update(e: AnActionEvent) {
+        if (!IronHawkSystem.DEFENSE.showIn(e)) return
         val project = e.project
         val file = e.editorAndFile()?.second
         e.presentation.isEnabledAndVisible = project != null && file != null &&

@@ -11,6 +11,7 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileDocumentManagerListener
 import com.intellij.openapi.project.ProjectManager
 import com.mio.irondome.radar.ReviewCommentService
+import com.mio.ironhawk.IronHawkSystem
 
 /**
  * A IDE também salva sozinha (ao fechar a aba, trocar de janela, ficar ociosa...), então salvar
@@ -19,6 +20,7 @@ import com.mio.irondome.radar.ReviewCommentService
 class ReviewSaveListener : FileDocumentManagerListener {
 
     override fun beforeDocumentSaving(document: Document) {
+        if (!IronHawkSystem.DEFENSE.enabled) return
         val file = FileDocumentManager.getInstance().getFile(document) ?: return
         ProjectManager.getInstance().openProjects
             .filter { !it.isDisposed }
@@ -34,7 +36,7 @@ class ReviewSaveActionListener : AnActionListener {
 
     override fun beforeActionPerformed(action: AnAction, event: AnActionEvent) {
         val id = ActionManager.getInstance().getId(action)
-        if (id != SAVE_ALL && id != SAVE_DOCUMENT) return
+        if (id != SAVE_ALL && id != SAVE_DOCUMENT || !IronHawkSystem.DEFENSE.enabled) return
         val project = event.project?.takeIf { !it.isDisposed } ?: return
         val service = project.service<ReviewCommentService>()
         if (id == SAVE_ALL) {
