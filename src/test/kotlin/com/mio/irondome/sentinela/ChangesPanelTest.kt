@@ -63,5 +63,27 @@ class ChangesPanelTest : LightJavaCodeInsightFixtureTestCase() {
         assertTrue(filter.matches("qualquer/Arquivo.kt", "qualquer", ChangesPanel.ChangeKind.OTHER, 0))
     }
 
+    fun testFoldersGroupByDirectoryAndJoinTheEmptyOnes() {
+        val top = ChangesPanel.folders(
+            listOf(
+                "src/main/kotlin/app/radar/Gutter.kt",
+                "src/main/kotlin/app/radar/Panel.kt",
+                "src/main/kotlin/app/web/Controller.kt",
+                "src/test/kotlin/app/RadarTest.kt",
+                "build.gradle.kts",
+            ),
+        ) { it }
+
+        assertEquals("os arquivos da raiz ficam soltos", listOf("build.gradle.kts"), top.files)
+        val src = top.folders.single()
+        assertEquals("src", src.label)
+        assertEquals(listOf("main/kotlin/app", "test/kotlin/app"), src.folders.map { it.label })
+        val app = src.folders.first()
+        assertEquals("src/main/kotlin/app", app.path)
+        assertEquals(listOf("radar", "web"), app.folders.map { it.label })
+        assertEquals(2, app.folders.first().files.size)
+        assertEquals(3, app.all.size)
+    }
+
     private fun locationOf(dir: VirtualFile) = ChangesPanel.locationOf(project, dir.path, dir)
 }

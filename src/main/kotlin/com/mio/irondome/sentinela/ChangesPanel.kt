@@ -27,6 +27,7 @@ import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListListener
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vcs.changes.VcsDirtyScopeManager
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.PopupHandler
@@ -56,6 +57,7 @@ import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.util.TreeMap
 import javax.swing.Icon
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
@@ -66,7 +68,7 @@ import javax.swing.tree.TreePath
 
 /**
  * Arquivos com alterações ainda não commitadas, como os que a IA mudou ao aplicar a revisão,
- * agrupados por raiz de código e pacote, só por pacote ou por tipo de alteração, com busca e filtros.
+ * agrupados por diretório, por raiz de código e pacote, só por pacote ou por tipo de alteração, com busca e filtros.
  * O clique só seleciona e o duplo clique abre o arquivo; os botões da barra e o menu de contexto abrem
  * o diff ou o arquivo.
  */
@@ -101,6 +103,7 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     }
 
     internal enum class Grouping(val label: String, val description: String) {
+        DIRECTORY("Diretório", "A árvore de pastas do projeto; as pastas que só levam a outra ficam juntas numa linha, como src/main/kotlin"),
         ROOT_AND_PACKAGE("Raiz e Pacote", "Agrupa pela raiz de código, como src/main e src/test, e dentro dela pelo pacote"),
         PACKAGE("Pacote", "Um grupo por pacote, com a raiz de código ao lado do nome"),
         KIND("Tipo de Alteração", "Agrupa em modificados, adicionados, removidos e não versionados"),
@@ -135,7 +138,7 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     private var entries: List<Entry> = emptyList()
     private var commentsByPath: Map<String, Int> = emptyMap()
     private var grouping = Grouping.entries.firstOrNull { it.name == PropertiesComponent.getInstance().getValue(GROUPING_KEY) }
-        ?: Grouping.ROOT_AND_PACKAGE
+        ?: Grouping.DIRECTORY
     private var filter = Filter()
     /** A busca abre todos os grupos; ao limpá-la, volta o que estava aberto antes. */
     private var expandedBeforeSearch: Set<String> = emptySet()
@@ -310,6 +313,7 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         updateHeader(visible)
         val root = DefaultMutableTreeNode()
         when (grouping) {
+            Grouping.DIRECTORY -> folderNodes(folders(visible) { it.relativePath }).forEach(root::add)
             Grouping.ROOT_AND_PACKAGE -> visible.groupBy { it.location.root }.toSortedMap(nullsLast()).forEach { (sourceRoot, inRoot) ->
                 val key = "root|$sourceRoot"
                 val packages = packageNodes(key, inRoot, showRoot = false)
@@ -365,6 +369,28 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
                 }
             }
 
+    /** As pastas de [folder] primeiro, depois os arquivos dela; os arquivos da raiz do projeto ficam soltos no fim. */
+    private fun folderNodes(folder: Folder<Entry>): List<DefaultMutableTreeNode> =
+        folder.folders.map { child ->
+            val dir = project.rootPath()?.let { LocalFileSystem.getInstance().findFileByPath("$it/${child.path}") }
+            val files = child.all
+            val group = Group(
+                key = "dir|${child.path}",
+                name = child.label,
+                icon = folderIcon(dir),
+                files = files.size,
+                comments = files.sumOf { it.comments } + (commentsByPath[child.path] ?: 0),
+                dir = dir,
+            )
+            DefaultMutableTreeNode(group).apply { folderNodes(child).forEach(::add) }
+        } + folder.files.sortedBy { it.path.name.lowercase() }.map { DefaultMutableTreeNode(it) }
+
+    private fun folderIcon(dir: VirtualFile?): Icon {
+        val index = ProjectFileIndex.getInstance(project)
+        if (dir == null || index.getSourceRootForFile(dir) != dir) return AllIcons.Nodes.Folder
+        return if (index.isInTestSourceContent(dir)) AllIcons.Modules.TestRoot else AllIcons.Modules.SourceRoot
+    }
+
     private fun rootIcon(sourceRoot: String?, entries: List<Entry>): Icon {
         if (sourceRoot == null) return AllIcons.Nodes.Folder
         val file = entries.firstNotNullOfOrNull { it.path.parentPath?.virtualFile }
@@ -405,12 +431,16 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             return
         }
         val kinds = entries.groupingBy { it.kind }.eachCount()
-        val packages = entries.map { it.location.key }.distinct().size
+        val where = if (grouping == Grouping.DIRECTORY) {
+            plural(entries.map { it.relativePath.substringBeforeLast('/', "") }.distinct().size, "pasta", "pastas")
+        } else {
+            plural(entries.map { it.location.key }.distinct().size, "pacote", "pacotes")
+        }
         val targets = entries.sumOf { it.comments }
         header.update(
             title = plural(entries.size, "arquivo alterado", "arquivos alterados"),
             subtitle = listOfNotNull(
-                "em ${plural(packages, "pacote", "pacotes")}",
+                "em $where",
                 plural(targets, "alvo na mira", "alvos na mira").takeIf { targets > 0 },
                 "mostrando ${visible.size} com o filtro".takeIf { filter.active },
             ).joinToString(" · "),
@@ -526,6 +556,19 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         val key get() = "$root|$name"
     }
 
+    /**
+     * Uma pasta da árvore do agrupamento por diretório, com [path] relativo ao projeto. Em [label], as pastas que só
+     * levam a outra, sem arquivos alterados, ficam juntas, como `src/main/kotlin`.
+     */
+    internal class Folder<T>(val path: String, val label: String, val folders: List<Folder<T>>, val files: List<T>) {
+        val all: List<T> get() = files + folders.flatMap { it.all }
+    }
+
+    private class FolderDraft<T>(val path: String) {
+        val folders = TreeMap<String, FolderDraft<T>>(String.CASE_INSENSITIVE_ORDER)
+        val files = mutableListOf<T>()
+    }
+
     /** Esconde os tipos em [hiddenKinds]; [text] procura no caminho e no pacote, sem diferenciar maiúsculas. */
     internal data class Filter(
         val text: String = "",
@@ -560,6 +603,32 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             val relative = dirPath?.let { relativePath(project, it) }
             val atRoot = relative == null || relative == project.rootPath()
             return Location(if (atRoot) "(raiz do projeto)" else relative, null)
+        }
+
+        /** A raiz do projeto, sem nome, com as pastas de [items] em ordem alfabética e os arquivos soltos nela. */
+        fun <T> folders(items: List<T>, relativePath: (T) -> String): Folder<T> {
+            val top = FolderDraft<T>("")
+            for (item in items) {
+                var folder = top
+                for (name in relativePath(item).substringBeforeLast('/', "").split('/')) {
+                    if (name.isEmpty()) continue
+                    val parent = folder
+                    folder = parent.folders.getOrPut(name) { FolderDraft(if (parent.path.isEmpty()) name else "${parent.path}/$name") }
+                }
+                folder.files += item
+            }
+            return compact(top, "")
+        }
+
+        private fun <T> compact(start: FolderDraft<T>, name: String): Folder<T> {
+            var folder = start
+            var label = name
+            while (label.isNotEmpty() && folder.files.isEmpty() && folder.folders.size == 1) {
+                val (child, next) = folder.folders.entries.first()
+                label += "/$child"
+                folder = next
+            }
+            return Folder(folder.path, label, folder.folders.map { (child, next) -> compact(next, child) }, folder.files.toList())
         }
 
         fun relativePath(project: Project, path: String): String {
