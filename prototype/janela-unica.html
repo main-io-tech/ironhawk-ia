@@ -1,0 +1,364 @@
+<!doctype html>
+<!--
+  PROTÓTIPO DESCARTÁVEL: não é código do plugin.
+  Pergunta: como juntar o Iron Dome e o Tomahawk numa janela só, com o que é comum (o Arsenal) num lugar só?
+  Quatro telas, trocadas pela barra de baixo (ou ← →): Hoje, A, B e C. ?variant=A na URL abre direto.
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Protótipo: IronHawk IA numa janela só</title>
+<style>
+  :root{--ide:#1E1F22;--panel:#2B2D30;--editor:#1E1F22;--line:#393B40;--fg:#DFE1E5;--muted:#9198A1;--hover:#393B40;--sel:#2E436E;
+    --card:#2B2D30;--card2:#26282C;--border:#393B40;--blue:#2F81F7;--blue-bg:#12304F;--blue-fg:#79C0FF;--green:#3FB950;--green-bg:#13361F;--green-fg:#56D364;
+    --red:#F85149;--red-bg:#4A1A1E;--red-fg:#FF7B72;--yellow:#BB8009;--yellow-bg:#4A3D12;--yellow-fg:#E3C065;--purple:#A371F7;--purple-bg:#3A2350;--purple-fg:#D2A8FF;
+    --orange:#DB6D28;--orange-bg:#4A2A12;--orange-fg:#FFA657;--teal:#39C5CF;--teal-bg:#10373A;--teal-fg:#56D4DD}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--ide);color:var(--fg);font:13px/1.55 "Segoe UI",Inter,Roboto,Arial,sans-serif;overflow:hidden}
+  code{font-family:"JetBrains Mono",Consolas,monospace;font-size:12px;background:var(--card2);padding:1px 6px;border-radius:5px}
+  .ide{display:flex;height:100vh}
+  .main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .titlebar{height:38px;display:flex;align-items:center;gap:14px;padding:0 14px;background:#2B2D30;border-bottom:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  .titlebar b{color:var(--fg)}
+  .work{flex:1;display:flex;min-height:0}
+  .editor{flex:1;min-width:0;background:var(--editor);padding:14px 0;font:12.5px/1.75 "JetBrains Mono",Consolas,monospace;color:#BCBEC4;overflow:hidden}
+  .editor .ln{display:inline-block;width:46px;text-align:right;padding-right:14px;color:#4B5059}
+  .kw{color:#CF8E6D}.fn{color:#56A8F5}.st{color:#6AAB73}.cm{color:#7A7E85}
+  .tw{width:680px;flex:none;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+  .tw-head{height:40px;flex:none;display:flex;align-items:center;gap:4px;padding:0 6px 0 12px;border-bottom:1px solid var(--line)}
+  .tw-title{font-weight:700;white-space:nowrap;margin-right:6px;display:flex;align-items:center;gap:7px}
+  .tw-actions{margin-left:auto;display:flex;gap:2px;flex:none}
+  .ib{width:28px;height:28px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);cursor:pointer;font-size:14px;border:0;background:none}
+  .ib:hover{background:var(--hover);color:var(--fg)}
+  .tabs{display:flex;gap:2px;align-items:center;min-width:0;overflow:hidden}
+  .tab{flex:none;height:28px;padding:0 9px;border-radius:6px;display:inline-flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer;white-space:nowrap;font-size:12.5px;border:0;background:none}
+  .tab:hover{background:var(--hover);color:var(--fg)}
+  .tab.on{background:var(--sel);color:#fff}
+  .tab .dup{font-size:9.5px;font-weight:800;letter-spacing:.05em;color:var(--red-fg);background:var(--red-bg);border-radius:4px;padding:0 4px}
+  .group-label{font-size:9.5px;font-weight:800;letter-spacing:.1em;padding:0 4px 0 8px;white-space:nowrap}
+  .vsep{width:1px;height:18px;background:var(--line);margin:0 4px;flex:none}
+  .overflow{flex:none}
+  .tw-body{flex:1;overflow:auto;padding:12px 14px 70px;min-height:0}
+  .stripe{width:42px;flex:none;background:#2B2D30;border-left:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:6px}
+  .sbtn{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);position:relative}
+  .sbtn:hover{background:var(--hover)}
+  .sbtn.on{background:var(--sel)}
+  .sbtn svg{width:18px;height:18px}
+  .sbtn .tip{display:none;position:absolute;right:40px;top:4px;background:#3C3F41;color:var(--fg);border:1px solid var(--line);padding:3px 8px;border-radius:6px;white-space:nowrap;font-size:12px;z-index:5}
+  .sbtn:hover .tip{display:block}
+  .stripe .gap{flex:1}
+
+  .seg{display:inline-flex;padding:2px;border-radius:8px;background:#1E1F22;gap:2px;flex:none}
+  .seg button{border:0;background:transparent;color:var(--muted);height:24px;padding:0 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;gap:5px;align-items:center}
+  .seg button.on{background:var(--panel);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .seg button.def.on{color:var(--blue-fg)} .seg button.atk.on{color:var(--orange-fg)}
+
+  .top{position:relative;display:flex;gap:12px;align-items:center;padding:14px 16px;border-radius:14px;border:1px solid var(--border);overflow:hidden;background:radial-gradient(120% 140% at 0% 0%,var(--acc-bg) 0%,var(--card) 60%)}
+  .top-icon{flex:none;width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--ide);border:1px solid var(--border)}
+  .kicker{font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--acc-fg)}
+  .top-title{font-size:17px;font-weight:800;line-height:1.25;margin-top:2px}
+  .top-sub{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .sec{display:flex;align-items:center;gap:8px;margin:18px 2px 9px;font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .sec .line{flex:1;height:1px;background:var(--border)}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+  .card + .card{margin-top:10px}
+  .card h3{margin:0 0 3px;font-size:13.5px;display:flex;align-items:center;gap:8px}
+  .card .desc{color:var(--muted);font-size:12px;margin-bottom:8px}
+  .tag{font-size:10px;font-weight:800;letter-spacing:.06em;border-radius:999px;padding:1px 8px;border:1px solid}
+  .tag.def{color:var(--blue-fg);border-color:var(--blue);background:var(--blue-bg)}
+  .tag.atk{color:var(--orange-fg);border-color:var(--orange);background:var(--orange-bg)}
+  .tag.com{color:var(--green-fg);border-color:var(--green);background:var(--green-bg)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .field{display:flex;gap:10px;align-items:center;margin:6px 0}
+  .field label{width:120px;color:var(--muted);font-size:12px;flex:none}
+  .select{flex:1;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--ide);display:flex;align-items:center;padding:0 10px;justify-content:space-between;font-size:12.5px}
+  .btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--ide);color:var(--fg);font-size:12px;font-weight:600;cursor:pointer}
+  .btn.primary{background:linear-gradient(135deg,var(--acc),var(--acc-fg));border-color:transparent;color:#fff}
+  .list{margin:0;padding:0;list-style:none}
+  .list li{display:flex;gap:8px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--border);font-size:12.5px}
+  .list li:last-child{border-bottom:0}
+  .list .when{margin-left:auto;color:var(--muted);font-size:11.5px;white-space:nowrap}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .off{border:1px dashed var(--border);border-radius:12px;padding:16px;color:var(--muted);text-align:center}
+  .pill{display:inline-flex;gap:5px;align-items:center;padding:2px 9px;border-radius:999px;font-size:11.5px;border:1px solid var(--border)}
+
+  /* C: trilho vertical dentro da janela */
+  .c-wrap{flex:1;display:flex;min-height:0}
+  .rail{width:46px;flex:none;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:8px 0 70px;gap:3px;background:#27292C}
+  .rail .r{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;position:relative}
+  .rail .r:hover{background:var(--hover)}
+  .rail .r.on{background:var(--sel)}
+  .rail .r .tip{display:none;position:absolute;left:40px;top:6px;background:#3C3F41;border:1px solid var(--line);padding:2px 8px;border-radius:6px;white-space:nowrap;font-size:12px;z-index:5}
+  .rail .r:hover .tip{display:block}
+  .rail .rl{font-size:8.5px;font-weight:800;letter-spacing:.08em;margin:6px 0 1px}
+  .rail .rs{width:24px;height:1px;background:var(--line);margin:5px 0}
+  .rail .fill{flex:1}
+  .c-body{flex:1;overflow:auto;padding:12px 14px 70px;min-width:0}
+  .sys-card{border-radius:14px;border:1px solid var(--border);padding:14px;background:var(--card);margin-bottom:12px}
+  .sys-card.def{background:radial-gradient(120% 140% at 0% 0%,var(--blue-bg) 0%,var(--card) 55%)}
+  .sys-card.atk{background:radial-gradient(120% 140% at 0% 0%,var(--orange-bg) 0%,var(--card) 55%)}
+  .sys-card h2{margin:0;font-size:16px;display:flex;gap:8px;align-items:center}
+  .mechs{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:10px}
+  .mech{border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:var(--ide);cursor:pointer}
+  .mech:hover{border-color:var(--acc)}
+  .mech b{display:block;font-size:12.5px}
+  .mech span{color:var(--muted);font-size:11.5px}
+
+  /* Barra do protótipo: não faz parte do design */
+  .proto{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:#F5F5F5;color:#111;border-radius:999px;padding:6px 8px;box-shadow:0 8px 30px rgba(0,0,0,.55);font-size:12.5px;z-index:50}
+  .proto button{border:0;background:#111;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:14px}
+  .proto .lbl{min-width:290px;text-align:center;font-weight:700}
+  .proto select{border:1px solid #bbb;border-radius:999px;padding:3px 8px;font-size:12px;background:#fff}
+  .note{position:fixed;left:14px;bottom:70px;max-width:calc(100% - 780px);background:rgba(18,48,79,.95);border:1px solid var(--blue);color:#DDF4FF;border-radius:12px;padding:10px 14px;font-size:12.5px;z-index:40}
+  .note b{color:#fff}
+</style>
+</head>
+<body>
+<div class="ide">
+  <div class="main">
+    <div class="titlebar"><b>meu-projeto</b> <span>feature/carrinho</span> <span style="margin-left:auto">IntelliJ IDEA</span></div>
+    <div class="work">
+      <div class="editor" id="editor"></div>
+      <div class="tw" id="tw"></div>
+    </div>
+  </div>
+  <div class="stripe" id="stripe"></div>
+</div>
+<div class="note" id="note"></div>
+<div class="proto">
+  <button id="prev" title="Anterior (←)">←</button>
+  <span class="lbl" id="lbl"></span>
+  <button id="next" title="Próxima (→)">→</button>
+  <select id="systems" title="Simula os interruptores de Settings > Tools > IronHawk IA">
+    <option value="both">Defesa e Ataque ligados</option>
+    <option value="def">Só a Defesa ligada</option>
+    <option value="atk">Só o Ataque ligado</option>
+  </select>
+</div>
+<script>
+const DEF = [
+  {id:'radar', icon:'📡', name:'Radar'}, {id:'sentinela', icon:'👁️', name:'Sentinela'},
+  {id:'impacto', icon:'💥', name:'Raio de Impacto'}, {id:'escudo', icon:'🛡️', name:'Escudo'}, {id:'patrulha', icon:'🛰️', name:'Patrulha'},
+];
+const ATK = [
+  {id:'lancador', icon:'🚀', name:'Lançador'}, {id:'avaliacao', icon:'🎯', name:'Avaliação'},
+  {id:'telemetria', icon:'📈', name:'Telemetria'}, {id:'radio', icon:'📻', name:'Rádio'},
+];
+const ARSENAL = {id:'arsenal', icon:'🧰', name:'Arsenal'};
+const ICON_DOME = '<svg viewBox="0 0 16 16"><path d="M1.5 14h13M2.5 14a5.5 5.5 0 0 1 11 0M5 14a3 3 0 0 1 6 0" fill="none" stroke="#CED0D6" stroke-linecap="round"/></svg>';
+const ICON_HAWK = '<svg viewBox="0 0 16 16"><g transform="rotate(-38 8 8)"><path d="M2.2 7.25H11.4C12.7 7.25 13.8 7.6 14.6 8 13.8 8.4 12.7 8.75 11.4 8.75H2.2z" fill="#CED0D6"/><path d="M6.2 7.25 7.7 4.5H8.7L8.2 7.25zM6.2 8.75 7.7 11.5H8.7L8.2 8.75z" fill="#CED0D6"/></g></svg>';
+const ICON_IRONHAWK = '<svg viewBox="0 0 16 16"><path d="M1.5 14.5h13M3 14.5a5 5 0 0 1 10 0" fill="none" stroke="#79C0FF" stroke-linecap="round"/><g transform="translate(9.5 5.5) scale(.55) rotate(-42) translate(-8 -8)"><path d="M2.2 7.25H11.4C12.7 7.25 13.8 7.6 14.6 8 13.8 8.4 12.7 8.75 11.4 8.75H2.2z" fill="#FFA657"/><path d="M6.2 7.25 7.7 4.5H8.7L8.2 7.25zM6.2 8.75 7.7 11.5H8.7L8.2 8.75z" fill="#FFA657"/></g></svg>';
+const OTHER = [['🔔','Notificações'],['🗄️','Database'],['🐘','Gradle']];
+
+const VARIANTS = {
+  HOJE: {name:'Hoje: duas janelas e dois Arsenais', note:'<b>Como está agora:</b> dois botões na barra da direita (Iron Dome IA e Tomahawk IA), cada um com a sua janela, e o Arsenal repetido nas duas, com configurações separadas.'},
+  A: {name:'A: seletor Defesa | Ataque no título', note:'<b>A:</b> um botão só, <b>IronHawk IA</b>. No título, o seletor <b>🛡️ Defesa | 🚀 Ataque</b> troca as abas do sistema; o <b>Arsenal</b> fica fixo no fim, igual nos dois. Com um sistema desligado, o seletor some.'},
+  B: {name:'B: todas as abas numa faixa, por grupo', note:'<b>B:</b> um botão só e todas as abas lado a lado, separadas pelos rótulos <b>DEFESA</b> e <b>ATAQUE</b>, com o <b>Arsenal</b> no fim. As que não cabem vão para o » (como na IDE). Arrastar reordena.'},
+  C: {name:'C: trilho lateral com página inicial', note:'<b>C:</b> um botão só e um trilho de ícones dentro da janela: <b>🏠 Comando</b> (o resumo dos dois sistemas), os mecanismos da Defesa, os do Ataque e o <b>Arsenal</b> embaixo.'},
+};
+const ORDER = ['HOJE','A','B','C'];
+const params = new URLSearchParams(location.search);
+let variant = ORDER.includes(params.get('variant')) ? params.get('variant') : 'HOJE';
+let systems = params.get('systems') || 'both';
+let state = {HOJE:{win:'irondome', tab:'radar'}, A:{sys:'def', tab:'radar'}, B:{tab:'radar'}, C:{tab:'home'}};
+if (params.get('tab')) {
+  const tab = params.get('tab');
+  state[variant].tab = tab;
+  if (ATK.some(m=>m.id===tab)) { state.A.sys = 'atk'; state.HOJE.win = 'tomahawk'; }
+}
+
+const defOn = () => systems !== 'atk';
+const atkOn = () => systems !== 'def';
+
+function editor(){
+  const lines = [
+    '<span class="kw">package</span> com.loja.carrinho','',
+    '<span class="kw">class</span> <span class="fn">CarrinhoService</span>(<span class="kw">private val</span> repo: CarrinhoRepository) {','',
+    '    <span class="cm">// Aplica o cupom e recalcula o total</span>',
+    '    <span class="kw">fun</span> <span class="fn">aplicarCupom</span>(id: Long, codigo: String): Carrinho {',
+    '        <span class="kw">val</span> carrinho = repo.buscar(id) ?: <span class="kw">throw</span> NaoEncontrado(id)',
+    '        <span class="kw">val</span> cupom = cupons.validar(codigo)',
+    '        carrinho.desconto = cupom.percentual * carrinho.subtotal',
+    '        <span class="kw">return</span> repo.salvar(carrinho)','    }','',
+    '    <span class="kw">fun</span> <span class="fn">total</span>(carrinho: Carrinho) = carrinho.subtotal - carrinho.desconto','}'];
+  document.getElementById('editor').innerHTML = lines.map((l,i)=>`<div><span class="ln">${i+1}</span>${l}</div>`).join('');
+}
+
+function accent(id){
+  if (DEF.some(m=>m.id===id)) return ['--blue','--blue-bg','--blue-fg'];
+  if (ATK.some(m=>m.id===id)) return ['--orange','--orange-bg','--orange-fg'];
+  return ['--green','--green-bg','--green-fg'];
+}
+function wrapAccent(id, html){
+  const [a,b,c] = accent(id);
+  return `<div style="--acc:var(${a});--acc-bg:var(${b});--acc-fg:var(${c})">${html}</div>`;
+}
+function header(icon, kicker, title, sub){
+  return `<div class="top"><div class="top-icon">${icon}</div><div><div class="kicker">${kicker}</div><div class="top-title">${title}</div><div class="top-sub">${sub}</div></div></div>`;
+}
+function sec(t){ return `<div class="sec"><span>${t}</span><span class="line"></span></div>`; }
+
+function page(id, opts={}){
+  const P = {
+    radar: () => header('📡','Defesa · Radar','3 alvos na mira','Revisão aberta em <code>iron-dome/ordem-interceptacao-12.md</code>') + sec('Alvos') +
+      `<div class="card"><ul class="list">
+        <li><span class="dot" style="background:var(--yellow)"></span>CarrinhoService.kt:9 · cupom vencido não é rejeitado<span class="when">Na mira</span></li>
+        <li><span class="dot" style="background:var(--yellow)"></span>CarrinhoService.kt:13 · total pode ficar negativo<span class="when">Na mira</span></li>
+        <li><span class="dot" style="background:var(--green)"></span>CupomValidator.kt:22 · nome do método<span class="when">Interceptado</span></li></ul></div>
+        <div class="row" style="margin-top:10px"><span class="btn primary">🎯 Disparar Todos com IA</span><span class="btn">Disparar Todos</span></div>`,
+    sentinela: () => header('👁️','Defesa · Sentinela','4 arquivos alterados','Perímetro vigiado: o que ainda não foi commitado') + sec('com.loja.carrinho') +
+      `<div class="card"><ul class="list"><li>✏️ CarrinhoService.kt<span class="when">+12 −3</span></li><li>✏️ CupomValidator.kt<span class="when">+4 −1</span></li><li>➕ CupomVencidoTest.kt<span class="when">novo</span></li></ul></div>`,
+    impacto: () => header('💥','Defesa · Raio de Impacto','CarrinhoService: risco alto','14 classes dependem dela · 3 testes no escudo') + sec('Quem depende dela') +
+      `<div class="card"><ul class="list"><li>CheckoutController<span class="when">direto</span></li><li>PedidoService<span class="when">direto</span></li><li>RelatorioVendas<span class="when">2 níveis</span></li></ul></div>`,
+    escudo: () => header('🛡️','Defesa · Escudo','212 testes, 2 falharam','Agrupados pela chave do @DisplayName') + sec('[Carrinho]') +
+      `<div class="card"><ul class="list"><li><span class="dot" style="background:var(--red)"></span>Cupom vencido é rejeitado<span class="when">falhou</span></li><li><span class="dot" style="background:var(--green)"></span>Total com desconto<span class="when">passou</span></li></ul></div>`,
+    patrulha: () => header('🛰️','Defesa · Patrulha','2 PRs esperando a sua revisão','GitHub: main-io-tech/loja') + sec('Pull requests') +
+      `<div class="card"><ul class="list"><li>#128 Cupons por categoria<span class="when">ana · 3 arquivos</span></li><li>#131 Frete grátis acima de R$ 200<span class="when">rui · 7 arquivos</span></li></ul></div>`,
+    lancador: () => header('🚀','Ataque · Lançador','Feature 004: cupons por categoria','Próxima etapa: <b>Plano de Voo</b> (/speckit.plan)') + sec('Missão') +
+      `<div class="card"><ul class="list"><li>✅ Regras de Engajamento<span class="when">constituição</span></li><li>✅ Designar Alvo<span class="when">spec.md</span></li><li>✅ Reconhecimento<span class="when">clarify</span></li><li>🎯 Plano de Voo<span class="when">próxima</span></li><li>⬜ Waypoints<span class="when">tasks.md</span></li></ul></div>
+      <div class="row" style="margin-top:10px"><span class="btn primary">🚀 Lançar Plano de Voo</span><span class="btn">Copiar comando</span></div>`,
+    avaliacao: () => header('🎯','Ataque · Avaliação','spec.md: 2 pontos a esclarecer','6 histórias · 14 requisitos · 1 checklist') + sec('[NEEDS CLARIFICATION]') +
+      `<div class="card"><ul class="list"><li>Cupom acumula com frete grátis?</li><li>Categoria vale para subcategorias?</li></ul></div>`,
+    telemetria: () => header('📈','Ataque · Telemetria','Nenhuma missão em voo','Última: Reconhecimento · convergiu em 2m14s') + sec('Histórico') +
+      `<div class="card"><ul class="list"><li><span class="dot" style="background:var(--green)"></span>Reconhecimento<span class="when">hoje 17:40</span></li><li><span class="dot" style="background:var(--green)"></span>Designar Alvo<span class="when">hoje 16:02</span></li></ul></div>`,
+    radio: () => header('📻','Ataque · Rádio','1 comentário novo nos seus PRs','#126 Desconto progressivo') + sec('Conversas') +
+      `<div class="card"><ul class="list"><li>💬 ana: “e se o carrinho estiver vazio?”<span class="when">há 5 min</span></li></ul></div><div class="row" style="margin-top:10px"><span class="btn primary">✍️ Responder com a IA</span></div>`,
+    home: () => homePage(),
+    arsenal: () => arsenalPage(opts),
+  };
+  return wrapAccent(id, (P[id] || (()=>''))());
+}
+
+function arsenalPage(opts){
+  if (opts.legacy === 'irondome') return header('🧰','Iron Dome · Interceptador','Arsenal do Iron Dome','Cursor CLI · Windows') +
+    `<div class="card" style="margin-top:12px"><h3>🛰️ CLI de IA <span class="tag def">SÓ IRON DOME</span></h3><div class="field"><label>CLI</label><div class="select">Cursor CLI ▾</div></div><div class="field"><label>Onde roda</label><div class="select">Windows ▾</div></div></div>
+     <div class="card"><h3>🎛️ Execução</h3><div class="desc">Onde a IA roda quando um botão a chama.</div></div>
+     <div class="off" style="margin-top:12px">⚠️ Outra configuração de IA, separada, existe no Arsenal do Tomahawk.</div>`;
+  if (opts.legacy === 'tomahawk') return header('🧰','Tomahawk · Arsenal','Arsenal do Tomahawk','Claude Code · WSL Ubuntu') +
+    `<div class="card" style="margin-top:12px"><h3>🤖 CLI de IA <span class="tag atk">SÓ TOMAHAWK</span></h3><div class="field"><label>CLI</label><div class="select">Claude Code ▾</div></div><div class="field"><label>Onde roda</label><div class="select">WSL Ubuntu ▾</div></div></div>
+     <div class="card"><h3>📦 Devcontainer</h3></div><div class="card"><h3>🌱 Spec Kit</h3></div>
+     <div class="off" style="margin-top:12px">⚠️ Outra configuração de IA, separada, existe no Interceptador do Iron Dome.</div>`;
+  const d = defOn(), a = atkOn();
+  return header('🧰','Comum · Arsenal','A IA dos dois sistemas','Claude Code · WSL Ubuntu · <span style="color:var(--green-fg)">✓ integração testada</span>') +
+    sec('A IA') +
+    `<div class="card"><h3>⚡ Configuração automática <span class="tag com">COMUM</span></h3><div class="desc">Procura os CLIs instalados e configura o melhor.</div><span class="btn primary">⚡ Configurar</span></div>
+     <div class="card"><h3>🤖 CLI de IA <span class="tag com">COMUM</span></h3>
+       <div class="field"><label>CLI</label><div class="select">Claude Code ▾</div></div>
+       <div class="field"><label>Onde roda</label><div class="select">WSL Ubuntu ▾</div></div>
+       <div class="field"><label>Modelo</label><div class="select">padrão do CLI ▾</div></div>
+       <div class="row"><span class="btn">🧪 Testar a integração</span></div></div>
+     <div class="card"><h3>🛡️ Proteções <span class="tag com">COMUM</span></h3><div class="desc">Comandos perigosos barrados, ambiente sem segredos e ponto de restauração no Git.</div><span class="btn">↩️ Desfazer Alterações da IA</span></div>` +
+    sec('Por sistema') +
+    (d ? `<div class="card"><h3>🎛️ Execução da Defesa <span class="tag def">DEFESA</span></h3><div class="field"><label>Interceptador</label><div class="select">Na aba, monitorada ▾</div></div></div>` : '') +
+    (a ? `<div class="card"><h3>🎛️ Lançamento do Ataque <span class="tag atk">ATAQUE</span></h3><div class="field"><label>Missões</label><div class="select">Na aba, no devcontainer ▾</div></div></div>
+          <div class="card"><h3>📦 Devcontainer <span class="tag atk">ATAQUE</span></h3><div class="desc">As missões na aba rodam isoladas num container.</div></div>
+          <div class="card"><h3>🌱 Spec Kit <span class="tag atk">ATAQUE</span></h3><div class="desc"><code>specify</code> 0.4.2 nesta máquina · comandos instalados no projeto</div></div>` : '') +
+    sec('Execuções recentes') +
+    `<div class="card"><ul class="list">
+      ${a ? '<li><span class="tag atk">ATAQUE</span> Reconhecimento (clarify)<span class="when">hoje 17:40 · 2m14s</span></li>' : ''}
+      ${d ? '<li><span class="tag def">DEFESA</span> Interceptar 3 alvos do Radar<span class="when">hoje 17:12 · 58s</span></li>' : ''}
+      ${d ? '<li><span class="tag def">DEFESA</span> Resposta automática no PR #128<span class="when">hoje 16:50 · 21s</span></li>' : ''}
+    </ul></div>`;
+}
+
+function homePage(){
+  const d = defOn(), a = atkOn();
+  const mechs = (list, notes) => `<div class="mechs">${list.map((m,i)=>`<div class="mech" data-go="${m.id}"><b>${m.icon} ${m.name}</b><span>${notes[i]}</span></div>`).join('')}</div>`;
+  return header('🦅','IronHawk IA','Comando','meu-projeto · feature/carrinho') + `<div style="height:12px"></div>` +
+    (d ? `<div class="sys-card def" style="--acc:var(--blue)"><h2>🛡️ Defesa <span class="tag def">IRON DOME</span></h2><div class="top-sub">3 alvos na mira · 2 testes falhando · 2 PRs para revisar</div>
+      ${mechs(DEF, ['3 alvos','4 alterados','risco alto','2 falhas','2 PRs'])}</div>`
+      : `<div class="off">🛡️ Defesa desligada · ligar em Settings > Tools > IronHawk IA</div><div style="height:12px"></div>`) +
+    (a ? `<div class="sys-card atk" style="--acc:var(--orange)"><h2>🚀 Ataque <span class="tag atk">TOMAHAWK</span></h2><div class="top-sub">Feature 004 · próxima etapa: Plano de Voo · 1 comentário novo</div>
+      ${mechs(ATK, ['Plano de Voo','2 pendências','nada em voo','1 novo'])}</div>`
+      : `<div class="off">🚀 Ataque desligado · ligar em Settings > Tools > IronHawk IA</div>`);
+}
+
+function tabHtml(m, on, extra=''){ return `<button class="tab ${on?'on':''}" data-tab="${m.id}">${m.icon} ${m.name}${extra}</button>`; }
+const actions = (more='') => `<div class="tw-actions">${more}<button class="ib" title="Reportar bug (Caixa-Preta)">🐞</button><button class="ib" title="Configurações">⚙</button><button class="ib" title="Opções">⋮</button><button class="ib" title="Esconder">—</button></div>`;
+
+function render(){
+  const tw = document.getElementById('tw'), stripe = document.getElementById('stripe');
+  const s = state[variant];
+  let head = '', body = '';
+  let buttons = [];
+
+  if (variant === 'HOJE'){
+    if (s.win === 'irondome' && !defOn()) { s.win = 'tomahawk'; s.tab = 'lancador'; }
+    if (s.win === 'tomahawk' && !atkOn()) { s.win = 'irondome'; s.tab = 'radar'; }
+    if (defOn()) buttons.push({id:'irondome', svg:ICON_DOME, tip:'Iron Dome IA'});
+    if (atkOn()) buttons.push({id:'tomahawk', svg:ICON_HAWK, tip:'Tomahawk IA'});
+    const iron = s.win === 'irondome';
+    const tabs = iron ? DEF : ATK;
+    const own = iron ? {id:'arsenal', icon:'🧰', name:'Interceptador'} : ARSENAL;
+    head = `<div class="tw-title">${iron ? 'Iron Dome IA' : 'Tomahawk IA'}</div><div class="tabs">${tabs.map(m=>tabHtml(m, s.tab===m.id)).join('')}</div><button class="ib overflow" title="Mais abas">»</button>${tabHtml(own, s.tab==='arsenal', ' <span class="dup">2×</span>')}${actions()}`;
+    body = page(s.tab, {legacy: iron ? 'irondome' : 'tomahawk'});
+  } else {
+    buttons.push({id:'ironhawk', svg:ICON_IRONHAWK, tip:'IronHawk IA'});
+  }
+
+  if (variant === 'A'){
+    if (s.sys === 'def' && !defOn()) { s.sys = 'atk'; if (s.tab !== 'arsenal') s.tab = 'lancador'; }
+    if (s.sys === 'atk' && !atkOn()) { s.sys = 'def'; if (s.tab !== 'arsenal') s.tab = 'radar'; }
+    const both = defOn() && atkOn();
+    const seg = both ? `<div class="seg"><button class="def ${s.sys==='def'?'on':''}" data-sys="def">🛡️ Defesa</button><button class="atk ${s.sys==='atk'?'on':''}" data-sys="atk">🚀 Ataque</button></div><div class="vsep"></div>` : '';
+    const list = s.sys === 'def' ? DEF : ATK;
+    head = `<div class="tw-title">IronHawk IA</div>${seg}<div class="tabs">${list.map(m=>tabHtml(m, s.tab===m.id)).join('')}</div><button class="ib overflow" title="Mais abas">»</button><div class="vsep"></div>${tabHtml(ARSENAL, s.tab==='arsenal')}${actions()}`;
+    body = page(s.tab);
+  }
+
+  if (variant === 'B'){
+    const groups = [];
+    if (defOn()) groups.push(`<span class="group-label" style="color:var(--blue-fg)">DEFESA</span>${DEF.map(m=>tabHtml(m, s.tab===m.id)).join('')}`);
+    if (atkOn()) groups.push(`<span class="group-label" style="color:var(--orange-fg)">ATAQUE</span>${ATK.map(m=>tabHtml(m, s.tab===m.id)).join('')}`);
+    head = `<div class="tw-title">IronHawk IA</div><div class="tabs" id="btabs">${groups.join('<div class="vsep"></div>')}</div><button class="ib overflow" title="Mais abas">»</button><div class="vsep"></div>${tabHtml(ARSENAL, s.tab==='arsenal')}${actions()}`;
+    if ((s.tab !== 'arsenal') && ((!defOn() && DEF.some(m=>m.id===s.tab)) || (!atkOn() && ATK.some(m=>m.id===s.tab)))) s.tab = defOn() ? 'radar' : 'lancador';
+    body = page(s.tab);
+  }
+
+  if (variant === 'C'){
+    if ((!defOn() && DEF.some(m=>m.id===s.tab)) || (!atkOn() && ATK.some(m=>m.id===s.tab))) s.tab = 'home';
+    const r = (m) => `<div class="r ${s.tab===m.id?'on':''}" data-tab="${m.id}">${m.icon}<span class="tip">${m.name}</span></div>`;
+    const rail = r({id:'home', icon:'🏠', name:'Comando'}) +
+      (defOn() ? `<div class="rs"></div><div class="rl" style="color:var(--blue-fg)">DEF</div>${DEF.map(r).join('')}` : '') +
+      (atkOn() ? `<div class="rs"></div><div class="rl" style="color:var(--orange-fg)">ATQ</div>${ATK.map(r).join('')}` : '') +
+      `<div class="fill"></div>${r(ARSENAL)}`;
+    const current = [...DEF, ...ATK, ARSENAL, {id:'home', name:'Comando', icon:'🏠'}].find(m=>m.id===s.tab);
+    head = `<div class="tw-title">IronHawk IA <span style="color:var(--muted);font-weight:400">› ${current.icon} ${current.name}</span></div>${actions()}`;
+    tw.innerHTML = `<div class="tw-head">${head}</div><div class="c-wrap"><div class="rail">${rail}</div><div class="c-body">${page(s.tab)}</div></div>`;
+  } else {
+    tw.innerHTML = `<div class="tw-head">${head}</div><div class="tw-body">${body}</div>`;
+  }
+
+  const active = variant === 'HOJE' ? s.win : 'ironhawk';
+  stripe.innerHTML = buttons.map(b=>`<div class="sbtn ${b.id===active?'on':''}" data-win="${b.id}">${b.svg}<span class="tip">${b.tip}</span></div>`).join('') +
+    `<div class="gap"></div>` + OTHER.map(([i,t])=>`<div class="sbtn">${i}<span class="tip">${t}</span></div>`).join('');
+
+  document.getElementById('lbl').textContent = `${ORDER.indexOf(variant)+1}/${ORDER.length} · ${VARIANTS[variant].name}`;
+  document.getElementById('note').innerHTML = VARIANTS[variant].note;
+  document.getElementById('systems').value = systems;
+    try { const url = new URL(location); url.searchParams.set('variant', variant); url.searchParams.set('systems', systems); url.searchParams.delete('tab'); history.replaceState(null, '', url); } catch (e) {}
+}
+
+document.addEventListener('click', e => {
+  const s = state[variant];
+  const t = e.target.closest('[data-tab],[data-sys],[data-win],[data-go]');
+  if (!t) return;
+  if (t.dataset.tab) s.tab = t.dataset.tab;
+  if (t.dataset.go) s.tab = t.dataset.go;
+  if (t.dataset.sys) { s.sys = t.dataset.sys; if (s.tab !== 'arsenal') s.tab = s.sys === 'def' ? 'radar' : 'lancador'; }
+  if (t.dataset.win && variant === 'HOJE' && t.dataset.win !== s.win) { s.win = t.dataset.win; s.tab = s.win === 'irondome' ? 'radar' : 'lancador'; }
+  render();
+});
+const step = d => { variant = ORDER[(ORDER.indexOf(variant) + d + ORDER.length) % ORDER.length]; render(); };
+document.getElementById('prev').onclick = () => step(-1);
+document.getElementById('next').onclick = () => step(1);
+document.getElementById('systems').onchange = e => { systems = e.target.value; render(); };
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input,textarea,select,[contenteditable]')) return;
+  if (e.key === 'ArrowLeft') step(-1);
+  if (e.key === 'ArrowRight') step(1);
+});
+editor(); render();
+</script>
+</body>
+</html>
