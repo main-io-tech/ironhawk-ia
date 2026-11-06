@@ -20,7 +20,6 @@ import com.mio.tomahawk.run.DevContainer
 import com.mio.tomahawk.run.Guardrails
 import com.mio.tomahawk.run.LaunchTerminal
 import com.mio.tomahawk.run.MissionRunner
-import com.mio.tomahawk.run.RunMode
 import com.mio.tomahawk.run.SpecKitSetup
 import com.mio.tomahawk.run.TomahawkSettings
 import com.mio.tomahawk.speckit.SddStep
@@ -32,10 +31,10 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * O Arsenal, comum aos dois sistemas: em cima, a IA que os dois usam (configuração automática, o CLI, onde ele está, o
- * executável, o modelo, o tempo, os argumentos, a chave do Cursor, Salvar e Testar e o teste pelo terminal); embaixo, o
- * de cada sistema ligado (a execução da Defesa; o lançamento, o devcontainer, as proteções e o Spec Kit do Ataque) e
- * as execuções recentes dos dois.
+ * O Arsenal, um só para os dois sistemas, organizado por assunto: a IA que os dois usam (configuração automática, o
+ * CLI, onde ele está, o executável, o modelo, o tempo, os argumentos, a chave do Cursor e os testes); onde rodar a IA,
+ * uma escolha só; as proteções; o que a IA libera e o Spec Kit; e as execuções recentes. O que vale só para um sistema
+ * leva a etiqueta dele e some com ele desligado.
  */
 class ArsenalWeb(project: Project) : WebTab(project) {
 
@@ -164,25 +163,19 @@ class ArsenalWeb(project: Project) : WebTab(project) {
         append(cliCard(busy))
         append("</div></div>")
 
-        if (IronHawkSystem.DEFENSE.enabled) {
-            append(WebUi.section("🛡️ Defesa · Iron Dome"))
-            append(GRID)
-            append(defenseRunCard())
-            append("</div><div>")
-            append(defenseCapsCard(ready))
-            append("</div></div>")
-        }
-        if (IronHawkSystem.ATTACK.enabled) {
-            append(WebUi.section("🚀 Ataque · Tomahawk"))
-            append(GRID)
-            append(launchCard())
-            append(containerCard())
-            append(guardCard())
-            append("</div><div>")
-            append(specKitCard())
-            append(attackCapsCard())
-            append("</div></div>")
-        }
+        append(WebUi.section("Execução e proteções"))
+        append(GRID)
+        append(runCard())
+        append("</div><div>")
+        append(protectionsCard())
+        append("</div></div>")
+
+        append(WebUi.section("Recursos da IA"))
+        append(GRID)
+        append(capsCard(ready))
+        if (IronHawkSystem.ATTACK.enabled) append("</div><div>").append(specKitCard())
+        append("</div></div>")
+
         append(WebUi.section("Execuções recentes"))
         append(runsCard())
     }
@@ -291,76 +284,74 @@ class ArsenalWeb(project: Project) : WebTab(project) {
         else "<span class=\"hint bad\">Não encontrado. ${esc(d.provider.installHint)}</span>"
     }
 
-    private fun defenseRunCard(): String = buildString {
-        append("<div class=\"card2\"><h3>🎛️ Execução</h3><div class=\"desc\">Onde a IA roda quando um botão da Defesa a chama.</div>")
-        append("<div class=\"field\"><label>Onde rodar a IA</label>")
-        append(WebUi.seg("runMode", AgentRunMode.entries.map { it.name to esc(it.label) }, AgentSettings.runMode.name, send = "defense-runmode")).append("</div>")
-        append("<div class=\"desc\">").append(esc(InterceptorPanel.RUN_MODE_HINT)).append("</div>")
-        append(
-            notice(
-                "info", "🔐",
-                "Nas tarefas que alteram arquivos rodando na aba, como Disparar com IA, não há janela para aprovar cada passo: o Cursor " +
-                    "roda com <code>--force</code> (edita e roda comandos sem perguntar), o Claude Code com <code>--permission-mode acceptEdits</code> " +
-                    "(edita sem perguntar; comandos de terminal só os liberados nas configurações dele ou com <code>--allowedTools</code> nos " +
-                    "argumentos extras) e o Antigravity com <code>--dangerously-skip-permissions</code>. " +
-                    (if (AgentSettings.confirmWrites) "Por isso o plugin pergunta antes de cada uma. " else "Você desligou a pergunta antes de cada uma. ") +
-                    "No terminal, a IA pede aprovação a cada passo. Nas de leitura, como revisões e explicações, nenhum deles recebe permissão para escrever.",
-            ),
-        )
-        if (!AgentSettings.confirmWrites) {
-            append("<div class=\"row-btns\">").append(WebUi.button("Voltar a perguntar antes de alterar arquivos", "confirmWrites", "ghost")).append("</div>")
+    /** Onde rodar a IA, uma escolha só para os dois sistemas, e o que cada um faz com ela. */
+    private fun runCard(): String = buildString {
+        val defense = IronHawkSystem.DEFENSE.enabled
+        val attack = IronHawkSystem.ATTACK.enabled
+        append("<div class=\"card2\"><h3>🎛️ Onde rodar a IA</h3><div class=\"desc\">")
+        append(if (defense && attack) "Uma escolha só para a Defesa e o Ataque." else "Quando um botão chama a IA.")
+        append("</div><div class=\"field\">")
+        append(WebUi.seg("runMode", AgentRunMode.entries.map { it.name to esc(it.label) }, AgentSettings.runMode.name, send = "runmode")).append("</div>")
+        if (defense) append(tagged(IronHawkSystem.DEFENSE, esc(InterceptorPanel.RUN_MODE_HINT)))
+        if (attack) append(tagged(IronHawkSystem.ATTACK, esc(InterceptorPanel.ATTACK_RUN_MODE_HINT)))
+        if (defense) {
+            append(
+                notice(
+                    "info", "🔐",
+                    "<b>Defesa:</b> nas tarefas que alteram arquivos rodando na aba, como Disparar com IA, não há janela para aprovar cada passo: o Cursor " +
+                        "roda com <code>--force</code> (edita e roda comandos sem perguntar), o Claude Code com <code>--permission-mode acceptEdits</code> " +
+                        "(edita sem perguntar; comandos de terminal só os liberados nas configurações dele ou com <code>--allowedTools</code> nos " +
+                        "argumentos extras) e o Antigravity com <code>--dangerously-skip-permissions</code>. " +
+                        (if (AgentSettings.confirmWrites) "Por isso o plugin pergunta antes de cada uma. " else "Você desligou a pergunta antes de cada uma. ") +
+                        "No terminal, a IA pede aprovação a cada passo. Nas de leitura, como revisões e explicações, nenhum deles recebe permissão para escrever.",
+                ),
+            )
+            if (!AgentSettings.confirmWrites) {
+                append("<div class=\"row-btns\">").append(WebUi.button("Voltar a perguntar antes de alterar arquivos", "confirmWrites", "ghost")).append("</div>")
+            }
         }
-        append(
-            notice(
-                "info", "🧯",
-                "<b>Contenção da IA</b>, sempre ligada: antes de cada tarefa que altera arquivos, uma foto do projeto no git, sem mexer no " +
-                    "seu índice nem na branch (sem git, no Local History), e o aviso do fim traz <b>Desfazer Alterações da IA</b>; na aba, a IA roda sem <code>git push</code> e sem os tokens e senhas " +
-                    "do ambiente que o CLI não usa; o Claude Code recusa comandos destrutivos e mexer no <code>.git</code> e nas chaves do usuário; " +
-                    "no WSL, o Cursor roda no sandbox dele; e a IA é parada na hora se tentar apagar pastas, descartar alterações do git, " +
-                    "reescrever o histórico, rodar como administrador, formatar disco, baixar e executar scripts, ou escrever fora do projeto ou no <code>.git</code>.",
-            ),
-        )
-        append("</div>")
-    }
-
-    private fun defenseCapsCard(ready: Boolean): String = buildString {
-        append("<div class=\"card2\"><h3>✨ O que a IA libera na Defesa</h3><ul class=\"caps\">")
-        DEFENSE_CAPABILITIES.forEach { (where, what) ->
-            append("<li><span class=\"ck ").append(if (ready) "on\">✓" else "off\">○").append("</span><span><b>")
-                .append(esc(where)).append("</b>: ").append(esc(what)).append("</span></li>")
+        if (attack) {
+            append(
+                notice(
+                    "warn", "🔐",
+                    "<b>Missões do Ataque na aba:</b> só no <b>devcontainer</b> do projeto, a única forma de a IA rodar sem perguntar. Lá o Cursor roda com " +
+                        "<code>--force --trust</code> e o Claude Code com <code>--permission-mode bypassPermissions</code>, mas o container só enxerga a pasta do projeto.<br>" +
+                        "<b>No terminal da IDE:</b> modo agente sem permissão total, nesta máquina: a IA edita o projeto e pede a sua aprovação antes de rodar comandos.<br>" +
+                        "<b>Textos</b> (commit, PR, respostas do Rádio): só leitura, para um comentário malicioso num PR não dar à IA permissão para alterar arquivos.",
+                ),
+            )
         }
-        append("</ul>")
-        if (!ready) append("<div class=\"status-line\">Desligadas até a integração ser testada com a configuração atual.</div>")
+        if (LaunchTerminal.available() == null) append("<div class=\"status-line bad\">O plugin de terminal da IDE está desligado: a IA só roda na aba.</div>")
         append("</div>")
     }
 
-    private fun launchCard(): String = buildString {
-        append("<div class=\"card2\"><h3>🎛️ Lançamento</h3><div class=\"desc\">Onde as missões rodam por padrão; cada etapa pode trocar na hora de lançar.</div>")
-        append("<div class=\"field\"><label>Onde lançar</label>")
-        append(WebUi.seg("launchMode", RunMode.entries.map { it.name to it.label }, TomahawkSettings.runMode.name, send = "attack-runmode")).append("</div>")
-        append("<div class=\"desc\">Na aba, a IA roda sem perguntar no devcontainer, a Telemetria acompanha cada passo e a IA decide sozinha quando o comando faria perguntas. ")
-        append("No terminal da IDE você conversa com a IA e aprova os comandos dela (o Reconhecimento já abre lá).</div>")
-        append(
-            notice(
-                "warn", "🔐",
-                "<b>Missões na aba:</b> só no <b>devcontainer</b> do projeto, a única forma de a IA rodar sem perguntar. Lá o Cursor roda com " +
-                    "<code>--force --trust</code> e o Claude Code com <code>--permission-mode bypassPermissions</code>, mas o container só enxerga a pasta do projeto.<br>" +
-                    "<b>No terminal da IDE:</b> modo agente sem permissão total, nesta máquina: a IA edita o projeto e pede a sua aprovação antes de rodar comandos.<br>" +
-                    "<b>Textos</b> (commit, PR, respostas do Rádio): só leitura, para um comentário malicioso num PR não dar à IA permissão para alterar arquivos.",
-            ),
-        )
-        if (LaunchTerminal.available() == null) append("<div class=\"status-line bad\">O plugin de terminal da IDE está desligado: as missões só rodam na aba.</div>")
+    /** As proteções dos dois sistemas num cartão: a contenção da Defesa, as proteções das missões e o devcontainer do Ataque. */
+    private fun protectionsCard(): String = buildString {
+        append("<div class=\"card2\"><h3>🛡️ Proteções</h3><div class=\"desc\">O que impede a IA de danificar a máquina ou perder o seu trabalho.</div>")
+        if (IronHawkSystem.DEFENSE.enabled) append(containmentPart())
+        if (IronHawkSystem.ATTACK.enabled) append(guardPart()).append(containerPart())
         append("</div>")
     }
 
-    private fun containerCard(): String = buildString {
+    private fun containmentPart(): String = buildString {
+        append("<div class=\"part\"><h4>🧯 Contenção da IA ").append(tag(IronHawkSystem.DEFENSE)).append("</h4>")
+        append("<div class=\"desc\">Sempre ligada: antes de cada tarefa que altera arquivos, uma foto do projeto no git, sem mexer no ")
+        append("seu índice nem na branch (sem git, no Local History), e o aviso do fim traz <b>Desfazer Alterações da IA</b>; na aba, a IA roda sem <code>git push</code> e sem os tokens e senhas ")
+        append("do ambiente que o CLI não usa; o Claude Code recusa comandos destrutivos e mexer no <code>.git</code> e nas chaves do usuário; ")
+        append("no WSL, o Cursor roda no sandbox dele; e a IA é parada na hora se tentar apagar pastas, descartar alterações do git, ")
+        append("reescrever o histórico, rodar como administrador, formatar disco, baixar e executar scripts, ou escrever fora do projeto ou no <code>.git</code>.</div>")
+        append("</div>")
+    }
+
+    private fun containerPart(): String = buildString {
         val root = service.root()
         val cli = DevContainer.cli()
         val config = root?.let(DevContainer::config)?.takeIf { Files.isRegularFile(it) }
         val exists = config != null
         val problems = config?.let { file -> DevContainer.audit(runCatching { Files.readString(file) }.getOrDefault("")) }.orEmpty()
         val cursor = AgentSettings.provider == AgentProvider.CURSOR
-        append("<div class=\"card2\"><h3>📦 Devcontainer</h3><div class=\"desc\">A única forma de a IA rodar sem perguntar: as missões na aba rodam num container ")
+        append("<div class=\"part\"><h4>📦 Devcontainer ").append(tag(IronHawkSystem.ATTACK)).append("</h4>")
+        append("<div class=\"desc\">A única forma de a IA rodar sem perguntar: as missões na aba rodam num container ")
         append("que só enxerga a pasta do projeto. Sem ele, as missões só saem pelo terminal, com você aprovando os comandos.</div>")
         append("<div class=\"chips\" style=\"margin:0 0 10px\">")
         append(if (cli != null) WebUi.chip("CLI", "devcontainer ✓", "green") else WebUi.chip("CLI", "devcontainer não instalado", "red"))
@@ -433,10 +424,11 @@ class ArsenalWeb(project: Project) : WebTab(project) {
         }
     }
 
-    private fun guardCard(): String = buildString {
+    private fun guardPart(): String = buildString {
         val on = TomahawkSettings.guardrails
         val cursor = AgentSettings.provider == AgentProvider.CURSOR
-        append("<div class=\"card2\"><h3>🛡️ Proteções das missões</h3><div class=\"desc\">O que impede a IA, rodando sozinha, de danificar a máquina ou perder o seu trabalho.</div>")
+        append("<div class=\"part\"><h4>🚧 Proteções das missões ").append(tag(IronHawkSystem.ATTACK)).append("</h4>")
+        append("<div class=\"desc\">Para a IA rodando sozinha nas missões. Dá para desligar.</div>")
         append("<div class=\"field\">").append(WebUi.seg("guard", listOf("on" to "🛡️ Ligadas", "off" to "Desligadas"), if (on) "on" else "off", send = "guard")).append("</div>")
         if (!on) {
             append(notice("err", "⚠️", "Com as proteções desligadas, a IA roda sem as regras do Tomahawk (no devcontainer e no terminal) e as missões não têm ponto de restauração."))
@@ -503,26 +495,45 @@ class ArsenalWeb(project: Project) : WebTab(project) {
         append("</div>")
     }
 
-    private fun attackCapsCard(): String = buildString {
-        val ready = TomahawkSettings.ready
-        val terminal = LaunchTerminal.available() != null
-        append("<div class=\"card2\"><h3>✨ O que a IA libera no Ataque</h3><ul class=\"caps\">")
-        listOf(
-            ready to "<b>Lançador</b>: as nove etapas do SDD na aba, monitoradas, ou no terminal",
-            (ready && terminal) to "<b>Terminal</b>: conversar com a IA nas etapas que fazem perguntas",
-            ready to "<b>Avaliação</b>: Simulação de Rota (analyze) e Avaliação de Danos (converge) num clique",
-            ready to "<b>Extração e Rádio</b>: a mensagem do commit, o texto do PR e as respostas aos comentários",
-            true to "<b>Telemetria</b>: cada passo da IA ao vivo e o registro de cada missão",
-        ).forEach { (on, text) ->
-            append("<li><span class=\"ck ").append(if (on) "on\">✓" else "off\">○").append("</span><span>").append(text).append("</span></li>")
+    /** O que a IA libera nos dois sistemas, numa lista só, com a etiqueta de cada um. */
+    private fun capsCard(ready: Boolean): String = buildString {
+        append("<div class=\"card2\"><h3>✨ O que a IA libera</h3>")
+        if (IronHawkSystem.DEFENSE.enabled) {
+            append("<div class=\"part\"><h4>").append(tag(IronHawkSystem.DEFENSE)).append("</h4><ul class=\"caps\">")
+            DEFENSE_CAPABILITIES.forEach { (where, what) -> append(capability(ready, "<b>${esc(where)}</b>: ${esc(what)}")) }
+            append("</ul>")
+            if (!ready) append("<div class=\"status-line\">Desligadas até a integração ser testada com a configuração atual.</div>")
+            append("</div>")
         }
-        append("</ul>")
-        if (!ready) {
-            val why = if (!TomahawkSettings.supported) "Desligadas: o CLI escolhido não lança missões do Spec Kit." else "Desligadas até a integração ser testada com a configuração atual."
-            append("<div class=\"status-line\">").append(why).append("</div>")
+        if (IronHawkSystem.ATTACK.enabled) {
+            val attack = TomahawkSettings.ready
+            val terminal = LaunchTerminal.available() != null
+            append("<div class=\"part\"><h4>").append(tag(IronHawkSystem.ATTACK)).append("</h4><ul class=\"caps\">")
+            listOf(
+                attack to "<b>Lançador</b>: as nove etapas do SDD na aba, monitoradas, ou no terminal",
+                (attack && terminal) to "<b>Terminal</b>: conversar com a IA nas etapas que fazem perguntas",
+                attack to "<b>Avaliação</b>: Simulação de Rota (analyze) e Avaliação de Danos (converge) num clique",
+                attack to "<b>Extração e Rádio</b>: a mensagem do commit, o texto do PR e as respostas aos comentários",
+                true to "<b>Telemetria</b>: cada passo da IA ao vivo e o registro de cada missão",
+            ).forEach { (on, text) -> append(capability(on, text)) }
+            append("</ul>")
+            if (!attack) {
+                val why = if (!TomahawkSettings.supported) "Desligadas: o CLI escolhido não lança missões do Spec Kit." else "Desligadas até a integração ser testada com a configuração atual."
+                append("<div class=\"status-line\">").append(why).append("</div>")
+            }
+            append("</div>")
         }
         append("</div>")
     }
+
+    private fun capability(on: Boolean, html: String): String =
+        "<li><span class=\"ck " + (if (on) "on\">✓" else "off\">○") + "</span><span>$html</span></li>"
+
+    private fun tag(system: IronHawkSystem): String =
+        if (system == IronHawkSystem.DEFENSE) WebUi.chip("", "🛡️ Defesa", "blue") else WebUi.chip("", "🚀 Ataque", "orange")
+
+    /** Uma explicação que vale só para [system], com a etiqueta dele. */
+    private fun tagged(system: IronHawkSystem, html: String): String = "<div class=\"desc\">${tag(system)} $html</div>"
 
     private fun runs(): List<Run> {
         val defense = if (IronHawkSystem.DEFENSE.enabled) defenseRuns else emptyList()
@@ -544,11 +555,10 @@ class ArsenalWeb(project: Project) : WebTab(project) {
             append("<div class=\"empty2\">Nenhuma execução da IA neste projeto ainda</div>")
         } else {
             runs.forEachIndexed { index, run ->
-                val tag = if (run.system == IronHawkSystem.DEFENSE) WebUi.chip("", "🛡️ Defesa", "blue") else WebUi.chip("", "🚀 Ataque", "orange")
                 append("<div class=\"run ").append(if (run.ok) "r-ok" else "r-failed").append("\" data-cmd=\"openRun\" data-arg=\"$index\">")
                 append("<div class=\"run-icon\">").append(if (run.ok) "✓" else "!").append("</div><div class=\"run-body\">")
                 append("<div class=\"run-title\">").append(esc(run.title)).append("</div>")
-                append("<div class=\"run-meta\">").append(tag).append("<span>").append(esc(run.status)).append("</span><span>")
+                append("<div class=\"run-meta\">").append(tag(run.system)).append("<span>").append(esc(run.status)).append("</span><span>")
                     .append(esc(run.path.fileName.toString().take(15))).append("</span></div>")
                 append("</div></div>")
             }
@@ -655,8 +665,7 @@ class ArsenalWeb(project: Project) : WebTab(project) {
                 }
             }
             "confirmWrites" -> AgentSettings.confirmWrites = true
-            "defense-runmode" -> AgentRunMode.entries.firstOrNull { it.name == data.str("value") }?.let { AgentSettings.runMode = it }
-            "attack-runmode" -> RunMode.entries.firstOrNull { it.name == data.str("value") }?.let { TomahawkSettings.runMode = it }
+            "runmode" -> AgentRunMode.entries.firstOrNull { it.name == data.str("value") }?.let { AgentSettings.runMode = it }
             "openRun" -> data.str("arg")?.toIntOrNull()?.let(runs()::getOrNull)?.let { run ->
                 if (run.system == IronHawkSystem.DEFENSE) agent.open(run.path) else missions.open(run.path)
             }

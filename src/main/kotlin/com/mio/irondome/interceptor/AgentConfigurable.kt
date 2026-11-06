@@ -27,7 +27,7 @@ import javax.swing.JPanel
 import javax.swing.JSpinner
 import javax.swing.SpinnerNumberModel
 
-/** Settings > Tools > Iron Dome IA > Arsenal (IA): qual CLI de IA usar e como. */
+/** Settings > Tools > IronHawk IA > Arsenal (IA): qual CLI de IA os dois sistemas usam, e como. */
 class AgentConfigurable : Configurable {
 
     private val provider = ComboBox(AgentProvider.entries.toTypedArray()).apply {
@@ -102,7 +102,7 @@ class AgentConfigurable : Configurable {
             .addLabeledComponent("Argumentos extras:", extraArgs)
             .addComponentToRightColumn(comment("Vão para o CLI antes do pedido, separados por espaço; aspas agrupam."))
             .addLabeledComponent("Onde rodar a IA:", runMode)
-            .addComponentToRightColumn(JBLabel("<html>${InterceptorPanel.RUN_MODE_HINT}</html>").apply {
+            .addComponentToRightColumn(JBLabel("<html>${InterceptorPanel.RUN_MODE_HINT}<br>${InterceptorPanel.ATTACK_RUN_MODE_HINT}</html>").apply {
                 componentStyle = UIUtil.ComponentStyle.SMALL
                 foreground = UIUtil.getContextHelpForeground()
             })

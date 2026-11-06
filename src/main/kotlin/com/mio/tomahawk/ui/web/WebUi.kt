@@ -220,6 +220,9 @@ object WebUi {
         .card2 + .card2{margin-top:12px}
         .card2 h3{margin:0 0 4px;font-size:14px;display:flex;align-items:center;gap:8px}
         .card2 .desc{color:var(--muted);font-size:12px;margin-bottom:10px}
+        .card2 .part{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+        .card2 h4{margin:0 0 8px;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+        .desc .chip{margin-right:4px}
         .grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(250px,100%),1fr));gap:12px}
         .notice{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-radius:12px;border:1px solid;margin-top:12px}
         .notice .ni{font-size:16px;line-height:1.3}

@@ -6,7 +6,9 @@ import com.intellij.toolWindow.ToolWindowHeadlessManagerImpl
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.mio.irondome.interceptor.AgentProvider
+import com.mio.irondome.interceptor.AgentRunMode
 import com.mio.irondome.interceptor.AgentSettings
+import com.mio.tomahawk.run.RunMode
 import com.mio.tomahawk.run.TomahawkSettings
 import java.nio.file.Files
 import com.mio.tomahawk.run.AgentProvider as AttackProvider
@@ -84,19 +86,49 @@ class IronHawkPlatformTest : BasePlatformTestCase() {
         val tab = ArsenalWeb(project)
         try {
             val both = tab.html()
-            assertTrue("Defesa · Iron Dome" in both && "Ataque · Tomahawk" in both)
+            assertTrue("Contenção da IA" in both && "Proteções das missões" in both)
+            assertEquals("uma escolha só de onde rodar a IA", 1, Regex("name=\"runMode\"").findAll(both).count())
 
             IronHawkSystem.DEFENSE.enabled = false
             val attack = tab.html()
-            assertTrue("Ataque · Tomahawk" in attack && "Defesa · Iron Dome" !in attack)
-            assertTrue("a IA comum continua", "CLI de IA" in attack)
+            assertTrue("Proteções das missões" in attack && "Contenção da IA" !in attack)
+            assertTrue("a IA comum continua", "CLI de IA" in attack && "Onde rodar a IA" in attack)
 
             IronHawkSystem.DEFENSE.enabled = true
             IronHawkSystem.ATTACK.enabled = false
             val defense = tab.html()
-            assertTrue("Defesa · Iron Dome" in defense && "Ataque · Tomahawk" !in defense && "Spec Kit" !in defense)
+            assertTrue("Contenção da IA" in defense && "Proteções das missões" !in defense && "Spec Kit" !in defense)
         } finally {
             Disposer.dispose(tab)
+        }
+    }
+
+    fun testBothSystemsRunTheAiInTheSamePlace() {
+        try {
+            AgentSettings.runMode = AgentRunMode.TERMINAL
+            assertEquals(RunMode.TERMINAL, TomahawkSettings.runMode)
+            TomahawkSettings.runMode = RunMode.ASK
+            assertEquals(AgentRunMode.ASK, AgentSettings.runMode)
+        } finally {
+            AgentSettings.runMode = AgentRunMode.BACKGROUND
+        }
+    }
+
+    fun testTheTomahawkRunModeMovesOnlyIfTheDefenseNeverChose() {
+        val props = PropertiesComponent.getInstance()
+        try {
+            props.unsetValue("IronHawk.Arsenal.RunModeMigrated")
+            props.setValue("Tomahawk.Agent.RunMode", "TERMINAL")
+            ArsenalMigration.run()
+            assertEquals(AgentRunMode.TERMINAL, AgentSettings.runMode)
+
+            props.unsetValue("IronHawk.Arsenal.RunModeMigrated")
+            AgentSettings.runMode = AgentRunMode.ASK
+            ArsenalMigration.run()
+            assertEquals("a escolha da Defesa fica", AgentRunMode.ASK, AgentSettings.runMode)
+        } finally {
+            props.unsetValue("Tomahawk.Agent.RunMode")
+            AgentSettings.runMode = AgentRunMode.BACKGROUND
         }
     }
 

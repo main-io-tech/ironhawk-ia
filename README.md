@@ -24,8 +24,9 @@ O IronHawk IA junta dois plugins num só. Cada sistema pode ser ligado ou deslig
 | 🚀 **Ataque: Tomahawk** | Desenvolvimento guiado pela spec com o [Spec Kit](https://github.com/github/spec-kit): a IA escreve a feature etapa por etapa. Lançador, Extração, Rádio, Avaliação e Telemetria. |
 
 Os dois ficam num painel só, **IronHawk IA**. No título dele, **Defesa** e **Ataque** trocam as abas do sistema, e o
-**Arsenal** fica sempre no fim: a configuração da IA (o CLI, onde ele está, o modelo, a chave e o teste) é uma só para
-os dois, com o que é de cada sistema logo abaixo e as execuções recentes dos dois.
+**Arsenal** fica sempre no fim, o mesmo para os dois: a configuração da IA (o CLI, onde ele está, o modelo, a chave e o
+teste), onde rodar a IA, as proteções, o que a IA libera e as execuções recentes. O que vale só para um sistema leva a
+etiqueta Defesa ou Ataque.
 
 Desligado, o sistema sai do painel e perde as ações e os avisos. O que já está nos editores abertos sai ao reiniciar a
 IDE, e a página de configurações oferece reiniciar na hora.
@@ -44,6 +45,7 @@ IDE, e a página de configurações oferece reiniciar na hora.
 O IronHawk substitui o Iron Dome IA e o Tomahawk IA: desinstale os dois antes, porque eles não rodam junto com ele.
 As configurações dos dois continuam valendo no IronHawk. A IA configurada no Iron Dome vira a do Arsenal; quem só tinha
 configurado a IA no Tomahawk tem essa configuração levada para o Arsenal na primeira abertura, e basta testar de novo.
+Onde rodar a IA também virou uma escolha só: vale a da Defesa, e a do Tomahawk só se a da Defesa nunca saiu do padrão.
 
 ## Build
 

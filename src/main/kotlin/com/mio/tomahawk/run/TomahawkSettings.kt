@@ -11,16 +11,16 @@ import java.nio.file.Files
 import java.nio.file.Path
 import com.mio.irondome.interceptor.AgentHost as SharedHost
 import com.mio.irondome.interceptor.AgentProvider as SharedProvider
+import com.mio.irondome.interceptor.AgentRunMode as SharedRunMode
 
 /**
- * O que o Tomahawk usa da IA. O CLI, onde ele está, o modelo, o tempo, os argumentos, a chave do Cursor e o teste
- * são os do Arsenal, comuns aos dois sistemas ([AgentSettings]); aqui ficam só os do Ataque: onde lançar as missões,
- * o `specify`, o shell do Spec Kit e as proteções. As missões só saem depois que o teste passa com a configuração de
+ * O que o Tomahawk usa da IA. O CLI, onde ele está, o modelo, o tempo, os argumentos, a chave do Cursor, onde rodar e
+ * o teste são os do Arsenal, comuns aos dois sistemas ([AgentSettings]); aqui ficam só os do Ataque: o `specify`, o
+ * shell do Spec Kit e as proteções das missões. As missões só saem depois que o teste passa com a configuração de
  * agora e com um CLI que o Spec Kit conhece.
  */
 object TomahawkSettings {
 
-    private const val RUN_MODE_KEY = "Tomahawk.Agent.RunMode"
     private const val SPECIFY_KEY = "Tomahawk.Specify.Executable"
     private const val SPECIFY_SHELL_KEY = "Tomahawk.Specify.Shell"
     private const val GUARDRAILS_KEY = "Tomahawk.Agent.Guardrails"
@@ -87,9 +87,12 @@ object TomahawkSettings {
             AgentSettings.extraArgs = value
         }
 
+    /** Onde rodar a IA, o do Arsenal: na aba, as missões rodam no devcontainer. */
     var runMode: RunMode
-        get() = RunMode.entries.firstOrNull { it.name == props.getValue(RUN_MODE_KEY) } ?: RunMode.BACKGROUND
-        set(value) = change { props.setValue(RUN_MODE_KEY, value.name, RunMode.BACKGROUND.name) }
+        get() = RunMode.valueOf(AgentSettings.runMode.name)
+        set(value) {
+            AgentSettings.runMode = SharedRunMode.valueOf(value.name)
+        }
 
     /** Caminho do `specify`; vazio procura no PATH e em `~/.local/bin`, onde o `uv tool install` o deixa. */
     var specifyExecutable: String?

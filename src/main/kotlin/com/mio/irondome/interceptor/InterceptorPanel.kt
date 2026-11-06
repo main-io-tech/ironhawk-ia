@@ -475,6 +475,9 @@ class InterceptorPanel(private val project: Project) : SimpleToolWindowPanel(tru
         const val RUN_MODE_HINT = "No terminal, a IA roda à vista numa aba do terminal da IDE, onde dá para acompanhar e conversar com ela " +
             "(o Cursor abre interativo, com o login do agent login). Ela grava a resposta final em iron-dome/ia/respostas/, " +
             "e o plugin segue dali, como na aba. Testar no Terminal confere esse caminho com a configuração salva, no Windows ou no WSL."
+        const val ATTACK_RUN_MODE_HINT = "Nas missões do Ataque, na aba, a IA roda sem perguntar no devcontainer do projeto e a Telemetria " +
+            "acompanha cada passo; no terminal da IDE, você conversa com a IA e aprova os comandos dela. Cada etapa do Lançador pode " +
+            "trocar na hora de lançar."
 
         fun comment(text: String) = JBLabel("<html>$text</html>").apply {
             componentStyle = UIUtil.ComponentStyle.SMALL
