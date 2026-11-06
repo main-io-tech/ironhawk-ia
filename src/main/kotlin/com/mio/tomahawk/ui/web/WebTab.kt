@@ -37,6 +37,9 @@ abstract class WebTab(protected val project: Project) : Disposable {
     /** O tom da página: `orange`, `purple`, `blue`… */
     protected abstract val accent: String
 
+    /** O estilo só desta página, por cima do comum. */
+    protected open val css: String get() = ""
+
     /** O conteúdo da página, dentro do `<div class="wrap">`. */
     protected abstract fun body(): String
 
@@ -103,7 +106,7 @@ abstract class WebTab(protected val project: Project) : Disposable {
         val bridge = query?.let { "function(msg){ ${it.inject("msg")} }" } ?: "function(msg){}"
         return buildString {
             append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><style>")
-            append(ArtifactHtml.baseCss(theme, accent)).append(Diagrams.CSS).append(WebUi.CSS)
+            append(ArtifactHtml.baseCss(theme, accent)).append(Diagrams.CSS).append(WebUi.CSS).append(css)
             append("</style></head><body class=\"app\"><div class=\"wrap\">").append(content).append("</div>")
             append("<script>").append(WebUi.script(bridge, scrollY)).append("</script></body></html>")
         }

@@ -108,10 +108,10 @@ class WebPagesTest : BasePlatformTestCase() {
             Disposer.register(testRootDisposable, tab)
             val html = tab.html()
             Files.writeString(out.resolve("$name.html"), html)
-            assertTrue(name, html.contains("class=\"top\""))
+            assertTrue(name, html.contains("class=\"top\"") || html.contains("class=\"ln-top\""))
         }
         val launcher = pages.getValue("web-launcher").html()
-        assertTrue(launcher.contains("class=\"stepper\""))
+        assertTrue(launcher.contains("class=\"stepper ln-steps\""))
         assertTrue(launcher.contains("Álbuns") || launcher.contains("photo-albums"))
         assertTrue(pages.getValue("web-evaluation").html().contains("class=\"acard"))
         assertTrue(pages.getValue("web-telemetry").html().contains("class=\"chart\""))

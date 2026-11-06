@@ -127,35 +127,58 @@ class LauncherWeb(project: Project) : WebTab(project) {
         val done = statuses.count { it.state == StepState.DONE }
         val current = selected?.takeIf { st -> statuses.any { it.step == st } } ?: next?.step ?: SddStep.CONSTITUTION
         return buildString {
-            val tasks = feature?.tasks
-            val chips = buildString {
-                if (tasks != null) append(WebUi.chip("Tarefas", "${tasks.done}/${tasks.total}", if (tasks.total > 0 && tasks.done == tasks.total) "green" else null))
-                feature?.pending?.size?.takeIf { it > 0 }?.let { append(WebUi.chip("Pendências", "$it", "yellow")) }
-                append(aiChip(ready))
-                s.integration.key?.let { append(WebUi.chip("Integração", WebUi.attr(it))) }
-            }
-            val subtitle = when {
-                next != null -> "Próxima etapa: <b>${esc(next.step.codename)}</b> <span class=\"st-cmd\">${esc(s.invocation(next.step))}</span>"
-                statuses.any { it.step == SddStep.CONVERGE && it.state == StepState.DONE } -> "🎯 Missão cumprida: a implementação convergiu."
-                else -> "Nenhuma etapa pendente."
-            }
-            append(WebUi.header("🚀", "Missão SDD · Spec Kit", esc(feature?.name ?: "Nova feature"), subtitle, chips,
-                WebUi.ring(done, statuses.size, "green", "$done/${statuses.size}") + "<small>etapas concluídas</small>"))
+            append(top(s, feature, statuses, next, done, ready))
             if (!ready) append(aiNotice())
             if (!s.constitutionReady && current != SddStep.CONSTITUTION) {
-                append("<div class=\"notice info\"><span class=\"ni\">📜</span><div class=\"nb\">A constituição ainda é o modelo. Comece pelas <b>Regras de Engajamento</b> para guiar as outras etapas.")
-                append("<div>").append(WebUi.button("Ir para Regras de Engajamento", "step", arg = SddStep.CONSTITUTION.name)).append("</div></div></div>")
+                append(alert("info", "📜", "A constituição ainda é o modelo: comece pelas <b>Regras de Engajamento</b>, que guiam as outras etapas.",
+                    WebUi.button("Abrir", "step", "sm", arg = SddStep.CONSTITUTION.name)))
             }
             runner.progress?.let { append(Flight.card(it)) }
-            append(WebUi.section("Features"))
             append(features(s, feature))
-            append(WebUi.section("Plano de missão", "<span class=\"tags\">" + legend() + "</span>"))
-            append("<div class=\"stepper\">")
+            append("<div class=\"stepper ln-steps\">")
             statuses.forEach { append(step(it, it.step == current, s, feature, ready)) }
             append("</div>")
             append(delivery(s, statuses))
         }
     }
+
+    /** A feature, a barra das nove etapas e uma linha com a próxima etapa, as tarefas e a IA. */
+    private fun top(s: Snapshot, feature: FeatureReport?, statuses: List<StepStatus>, next: StepStatus?, done: Int, ready: Boolean): String = buildString {
+        append("<header class=\"ln-top\"><div class=\"ln-head\"><div class=\"ln-titles\"><div class=\"ln-kicker\">🚀 Missão SDD</div>")
+        append("<div class=\"ln-title\">").append(esc(feature?.name ?: "Nova feature")).append("</div></div>")
+        append("<div class=\"ln-count\"><b>$done</b>/${statuses.size}<small>etapas</small></div></div>")
+        append("<div class=\"ln-progress\">")
+        statuses.forEach { status ->
+            val cls = when {
+                status.state == StepState.DONE -> "d"
+                status.next -> "n"
+                status.state == StepState.PARTIAL -> "p"
+                status.state == StepState.READY -> "r"
+                else -> ""
+            }
+            append("<i class=\"$cls\" title=\"").append(WebUi.attr("${status.step.codename}: ${status.state.label}")).append("\"></i>")
+        }
+        append("</div><div class=\"ln-meta\">")
+        val parts = buildList {
+            when {
+                next != null -> add("Próxima: <b>${esc(next.step.codename)}</b>")
+                statuses.any { it.step == SddStep.CONVERGE && it.state == StepState.DONE } -> add("🎯 <b>Missão cumprida</b>: a implementação convergiu")
+                else -> add("Nenhuma etapa pendente")
+            }
+            feature?.tasks?.let { add("Tarefas <b>${it.done}/${it.total}</b>") }
+            feature?.pending?.size?.takeIf { it > 0 }?.let { add("<span class=\"ln-warn\">$it a esclarecer</span>") }
+        }
+        append(parts.joinToString("<span class=\"ln-sep\">·</span>"))
+        append("<span class=\"grow\"></span>")
+        val ai = if (ready) TomahawkSettings.provider.title else "testar a IA"
+        val where = s.integration.key?.let { " · integração $it" }.orEmpty()
+        append("<span class=\"ln-ai").append(if (ready) "" else " off").append("\" data-cmd=\"arsenal\" title=\"").append(WebUi.attr("Abrir o Arsenal$where")).append("\">")
+        append(esc(ai)).append("</span>")
+        append("</div></header>")
+    }
+
+    private fun alert(kind: String, icon: String, html: String, action: String = ""): String =
+        "<div class=\"ln-alert $kind\"><span>$icon</span><span class=\"grow\">$html</span>$action</div>"
 
     /** A Extração: commit, push e pull request da feature ativa, quando o projeto está num repositório do GitHub. */
     private fun delivery(s: Snapshot, statuses: List<StepStatus>): String = buildString {
@@ -339,12 +362,9 @@ class LauncherWeb(project: Project) : WebTab(project) {
     private fun aiNotice(): String {
         val missing = TomahawkSettings.launch() == null
         val text = if (missing) "O ${TomahawkSettings.provider.title} CLI não foi encontrado. Configure a IA no Arsenal."
-        else "Teste a integração com a IA no Arsenal: as missões só são lançadas depois que o teste passa."
-        return "<div class=\"notice warn\"><span class=\"ni\">⚠️</span><div class=\"nb\">$text<div>${WebUi.button("🛠️ Abrir o Arsenal", "arsenal")}</div></div></div>"
+        else "Teste a integração com a IA no Arsenal: as missões só saem depois que o teste passa."
+        return alert("warn", "⚠️", esc(text), WebUi.button("🛠️ Arsenal", "arsenal", "sm"))
     }
-
-    private fun legend() = listOf(StepState.DONE to "green", StepState.READY to "orange", StepState.PARTIAL to "blue", StepState.OPTIONAL to "gray")
-        .joinToString("") { (state, tone) -> "<span class=\"b t-$tone\">${state.label}</span>" }
 
     private fun uninitialized(ready: Boolean): String = buildString {
         val specify = TomahawkSettings.resolveSpecify()
@@ -359,50 +379,49 @@ class LauncherWeb(project: Project) : WebTab(project) {
     }
 
     private fun features(s: Snapshot, chosen: FeatureReport?): String = buildString {
-        append("<div class=\"feats\">")
+        append("<div class=\"ln-feats\">")
         s.features.reversed().forEach { f ->
             val on = !newFeature && f.dir == chosen?.dir
             val number = f.name.substringBefore('-').takeIf { it.all(Char::isDigit) }
             val label = if (number != null) f.name.substringAfter('-') else f.name
             val status = when {
-                f.tasks != null -> "${f.tasks.done}/${f.tasks.total} tarefas"
-                f.plan != null -> "plano pronto"
-                f.spec != null -> "spec pronta"
+                f.tasks != null -> "${f.tasks.done}/${f.tasks.total}"
+                f.plan != null -> "plano"
+                f.spec != null -> "spec"
                 else -> "vazia"
             }
-            append("<div class=\"feat").append(if (on) " on" else "").append("\" data-cmd=\"feature\" data-arg=\"").append(WebUi.attr(f.dir.toString())).append("\">")
-            append("<div class=\"fn\">").append(number?.let { "<span class=\"num\">#$it</span> " }.orEmpty()).append(esc(label.replace('-', ' '))).append("</div>")
-            append("<div class=\"fm\">").append(status).append(if (f.dir == s.active?.dir) " · <b>ativa</b>" else "").append("</div>")
-            val tasks = f.tasks
-            append(com.mio.tomahawk.view.ArtifactHtml.bar(tasks?.done ?: if (f.plan != null) 2 else if (f.spec != null) 1 else 0, tasks?.total ?: 3, "green", "gray"))
-            append("</div>")
+            val title = buildString {
+                append(f.name)
+                if (f.tasks != null) append(": ${f.tasks.done} de ${f.tasks.total} tarefas")
+                if (f.dir == s.active?.dir) append(" (ativa)")
+            }
+            append("<button class=\"ln-feat").append(if (on) " on" else "").append("\" data-cmd=\"feature\" data-arg=\"").append(WebUi.attr(f.dir.toString()))
+            append("\" title=\"").append(WebUi.attr(title)).append("\">")
+            number?.let { append("<span class=\"num\">#$it</span>") }
+            append("<span>").append(esc(label.replace('-', ' '))).append("</span><span class=\"ln-fs\">").append(status).append("</span></button>")
         }
-        append("<div class=\"feat new").append(if (newFeature) " on" else "").append("\" data-cmd=\"feature\" data-arg=\"NEW\">＋ Nova feature</div>")
+        append("<button class=\"ln-feat add").append(if (newFeature) " on" else "").append("\" data-cmd=\"feature\" data-arg=\"NEW\" title=\"Começar uma feature nova pelo Designar Alvo\">＋ Nova</button>")
         append("</div>")
     }
 
     private fun step(status: StepStatus, open: Boolean, s: Snapshot, feature: FeatureReport?, ready: Boolean): String = buildString {
         val step = status.step
-        val state = status.state.name.lowercase()
-        val tone = tone(status.state)
-        append("<div class=\"st $state").append(if (status.next) " next" else "").append(if (open) " sel" else "").append("\">")
-        append("<div class=\"st-node\">").append(
+        val cls = listOfNotNull("ln-step", status.state.name.lowercase(), "next".takeIf { status.next }, "sel".takeIf { open }).joinToString(" ")
+        append("<div class=\"$cls\"><div class=\"ln-row\" data-cmd=\"step\" data-arg=\"${step.name}\">")
+        append("<span class=\"ln-dot\">").append(
             when (status.state) {
                 StepState.DONE -> "✓"
                 StepState.UNAVAILABLE -> "!"
                 else -> step.number.toString()
             },
-        ).append("</div><div class=\"st-card\">")
-        append("<div class=\"st-head\" data-cmd=\"step\" data-arg=\"${step.name}\"><span class=\"st-name\">").append(esc(step.codename)).append("</span>")
-        append("<span class=\"st-cmd\">").append(esc(s.invocation(step))).append("</span><span class=\"grow\"></span><span class=\"tags\">")
-        if (status.next) append("<span class=\"tag t-next\">Próxima</span>")
-        if (step.optional) append("<span class=\"tag\">opcional</span>")
-        if (step.readOnly) append("<span class=\"tag\">só leitura</span>")
-        if (step.interactive) append("<span class=\"tag\">faz perguntas</span>")
-        append("</span><span class=\"b t-$tone\">").append(status.state.label).append("</span></div>")
-        append("<div class=\"st-reason\">").append(esc(status.reason)).append("</div>")
+        ).append("</span>")
+        append("<span class=\"ln-name\">").append(esc(step.codename)).append("</span>")
+        append("<span class=\"ln-why\" title=\"").append(WebUi.attr(status.reason)).append("\">").append(esc(status.reason)).append("</span>")
+        if (status.next) append("<span class=\"ln-state next\">Próxima</span>")
+        else append("<span class=\"ln-state s-").append(tone(status.state)).append("\">").append(status.state.label).append("</span>")
+        append("</div>")
         if (open) append(form(status, s, feature, ready))
-        append("</div></div>")
+        append("</div>")
     }
 
     private fun form(status: StepStatus, s: Snapshot, feature: FeatureReport?, ready: Boolean): String = buildString {
@@ -410,34 +429,41 @@ class LauncherWeb(project: Project) : WebTab(project) {
         val blocked = status.state == StepState.BLOCKED || status.state == StepState.UNAVAILABLE
         val flying = runner.progress != null
         val mode = modes[step] ?: if (step.interactive && LaunchTerminal.available() != null) RunMode.TERMINAL else TomahawkSettings.runMode.takeIf { it != RunMode.ASK } ?: RunMode.BACKGROUND
-        append("<div class=\"st-body\" data-form=\"launch\">")
-        append("<p class=\"st-purpose\">").append(esc(step.purpose)).append("</p>")
-        s.commands[step]?.let { ref ->
-            append("<div class=\"chips\" style=\"margin:0 0 10px\">")
-            append(WebUi.chip(if (ref.skill) "Skill" else "Comando", esc(ref.file.parent?.fileName?.toString()?.takeIf { ref.skill } ?: ref.file.fileName.toString()), cmd = "open", arg = ref.file.toString()))
-            feature?.let { append(WebUi.chip("Feature", esc(it.name))) }
-            append("</div>")
+        append("<div class=\"ln-panel\" data-form=\"launch\">")
+        append("<p class=\"ln-purpose\">").append(esc(step.purpose)).append("</p>")
+        append("<div class=\"ln-facts\">")
+        val invocation = esc(s.invocation(step))
+        val ref = s.commands[step]
+        if (ref != null) {
+            append("<span class=\"ln-cmd clickable\" data-cmd=\"open\" data-arg=\"").append(WebUi.attr(ref.file.toString()))
+            append("\" title=\"Abrir ").append(if (ref.skill) "a skill" else "o comando").append("\">").append(invocation).append("</span>")
+        } else {
+            append("<span class=\"ln-cmd\">").append(invocation).append("</span>")
         }
-        if (blocked) append("<div class=\"notice warn\" style=\"margin:0 0 10px\"><span class=\"ni\">🔒</span><div class=\"nb\">").append(esc(status.reason)).append("</div></div>")
-        append("<div class=\"field\"><label>Entrada · \$ARGUMENTS").append(if (step.argsRequired) " (obrigatória)" else " (opcional)").append("</label>")
-        append("<textarea class=\"in\" name=\"text\" data-draft=\"${step.name}\" placeholder=\"").append(WebUi.attr(step.argsHint)).append("\">")
-        append(esc(drafts[step].orEmpty())).append("</textarea></div>")
-        append("<div class=\"st-tools\"><div class=\"row-btns\">")
-        append(WebUi.seg("mode", listOf(RunMode.BACKGROUND.name to "🛰️ Na aba, no devcontainer", RunMode.TERMINAL.name to "💻 No terminal"), mode.name, send = "mode"))
-        append("</div><div class=\"row-btns\">")
-        val artifact = artifactOf(step, feature)
-        if (artifact != null) append(WebUi.button("📄 Abrir artefato", "artifact", "ghost", arg = step.name))
-        append(WebUi.button("⧉ Copiar comando", "copy", "ghost", arg = step.name, title = "Copia o comando com a entrada, para colar no chat do agente"))
+        listOfNotNull(
+            "entrada obrigatória".takeIf { step.argsRequired },
+            "opcional".takeIf { step.optional },
+            "só leitura".takeIf { step.readOnly },
+            "faz perguntas".takeIf { step.interactive },
+        ).forEach { append("<span class=\"ln-fact\">").append(it).append("</span>") }
+        append("</div>")
+        if (blocked) append(alert("warn", "🔒", esc(status.reason)))
+        append("<textarea class=\"in ln-in\" name=\"text\" rows=\"3\" data-draft=\"${step.name}\" placeholder=\"").append(WebUi.attr(step.argsHint)).append("\">")
+        append(esc(drafts[step].orEmpty())).append("</textarea>")
+        append("<div class=\"ln-actions\">")
+        append(WebUi.seg("mode", listOf(RunMode.BACKGROUND.name to "🛰️ Devcontainer", RunMode.TERMINAL.name to "💻 Terminal"), mode.name, send = "mode"))
+        append("<span class=\"grow\"></span>")
+        if (artifactOf(step, feature) != null) append(WebUi.button("📄 Artefato", "artifact", "ghost sm", arg = step.name, title = "Abrir o que a etapa gerou"))
+        append(WebUi.button("⧉ Copiar", "copy", "ghost sm", arg = step.name, title = "Copia o comando com a entrada, para colar no chat do agente"))
         val why = when {
             flying -> "Há uma missão em voo"
             !ready -> "Teste a integração com a IA no Arsenal"
             blocked -> status.reason
             else -> null
         }
-        append(WebUi.button("🚀 Lançar", "launch", "primary big", arg = step.name, enabled = why == null, title = why ?: "Ctrl+Enter"))
-        append("</div></div>")
-        append("<div class=\"status-line\"><span class=\"kbd\">Ctrl</span> + <span class=\"kbd\">Enter</span> lança · ")
-        append(if (mode == RunMode.TERMINAL) "no terminal você conversa com a IA, responde às perguntas e aprova os comandos." else "na aba a IA roda sem perguntar no devcontainer e a Telemetria acompanha cada passo.")
+        append(WebUi.button("🚀 Lançar <span class=\"ln-kbd\">Ctrl ↵</span>", "launch", "primary", arg = step.name, enabled = why == null, title = why ?: "Ctrl+Enter"))
+        append("</div><div class=\"ln-hint\">")
+        append(if (mode == RunMode.TERMINAL) "No terminal, você conversa com a IA, responde às perguntas e aprova os comandos." else "No devcontainer, a IA roda sem perguntar e a Telemetria acompanha cada passo.")
         append("</div></div>")
     }
 
@@ -560,8 +586,87 @@ class LauncherWeb(project: Project) : WebTab(project) {
         }
     }
 
+    override val css: String get() = CSS
+
     private companion object {
         const val TICK_MS = 500
         const val MAX_FILES = 40
+
+        val CSS = """
+            .ln-top{padding:14px 16px 12px;border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow)}
+            .ln-head{display:flex;align-items:flex-end;gap:12px}
+            .ln-titles{flex:1;min-width:0}
+            .ln-kicker{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+            .ln-title{font-size:17px;font-weight:800;letter-spacing:-.01em;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            .ln-count{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+            .ln-count b{font-size:20px;font-weight:800;color:var(--fg)}
+            .ln-count small{margin-left:5px;font-size:11px}
+            .ln-progress{display:flex;gap:3px;margin:10px 0 9px}
+            .ln-progress i{flex:1;height:5px;border-radius:3px;background:var(--gray-bg)}
+            .ln-progress i.d{background:var(--green)}
+            .ln-progress i.p{background:var(--blue)}
+            .ln-progress i.r{background:color-mix(in srgb,var(--orange) 40%,transparent)}
+            .ln-progress i.n{background:var(--orange);box-shadow:0 0 8px -1px var(--orange)}
+            .ln-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:12px;color:var(--muted)}
+            .ln-meta b{color:var(--fg);font-weight:650}
+            .ln-meta .grow{flex:1}
+            .ln-sep{opacity:.45}
+            .ln-warn{color:var(--yellow-fg);font-weight:600}
+            .ln-ai{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;border:1px solid var(--border);font-size:11.5px;font-weight:650;color:var(--fg);cursor:pointer;transition:border-color .15s}
+            .ln-ai::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
+            .ln-ai.off{color:var(--yellow-fg)} .ln-ai.off::before{background:var(--yellow);box-shadow:none}
+            .ln-ai:hover{border-color:var(--accent)}
+
+            .ln-alert{display:flex;align-items:center;gap:10px;margin-top:10px;padding:8px 12px;border-radius:10px;border:1px solid;font-size:12px}
+            .ln-alert .grow{flex:1;min-width:0}
+            .ln-alert .btn{flex:none}
+            .ln-alert.warn{background:var(--yellow-bg);border-color:var(--yellow);color:var(--yellow-fg)}
+            .ln-alert.info{background:var(--blue-bg);border-color:var(--blue);color:var(--blue-fg)}
+
+            .ln-feats{display:flex;gap:6px;overflow-x:auto;margin:14px 0 10px;padding:1px 1px 3px;scrollbar-width:thin}
+            .ln-feat{flex:none;display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:999px;border:1px solid var(--border);
+              background:transparent;color:var(--fg);font:600 12px inherit;cursor:pointer;transition:all .15s}
+            .ln-feat:hover{border-color:var(--accent)}
+            .ln-feat.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-fg)}
+            .ln-feat .num{font:700 10.5px "JetBrains Mono",Consolas,monospace;opacity:.7}
+            .ln-feat .ln-fs{font-size:11px;font-weight:500;color:var(--muted)}
+            .ln-feat.add{border-style:dashed;color:var(--muted)}
+
+            .ln-steps{border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow);overflow:hidden}
+            .ln-step + .ln-step{border-top:1px solid var(--border)}
+            .ln-row{display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;transition:background .12s}
+            .ln-row:hover{background:rgba(127,127,127,.07)}
+            .ln-dot{flex:none;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+              font-size:11px;font-weight:800;border:1.5px solid var(--border);color:var(--muted)}
+            .ln-step.done .ln-dot{background:var(--green);border-color:var(--green);color:#fff}
+            .ln-step.partial .ln-dot{border-color:var(--blue);color:var(--blue-fg)}
+            .ln-step.ready .ln-dot{border-color:var(--orange);color:var(--orange-fg)}
+            .ln-step.recommended .ln-dot{border-color:var(--yellow);color:var(--yellow-fg)}
+            .ln-step.unavailable .ln-dot{border-color:var(--red);color:var(--red-fg)}
+            .ln-step.next .ln-dot{background:var(--orange);border-color:var(--orange);color:#fff;box-shadow:0 0 0 3px var(--orange-bg)}
+            .ln-name{flex:none;font-size:13px;font-weight:650}
+            .ln-step.blocked .ln-name,.ln-step.unavailable .ln-name{color:var(--muted)}
+            .ln-why{flex:1;min-width:0;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            .ln-state{flex:none;font-size:11px;font-weight:650;color:var(--muted)}
+            .ln-state.s-green{color:var(--green-fg)} .ln-state.s-blue{color:var(--blue-fg)} .ln-state.s-orange{color:var(--orange-fg)}
+            .ln-state.s-yellow{color:var(--yellow-fg)} .ln-state.s-red{color:var(--red-fg)}
+            .ln-state.next{padding:1px 9px;border-radius:999px;background:var(--orange);color:#fff}
+            .ln-step.sel{background:linear-gradient(90deg,var(--accent-bg),transparent 70%);box-shadow:inset 3px 0 0 var(--accent)}
+            .ln-step.sel .ln-row:hover{background:transparent}
+
+            .ln-panel{padding:0 14px 14px 46px}
+            .ln-purpose{margin:0 0 8px;font-size:12.5px;line-height:1.5}
+            .ln-facts{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px}
+            .ln-cmd{font:600 11px "JetBrains Mono",Consolas,monospace;padding:2px 7px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--fg)}
+            .ln-cmd.clickable{cursor:pointer} .ln-cmd.clickable:hover{border-color:var(--accent);color:var(--accent-fg)}
+            .ln-fact{font-size:11px;color:var(--muted)} .ln-fact::before{content:"·";margin-right:6px;opacity:.6}
+            .ln-panel .ln-alert{margin:0 0 10px}
+            .ln-in{min-height:56px;resize:vertical;background:var(--card)}
+            .ln-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}
+            .ln-actions .grow{flex:1}
+            .ln-actions .btn.primary{margin-left:auto}
+            .ln-kbd{margin-left:4px;padding:0 5px;border:1px solid rgba(255,255,255,.45);border-radius:4px;font:600 10px "JetBrains Mono",Consolas,monospace;opacity:.85}
+            .ln-hint{margin-top:8px;font-size:11.5px;color:var(--muted)}
+        """.trimIndent()
     }
 }
