@@ -1,6 +1,8 @@
 package com.mio.irondome.interceptor
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.mio.ironhawk.ArsenalWeb
+import com.mio.ironhawk.IronHawkSystem
 import java.nio.file.Files
 
 class AgentSettingsPlatformTest : BasePlatformTestCase() {
@@ -62,14 +64,15 @@ class AgentSettingsPlatformTest : BasePlatformTestCase() {
 
     fun testTheWebTabShowsEveryCliAndTheState() {
         AgentSettings.autoSetupTried = true
-        val tab = InterceptorWeb(project)
+        IronHawkSystem.ATTACK.enabled = false
+        val tab = ArsenalWeb(project)
         try {
             val html = tab.html()
             AgentProvider.entries.forEach { assertTrue("${it.title} no seletor", it.title in html) }
             assertTrue("Configuração automática" in html)
             assertTrue("Argumentos extras" in html)
             assertTrue("O que a IA libera" in html)
-            assertTrue("acceptEdits" in html && "bypassPermissions" !in html)
+            assertTrue("sem o Ataque, nada de permissão total", "acceptEdits" in html && "bypassPermissions" !in html)
             assertTrue("pergunta antes de cada uma" in html)
             assertTrue("a contenção aparece no Arsenal", "Contenção da IA" in html && "Desfazer Alterações da IA" in html)
 
@@ -78,6 +81,7 @@ class AgentSettingsPlatformTest : BasePlatformTestCase() {
             assertTrue("dá para voltar a perguntar", "Voltar a perguntar antes de alterar arquivos" in off)
         } finally {
             AgentSettings.confirmWrites = true
+            IronHawkSystem.ATTACK.enabled = true
             com.intellij.openapi.util.Disposer.dispose(tab)
         }
     }

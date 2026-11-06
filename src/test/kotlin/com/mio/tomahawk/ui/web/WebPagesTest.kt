@@ -4,6 +4,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.mio.tomahawk.run.RunStatus
 import com.mio.tomahawk.run.RunStore
+import com.mio.ironhawk.ArsenalWeb
 import com.mio.tomahawk.run.TomahawkSettings
 import com.mio.tomahawk.run.Transcript
 import com.mio.tomahawk.run.Verdict

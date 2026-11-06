@@ -4,7 +4,7 @@ import com.google.gson.JsonObject
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
-import com.mio.tomahawk.base.TomahawkToolWindowFactory
+import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.delivery.PrRadarService
 import com.mio.tomahawk.delivery.PrThread
 import com.mio.tomahawk.delivery.PullRequestService
@@ -262,8 +262,8 @@ class RadioWeb(project: Project) : WebTab(project) {
             }
             "refresh" -> radar.refresh()
             "login" -> PullRequestService.getInstance(project).login().also { radar.refresh() }
-            "arsenal" -> TomahawkToolWindowFactory.showTab(project, TomahawkToolWindowFactory.ARSENAL)
-            "launcher" -> TomahawkToolWindowFactory.showTab(project, TomahawkToolWindowFactory.LAUNCHER)
+            "arsenal" -> AttackTabs.showTab(project, AttackTabs.ARSENAL)
+            "launcher" -> AttackTabs.showTab(project, AttackTabs.LAUNCHER)
             "url" -> data.str("arg")?.takeIf { it.isNotBlank() }?.let(BrowserUtil::browse)
             "file" -> {
                 val root = project.basePath ?: return

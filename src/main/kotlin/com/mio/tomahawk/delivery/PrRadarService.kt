@@ -20,7 +20,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.util.Alarm
 import com.intellij.util.messages.Topic
 import com.mio.tomahawk.base.TomahawkIcons
-import com.mio.tomahawk.base.TomahawkToolWindowFactory
+import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.run.MissionRunner
 import com.mio.tomahawk.run.RunStore
 import java.nio.file.Files
@@ -226,7 +226,7 @@ class PrRadarService(private val project: Project) : PersistentStateComponent<Pr
             .setIcon(TomahawkIcons.radio)
         if (showRadio) {
             notification.addAction(NotificationAction.createSimpleExpiring("Ver no Rádio") {
-                TomahawkToolWindowFactory.showTab(project, TomahawkToolWindowFactory.RADIO)
+                AttackTabs.showTab(project, AttackTabs.RADIO)
             })
         }
         url?.let { notification.addAction(NotificationAction.createSimple("Abrir no GitHub") { BrowserUtil.browse(it) }) }

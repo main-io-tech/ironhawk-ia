@@ -19,9 +19,10 @@ import com.intellij.util.ui.WrapLayout
 import com.mio.irondome.base.IconTile
 import com.mio.irondome.base.IronDomeIcons
 import com.mio.irondome.base.Pill
-import com.mio.irondome.base.ReviewToolWindowFactory
+import com.mio.irondome.base.DefenseTabs
 import com.mio.irondome.base.StatChip
 import com.mio.irondome.base.Tone
+import com.mio.ironhawk.IronHawkIcons
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Dimension
@@ -243,17 +244,17 @@ internal object AgentActivity {
     private val originals = mutableMapOf<String, Icon?>()
 
     fun started(project: Project, task: AgentTask) {
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ReviewToolWindowFactory.ID) ?: return
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(DefenseTabs.ID) ?: return
         toolWindow.setIcon(IronDomeIcons.ia)
-        val content = ReviewToolWindowFactory.findContent(toolWindow, task.origin ?: InterceptorTab.TITLE) ?: return
+        val content = DefenseTabs.findContent(toolWindow, task.origin ?: InterceptorTab.TITLE) ?: return
         originals[content.displayName] = content.icon
         content.icon = IronDomeIcons.ia
     }
 
     fun finished(project: Project) {
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ReviewToolWindowFactory.ID) ?: return
-        toolWindow.setIcon(IronDomeIcons.toolWindow)
-        originals.forEach { (name, icon) -> ReviewToolWindowFactory.findContent(toolWindow, name)?.icon = icon }
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(DefenseTabs.ID) ?: return
+        toolWindow.setIcon(IronHawkIcons.toolWindow)
+        originals.forEach { (name, icon) -> DefenseTabs.findContent(toolWindow, name)?.icon = icon }
         originals.clear()
     }
 }

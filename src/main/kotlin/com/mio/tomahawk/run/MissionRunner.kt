@@ -19,7 +19,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.util.messages.Topic
 import com.mio.tomahawk.base.TomahawkIcons
-import com.mio.tomahawk.base.TomahawkToolWindowFactory
+import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.settings.TomahawkConfigurable
 import com.mio.tomahawk.speckit.SddStep
 import com.mio.tomahawk.speckit.SpecKitService
@@ -480,7 +480,7 @@ class MissionRunner(private val project: Project) {
             .createNotification(title, content, NotificationType.WARNING)
             .setIcon(TomahawkIcons.lancador)
             .addAction(NotificationAction.createSimpleExpiring("Abrir Arsenal") {
-                TomahawkToolWindowFactory.showTab(project, TomahawkToolWindowFactory.ARSENAL)
+                AttackTabs.showTab(project, AttackTabs.ARSENAL)
             })
             .addAction(NotificationAction.createSimpleExpiring("Configurações") {
                 ShowSettingsUtil.getInstance().showSettingsDialog(project, TomahawkConfigurable::class.java)
@@ -508,7 +508,7 @@ class MissionRunner(private val project: Project) {
             notification.addAction(NotificationAction.createSimpleExpiring("Lançar no terminal") { launch(mission.copy(mode = RunMode.TERMINAL)) })
         }
         notification.addAction(NotificationAction.createSimpleExpiring("Abrir Arsenal") {
-            TomahawkToolWindowFactory.showTab(project, TomahawkToolWindowFactory.ARSENAL)
+            AttackTabs.showTab(project, AttackTabs.ARSENAL)
         })
         notification.notify(project)
     }
@@ -527,7 +527,7 @@ class MissionRunner(private val project: Project) {
         transcript?.let { path -> notification.addAction(NotificationAction.createSimple("Ver Registro") { open(path) }) }
         if (evaluate) {
             notification.addAction(NotificationAction.createSimpleExpiring("Avaliar") {
-                TomahawkToolWindowFactory.showTab(project, TomahawkToolWindowFactory.EVALUATION)
+                AttackTabs.showTab(project, AttackTabs.EVALUATION)
             })
         }
         restorePoint?.let { point -> notification.addAction(NotificationAction.createSimple("Desfazer a missão") { undo(point) }) }

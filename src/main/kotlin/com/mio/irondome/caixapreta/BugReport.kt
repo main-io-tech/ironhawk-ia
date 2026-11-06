@@ -30,7 +30,7 @@ enum class Mechanism(val title: String, val packageName: String, val contents: S
 
 /**
  * Erro ou aviso do log da IDE que passou pelo código do plugin. [stack] traz as linhas depois da mensagem;
- * [category] é o logger que registrou, como `#com.mio.irondome.base.ReviewToolWindowFactory`.
+ * [category] é o logger que registrou, como `#com.mio.irondome.base.DefenseTabs`.
  */
 data class PluginError(val time: String, val level: String, val message: String, val stack: List<String>, val category: String = "") {
 

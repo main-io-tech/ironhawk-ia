@@ -4,8 +4,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowManager
 import com.mio.irondome.base.IronDomeIcons
-import com.mio.irondome.base.ReviewToolWindowFactory
+import com.mio.irondome.base.DefenseTabs
 import com.mio.irondome.base.ReviewToolWindowTab
+import com.mio.ironhawk.IronHawkSystem
+import com.mio.ironhawk.IronHawkWindow
 import javax.swing.Icon
 import javax.swing.JComponent
 
@@ -22,10 +24,11 @@ class DependencyTab : ReviewToolWindowTab {
 
         /** Abre a tool window na aba de dependências e entrega o painel a [use]. */
         fun open(project: Project, use: (DependencyPanel) -> Unit) {
-            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ReviewToolWindowFactory.ID) ?: return
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(DefenseTabs.ID) ?: return
             toolWindow.activate {
-                val content = ReviewToolWindowFactory.findContent(toolWindow, TITLE) ?: return@activate
-                ReviewToolWindowFactory.select(content)
+                IronHawkWindow.getInstance(project).select(IronHawkSystem.DEFENSE)
+                val content = DefenseTabs.findContent(toolWindow, TITLE) ?: return@activate
+                DefenseTabs.select(content)
                 (content.component as? DependencyPanel)?.let(use)
             }
         }

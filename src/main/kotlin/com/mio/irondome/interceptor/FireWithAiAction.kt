@@ -11,7 +11,7 @@ import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.mio.irondome.base.IronDomeIcons
-import com.mio.irondome.base.ReviewToolWindowFactory
+import com.mio.irondome.base.DefenseTabs
 import com.mio.irondome.base.rootPath
 import com.mio.irondome.radar.ReviewComment
 import com.mio.irondome.radar.ReviewCommentService
@@ -74,7 +74,7 @@ class FireWithAiAction : DumbAwareAction() {
                     "Execute a ordem de interceptação em $relative: siga as instruções do arquivo, corrija o código de cada alvo " +
                         "e marque [x] os que forem atendidos. Nos alvos marcados para discutir antes, só apresente a análise e a proposta, sem alterar.",
                     write = true,
-                    origin = ReviewToolWindowFactory.RADAR,
+                    origin = DefenseTabs.RADAR,
                 ),
                 "Abrir ${written.fileName}" to { _ -> runner.open(written) },
             )
@@ -118,7 +118,7 @@ class FireWithAiAction : DumbAwareAction() {
                     if (targets.size == 1) "Disparar ${targets.single().id}" else "Disparar $ids",
                     prompt,
                     write = true,
-                    origin = ReviewToolWindowFactory.RADAR,
+                    origin = DefenseTabs.RADAR,
                 ),
                 "Abrir ${written.fileName}" to { _ -> runner.open(written) },
             )

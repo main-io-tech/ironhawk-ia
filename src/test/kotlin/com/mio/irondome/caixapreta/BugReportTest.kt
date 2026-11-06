@@ -119,7 +119,7 @@ class BugReportTest {
             2026-11-03 07:00:00,000 [  1]  ERROR - #com.mio.irondome.radar.ReviewCommentService - Falha ao salvar
             java.lang.IllegalStateException: sem arquivo
             	at com.mio.irondome.radar.ReviewCommentService.export(ReviewCommentService.kt:10)
-            2026-11-03 07:05:00,000 [  2]   WARN - #com.mio.irondome.base.ReviewToolWindowFactory - A aba Patrulha não pôde ser aberta
+            2026-11-03 07:05:00,000 [  2]   WARN - #com.mio.irondome.base.DefenseTabs - A aba Patrulha não pôde ser aberta
             java.lang.NoSuchMethodError: requestReLogin
             2026-11-03 07:10:00,000 [  3]  ERROR - #com.mio.irondome.radar.ReviewCommentService - Falha ao salvar
             java.lang.IllegalStateException: sem arquivo

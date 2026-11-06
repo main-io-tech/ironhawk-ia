@@ -22,7 +22,7 @@ import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.jcef.JBCefApp
-import com.mio.irondome.base.ReviewToolWindowFactory
+import com.mio.irondome.base.DefenseTabs
 import com.mio.irondome.base.TabFailures
 import com.mio.irondome.base.rootPath
 import com.mio.irondome.interceptor.AgentRunner
@@ -42,10 +42,10 @@ internal class BugContext(val activeTab: Mechanism?, val entries: List<Pair<Stri
         private const val PLUGIN_ID = "com.mio.ironhawk"
 
         fun collect(project: Project): BugContext {
-            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ReviewToolWindowFactory.ID)
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(DefenseTabs.ID)
             // Com o painel dividido, cada lado tem uma aba selecionada: vale a do lado com o foco.
             val tab = toolWindow?.takeIf { it.isVisible }?.let { window ->
-                val selected = ReviewToolWindowFactory.contents(window).filter { it.isSelected }
+                val selected = DefenseTabs.contents(window).filter { it.isSelected }
                 val focus = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
                 (selected.firstOrNull { focus != null && SwingUtilities.isDescendingFrom(focus, it.component) } ?: selected.firstOrNull())
                     ?.displayName

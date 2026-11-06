@@ -32,7 +32,7 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.panels.VerticalLayout
 import com.mio.irondome.base.IronDomeIcons
 import com.mio.irondome.base.MechanismTree
-import com.mio.irondome.base.ReviewToolWindowFactory
+import com.mio.irondome.base.DefenseTabs
 import com.mio.irondome.base.RichTreeCellRenderer
 import com.mio.irondome.base.Segment
 import com.mio.irondome.base.Stat
@@ -86,7 +86,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         setContent(JPanel(BorderLayout()).apply {
             add(JPanel(VerticalLayout(0)).apply {
                 add(header)
-                add(AgentProgressPanel(project, ReviewToolWindowFactory.RADAR, this@CommentsPanel))
+                add(AgentProgressPanel(project, DefenseTabs.RADAR, this@CommentsPanel))
             }, BorderLayout.NORTH)
             add(ScrollPaneFactory.createScrollPane(tree, true), BorderLayout.CENTER)
         })

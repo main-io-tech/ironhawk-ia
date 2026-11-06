@@ -29,7 +29,7 @@ import com.intellij.util.ui.WrapLayout
 import com.mio.irondome.base.FitWidthPanel
 import com.mio.irondome.base.IronDomeIcons
 import com.mio.irondome.base.MechanismList
-import com.mio.irondome.base.ReviewToolWindowFactory
+import com.mio.irondome.base.DefenseTabs
 import com.mio.irondome.base.SummaryHeader
 import com.mio.irondome.base.Tone
 import com.mio.irondome.base.refreshAction
@@ -53,7 +53,7 @@ object InterceptorTab {
 
     /** Abre o painel do Iron Dome IA na aba Arsenal. */
     fun show(project: Project) {
-        ReviewToolWindowFactory.showTab(project, TITLE)
+        DefenseTabs.showTab(project, TITLE)
     }
 }
 

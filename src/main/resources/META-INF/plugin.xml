@@ -41,6 +41,8 @@
     <ul>
       <li>Primeira versão do IronHawk IA: o Iron Dome IA (defesa) e o Tomahawk IA (ataque) num plugin só, cada sistema
         ligado ou desligado em Settings &gt; Tools &gt; IronHawk IA.</li>
+      <li>Um painel só, IronHawk IA: Defesa e Ataque no título trocam as abas, e o Arsenal, comum aos dois, fica no fim
+        com uma configuração da IA só e as execuções recentes dos dois sistemas.</li>
     </ul>
     ]]></change-notes>
 
@@ -76,12 +78,21 @@
                         dynamic="true"/>
     </extensionPoints>
 
-    <!-- IronHawk: os interruptores dos sistemas e a Caixa-Preta, comum aos dois. -->
+    <!-- IronHawk: o painel único, os interruptores dos sistemas, o Arsenal e a Caixa-Preta, comuns aos dois. -->
     <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="IronHawk IA"
+                    anchor="right"
+                    icon="/icons/ironhawkToolWindow.svg"
+                    factoryClass="com.mio.ironhawk.IronHawkToolWindowFactory"/>
         <applicationConfigurable parentId="tools"
                                  instance="com.mio.ironhawk.IronHawkConfigurable"
                                  id="com.mio.ironhawk.settings"
                                  displayName="IronHawk IA"/>
+        <applicationConfigurable parentId="com.mio.ironhawk.settings"
+                                 instance="com.mio.irondome.interceptor.AgentConfigurable"
+                                 id="com.mio.irondome.settings.agent"
+                                 displayName="Arsenal (IA)"/>
+        <postStartupActivity implementation="com.mio.ironhawk.ArsenalMigrationStartup"/>
         <errorHandler implementation="com.mio.irondome.caixapreta.IronDomeErrorSubmitter"/>
     </extensions>
 
@@ -101,17 +112,9 @@
                                  id="com.mio.irondome.settings"
                                  displayName="Iron Dome IA"/>
         <applicationConfigurable parentId="com.mio.irondome.settings"
-                                 instance="com.mio.irondome.interceptor.AgentConfigurable"
-                                 id="com.mio.irondome.settings.agent"
-                                 displayName="Arsenal (IA)"/>
-        <applicationConfigurable parentId="com.mio.irondome.settings"
                                  instance="com.mio.irondome.defesa.DefenseConfigurable"
                                  id="com.mio.irondome.settings.defense"
                                  displayName="Inteligência da IA"/>
-        <toolWindow id="Iron Dome IA"
-                    anchor="right"
-                    icon="/icons/toolWindow.svg"
-                    factoryClass="com.mio.irondome.base.ReviewToolWindowFactory"/>
     </extensions>
 
     <!-- Ataque: Tomahawk. -->
@@ -122,13 +125,11 @@
                                  instance="com.mio.tomahawk.settings.TomahawkConfigurable"
                                  id="com.mio.tomahawk.settings"
                                  displayName="Tomahawk IA"/>
-        <toolWindow id="Tomahawk IA"
-                    anchor="right"
-                    icon="/icons/tomahawkToolWindow.svg"
-                    factoryClass="com.mio.tomahawk.base.TomahawkToolWindowFactory"/>
     </extensions>
 
     <applicationListeners>
+        <listener class="com.mio.tomahawk.run.SharedArsenalListener"
+                  topic="com.mio.irondome.interceptor.AgentSettings$Listener"/>
         <listener class="com.mio.irondome.comando.ReviewSaveListener"
                   topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>
         <listener class="com.mio.irondome.comando.ReviewSaveActionListener"

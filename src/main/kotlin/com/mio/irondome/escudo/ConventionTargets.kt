@@ -14,7 +14,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiNameIdentifierOwner
 import com.mio.irondome.base.IronDomeIcons
-import com.mio.irondome.base.ReviewToolWindowFactory
+import com.mio.irondome.base.DefenseTabs
 import com.mio.irondome.base.plural
 import com.mio.irondome.interceptor.AgentSettings
 import com.mio.irondome.interceptor.FireWithAiAction
@@ -119,7 +119,7 @@ object ConventionTargets {
         val content = parts.joinToString("; ").replaceFirstChar { it.uppercase() } + "." +
             if (created > 0) " Dispare a ordem de interceptação para a IA deixar o @DisplayName no padrão." else ""
         val actions = buildList {
-            add(NotificationAction.createSimpleExpiring("Abrir Radar") { ReviewToolWindowFactory.showTab(project, ReviewToolWindowFactory.RADAR) })
+            add(NotificationAction.createSimpleExpiring("Abrir Radar") { DefenseTabs.showTab(project, DefenseTabs.RADAR) })
             if (created > 0 && AgentSettings.ready) add(NotificationAction.createSimpleExpiring("Disparar Todos com IA") { FireWithAiAction.fire(project) })
         }
         notify(project, content, type, actions)

@@ -5,7 +5,7 @@ import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
-import com.mio.tomahawk.base.TomahawkToolWindowFactory
+import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.delivery.DeliveryMode
 import com.mio.tomahawk.delivery.DeliveryRequest
 import com.mio.tomahawk.delivery.DeliveryWriter
@@ -66,8 +66,8 @@ class LauncherWeb(project: Project) : WebTab(project) {
             MissionRunner.Listener { ApplicationManager.getApplication().invokeLater({ updateTimer(); refresh() }, project.disposed) },
         )
         project.messageBus.connect(this).subscribe(
-            TomahawkToolWindowFactory.GOTO,
-            TomahawkToolWindowFactory.GotoListener { step ->
+            AttackTabs.GOTO,
+            AttackTabs.GotoListener { step ->
                 selected = step
                 if (step == SddStep.SPECIFY && service.snapshot.active?.spec != null) newFeature = true
                 refresh(force = true)
@@ -554,8 +554,8 @@ class LauncherWeb(project: Project) : WebTab(project) {
                 SpecKitSetup.recheck()
                 service.refresh(0)
             }
-            "arsenal" -> TomahawkToolWindowFactory.showTab(project, TomahawkToolWindowFactory.ARSENAL)
-            "radio" -> TomahawkToolWindowFactory.showTab(project, TomahawkToolWindowFactory.RADIO)
+            "arsenal" -> AttackTabs.showTab(project, AttackTabs.ARSENAL)
+            "radio" -> AttackTabs.showTab(project, AttackTabs.RADIO)
             "abort" -> runner.progress?.cancel()
         }
     }

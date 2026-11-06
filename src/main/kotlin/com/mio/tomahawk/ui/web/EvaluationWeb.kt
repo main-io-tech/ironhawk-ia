@@ -3,7 +3,7 @@ package com.mio.tomahawk.ui.web
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
-import com.mio.tomahawk.base.TomahawkToolWindowFactory
+import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.run.Mission
 import com.mio.tomahawk.run.MissionRunner
 import com.mio.tomahawk.run.RunMode
@@ -240,8 +240,8 @@ class EvaluationWeb(project: Project) : WebTab(project) {
             "line" -> data.str("arg")?.let { openFile(project, Path.of(it), data.int("line") ?: 0) }
             "goto" -> {
                 val step = SddStep.entries.firstOrNull { it.name == data.str("arg") } ?: return
-                project.messageBus.syncPublisher(TomahawkToolWindowFactory.GOTO).goto(step)
-                TomahawkToolWindowFactory.showTab(project, TomahawkToolWindowFactory.LAUNCHER)
+                project.messageBus.syncPublisher(AttackTabs.GOTO).goto(step)
+                AttackTabs.showTab(project, AttackTabs.LAUNCHER)
             }
             "run" -> {
                 val step = SddStep.entries.firstOrNull { it.name == data.str("arg") } ?: return

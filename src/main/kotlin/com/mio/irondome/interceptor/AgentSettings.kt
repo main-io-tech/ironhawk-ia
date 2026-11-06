@@ -36,7 +36,7 @@ object AgentSettings {
     private const val CONFIRM_WRITES_KEY = "IronDome.Agent.ConfirmWrites"
     private val cursorCredentials = CredentialAttributes(generateServiceName("Iron Dome IA", "Cursor API key"))
 
-    const val DEFAULT_TIMEOUT_MINUTES = 20
+    const val DEFAULT_TIMEOUT_MINUTES = 30
     const val MAX_TIMEOUT_MINUTES = 480
 
     /** Avisa quando a configuração ou o teste mudam, para as abas e os botões se atualizarem. */
