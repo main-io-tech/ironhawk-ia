@@ -11,7 +11,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/IntelliJ%20IDEA-2025.2%2B-000000?logo=intellijidea&logoColor=white" alt="IntelliJ IDEA 2025.2+">
-  <img src="https://img.shields.io/badge/funciona%20com-Cursor%20%C2%B7%20Claude%20Code-8250DF" alt="Funciona com Cursor e Claude Code">
+  <img src="https://img.shields.io/badge/funciona%20com-Cursor%20%C2%B7%20Claude%20Code%20%C2%B7%20Codex-8250DF" alt="Funciona com Cursor, Claude Code e Codex">
   <img src="https://img.shields.io/badge/vers%C3%A3o-0.1.0-0969DA" alt="Versão 0.1.0">
 </p>
 
@@ -33,7 +33,7 @@ IDE, e a página de configurações oferece reiniciar na hora.
 
 ## Documentação
 
-- [Defesa: Iron Dome](docs/iron-dome.md)
+- [Defesa: Iron Dome](docs/ironhawk.md)
 
 ## Instalação
 

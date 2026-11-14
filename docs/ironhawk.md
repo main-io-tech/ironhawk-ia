@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/IntelliJ%20IDEA-2025.2%2B-000000?logo=intellijidea&logoColor=white" alt="IntelliJ IDEA 2025.2+">
   <img src="https://img.shields.io/badge/Java%20%C2%B7%20Kotlin%20%C2%B7%20qualquer%20texto-7F52FF?logo=kotlin&logoColor=white" alt="Java, Kotlin e qualquer arquivo de texto">
-  <img src="https://img.shields.io/badge/funciona%20com-Cursor%20%C2%B7%20Claude%20Code%20%C2%B7%20qualquer%20IA-8250DF" alt="Funciona com Cursor, Claude Code e qualquer IA">
+  <img src="https://img.shields.io/badge/funciona%20com-Cursor%20%C2%B7%20Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20qualquer%20IA-8250DF" alt="Funciona com Cursor, Claude Code, Codex e qualquer IA">
   <img src="https://img.shields.io/badge/vers%C3%A3o-0.1.0-0969DA" alt="Versão 0.1.0">
 </p>
 
@@ -89,7 +89,7 @@ Cada mecanismo é independente e tem uma aba própria no painel lateral **Iron D
 | --- | --- | --- |
 | 📡 [**Radar**](#radar) | Marca os alvos: comentários inline que acompanham o código, e guarda o histórico de revisões. | Editor e aba Radar |
 | 🎯 [**Centro de Comando**](#centro-de-comando) | Transforma os alvos em ordens de interceptação em Markdown e evita o fogo amigo. | Barra do editor e `ironhawk/iron-dome/` |
-| 💥 [**Raio de Impacto**](#raio-de-impacto) | Mede o estrago que uma mudança pode causar antes de você mexer na classe. | Aba Raio de Impacto |
+| 💥 [**Raio de Impacto**](#raio-de-impacto) | O diagrama de classes da classe aberta e das que dependem dela ou de que ela depende. | Aba Raio de Impacto |
 | 👁️ [**Sentinela**](#sentinela) | Vigia o perímetro: tudo o que ainda não foi commitado, com o diff a um clique. | Aba Sentinela |
 | 🛡️ [**Escudo**](#escudo) | Executa os testes JUnit e mostra o resultado agrupado e com os nomes formatados. | Aba Escudo |
 | 🛰️ [**Patrulha**](#patrulha) | Revisa os pull requests abertos no GitHub no modo revisão do PR, envia os pedidos de alteração e confere depois se foram atendidos. | Aba Patrulha |
@@ -266,86 +266,37 @@ Esse cálculo deveria considerar o peso dos itens?
 
 ## 💥 Raio de Impacto
 
-Saiba o estrago antes de mudar. Escolha uma classe Java ou Kotlin pelo menu de contexto
-(**Iron Dome IA: Calcular Raio de Impacto**), com **Mirar Classe Atual** ou na lista **Todas as
-classes**, sem precisar abrir o arquivo.
+Veja a classe e a vizinhança dela como num diagrama de classes. Abra uma classe Java ou Kotlin no editor e use
+**Mirar Classe Atual** na barra da aba.
 
-### O radar de dependências
+### O diagrama de classes
 
-<p align="center">
-  <img src="images/impacto-radar.png" width="900" alt="Radar de dependências com a classe analisada no centro, anéis por distância e o painel de detalhes">
-</p>
+Cada classe é uma caixa em três partes, como na UML: o **nome** (com o estereótipo `«interface»`, `«enumeration»` ou
+`«annotation»` quando for o caso, e o nome em itálico nas abstratas), os **atributos** e as **operações**. Os membros
+levam a visibilidade (`+` público, `-` privado, `#` protegido, `~` do pacote), e as classes grandes mostram os primeiros
+8 de cada parte, com um "… mais N" no fim. A classe analisada tem a borda destacada.
 
-A classe analisada fica no centro do radar, e cada **anel** está um passo de dependência mais longe
-dela; a etiqueta do anel diz quantas classes ele tem.
-
-| Elemento | O que mostra |
+| Seta | Significa |
 | --- | --- |
-| 🟢 🟡 🔴 **Cor da classe** | O risco ao alterar: baixo, médio ou alto. As de risco alto ganham um brilho vermelho. |
-| 🅒 🅐 🅘 🅔 **@** **Ícone à esquerda** | O tipo: classe, abstrata, interface, enum ou anotação. |
-| 🛡️ **Escudo à direita** | Os testes: bem coberta (✓), parcial (meio escudo), sem testes (✕) ou classe de teste (frasco). |
-| ⚠️ **Etiqueta vermelha em cima** | Risco médio ou alto **e** nenhum teste: a classe que pede mais cuidado. |
-| 🔵 **Etiqueta azul embaixo** | Alterações ainda não commitadas. |
-| ➡️ **Setas** | Saem de quem usa para quem é usado; tracejadas para herança, vermelhas e curvas nos ciclos. |
+| ──▷ Linha cheia, triângulo vazado | **Herança**: a classe herda da outra. |
+| - - ▷ Linha tracejada, triângulo vazado | **Realização**: a classe implementa a interface. |
+| ──> Linha cheia, ponta aberta | **Associação**: a classe tem um atributo do tipo da outra. |
+| - - > Linha tracejada, ponta aberta | **Uso**: chama, instancia ou usa membros estáticos da outra. |
 
-O painel à direita detalha a classe selecionada: um **medidor de risco** com o número de dependentes,
-aferentes e eferentes, o **escudo de testes** com as classes de teste que a usam, as alterações e uma
-recomendação de **o que fazer** antes de mexer nela.
+As classes pais ficam acima das filhas, e as dependências descem. O raio é de 1 nível, nas duas direções: quem depende
+da classe e de quem ela depende.
 
-| Métrica | O que responde |
-| --- | --- |
-| ⬇️ **Aferentes** | Quantas classes dependem dela: o que pode quebrar se você mudá-la. |
-| ⬆️ **Eferentes** | De quantas classes ela depende: um número alto indica uma classe que faz coisas demais. |
-| 🎚️ **Risco ao alterar** | Baixo, médio ou alto, conforme quantas classes podem ser atingidas; estar num ciclo sobe um nível. |
-| 🧪 **Testes** | Quais testes a usam e se ela está bem coberta. |
-| 🔁 **Ciclos** | Dependências circulares destacadas em vermelho. |
+- 🖱️ **Clique** seleciona a caixa (e a linha dela na tabela), **dois cliques** abrem o código e <kbd>Ctrl</kbd>+clique
+  mira a classe clicada.
+- 🔎 **Busca:** <kbd>/</kbd> foca a busca, <kbd>Enter</kbd> passa pelas classes encontradas.
+- 🧭 **Navegação:** arraste para mover, a roda aproxima e afasta, e os botões do canto aproximam, afastam, enquadram o
+  diagrama e centralizam na classe analisada.
 
-### Explorando o diagrama
+### Classes no raio
 
-<table>
-  <tr>
-    <td width="50%"><img src="images/impacto-hover.png" alt="Hover numa classe acende as ligações dela e mostra um resumo"></td>
-    <td width="50%"><img src="images/impacto-pacotes.png" alt="Bolhas por pacote e minimapa, no tema claro"></td>
-  </tr>
-  <tr>
-    <td><b>🖱️ Passe o mouse</b> numa classe: ela e os vizinhos acendem, o resto apaga e um cartão resume risco, dependentes e testes. Clique para os detalhes; dois cliques abrem o código.</td>
-    <td><b>🫧 Pacotes</b> envolve as classes do mesmo pacote numa bolha colorida, e o botão de <b>mapa</b>, no canto, mostra um minimapa para navegar em diagramas grandes.</td>
-  </tr>
-</table>
-
-- 🔎 **Busca:** <kbd>/</kbd> foca a busca, <kbd>Enter</kbd> leva à primeira classe encontrada.
-- 🎚️ **Filtro por risco:** clique numa cor da barra de distribuição para destacar só as classes com aquele risco.
-- 🧭 **Navegação:** aproximar, afastar, enquadrar, centralizar na classe analisada e reorganizar os anéis.
-- 📖 **Manual de campo:** explica cada número, cor e ícone em linguagem simples.
-
-### Alterações não commitadas em destaque
-
-<p align="center">
-  <img src="images/impacto-alteradas.png" width="900" alt="Destacar alteradas apaga as demais classes e deixa só as que têm alterações não commitadas">
-</p>
-
-**Destacar alteradas** apaga as demais classes e deixa só as que ainda não foram commitadas, e
-**Ver alterações** abre o diff: o jeito mais rápido de cruzar o que vai para o próximo commit com o
-risco de cada classe.
-
-Legenda, detalhes e painel inferior podem ser minimizados para o diagrama ganhar espaço.
-
-### Comentários e impacto apontado pela IA
-
-As classes com comentários pendentes ganham um selo **✎** no canto: azul para os alvos do Radar e do Escudo,
-roxo para os pedidos da Patrulha ao PR em revisão (os ainda não enviados e os enviados sem sinal de atendidos).
-O selo acompanha o Radar e a Patrulha na hora, e os detalhes da classe listam cada comentário.
-
-**Analisar Impacto com IA** (na barra da aba) manda para a IA as classes do diagrama, as ligações, os
-comentários e o `git diff` das alterações sem commit, e ela aponta, **sem alterar nenhum arquivo**, quais classes
-são afetadas se os comentários forem atendidos ou as alterações mantidas. No diagrama:
-
-- ✦ **Brilho rosa** nas classes afetadas, mais forte quanto maior o impacto (alto, médio ou baixo), com o selo do
-  nível no canto.
-- 🔗 **Setas rosa** no caminho do impacto, entre as classes afetadas e as de onde ele parte.
-- 📋 **Resumo da IA** no topo, com as classes afetadas da mais para a menos afetada (clique leva à classe), e
-  **Destacar impacto**, que apaga o resto.
-- 🔎 Nos detalhes e na dica de cada classe: o nível, o motivo e os comentários ou alterações que causam o impacto.
+A tabela abaixo do diagrama lista cada classe com o pacote, as **aferentes** (quantas classes dependem dela: o que
+pode quebrar se você mudá-la) e as **eferentes** (de quantas ela depende: um número alto indica uma classe que faz
+coisas demais). Clicar numa linha seleciona a caixa no diagrama, e dois cliques abrem o código.
 
 ---
 
@@ -589,7 +540,7 @@ compartilham os mesmos componentes visuais, para tudo ter a mesma cara:
 ## 🛠️ Arsenal (IA)
 
 O Arsenal chama a IA direto da IDE, pelo CLI do **Cursor** (`agent`) ou do **Antigravity** (`agy`), rodando
-na sua máquina sobre o projeto aberto. Enquanto ela trabalha, a aba que pediu (Radar, Patrulha, Escudo ou Raio de Impacto) e a
+na sua máquina sobre o projeto aberto. Enquanto ela trabalha, a aba que pediu (Radar, Patrulha ou Escudo) e a
 aba Arsenal mostram uma barra com o passo atual (como *Lendo src/Frete.kt*), o tempo, a última linha que a
 IA escreveu e **Cancelar**; o ícone da aba e o do painel viram o ícone de IA, para dar para ver mesmo com o
 painel fechado. Execuções sem aba própria, como as da Caixa-Preta, aparecem em todas as abas. Cada execução fica
@@ -604,7 +555,7 @@ configuração automática procura também nas distribuições do WSL quando nã
 Em **Onde rodar a IA** (na aba Arsenal ou em Settings), escolha **Na aba, no devcontainer**, **No terminal
 da IDE** ou **Perguntar a cada vez**. Na aba, a IA sempre roda no devcontainer do projeto
 (`.devcontainer/tomahawk/devcontainer.json`, o mesmo das missões do Tomahawk), que só enxerga a pasta do projeto: o
-plugin sobe o container (ou reaproveita o que está de pé), confere o isolamento e roda o Cursor ou o Claude Code lá
+plugin sobe o container (ou reaproveita o que está de pé), confere o isolamento e roda o Cursor, o Claude Code ou o Codex lá
 dentro. Sem o devcontainer, a IA não roda na aba, e o aviso oferece criá-lo; o Antigravity não está no container e
 só roda no terminal. No terminal, cada pedido abre uma aba do terminal com o CLI à vista: o Cursor
 abre interativo, para acompanhar e conversar com a IA (vale o login do `agent login`; a chave de API não vai para o
@@ -624,7 +575,6 @@ comando, o login ou o PATH.
 | 📡 Radar e barra do editor | **Disparar Todos com IA**: dispara os alvos e a IA executa a ordem de interceptação, marcando `[x]` nos atendidos. **Disparar Selecionados** (aba Radar) e **Disparar** (no cartão do alvo, no editor): a IA executa só os alvos escolhidos | Sim |
 | 🛰️ Patrulha | **Revisar com IA** (no modo revisão): a IA lê os arquivos alterados e propõe comentários, que viram rascunhos para você revisar antes de enviar | Não |
 | 🛡️ Escudo | **Explicar Falha com IA**: causa, onde e a correção proposta; a resposta oferece **Corrigir com IA** | Não (Corrigir: sim) |
-| 💥 Raio de Impacto | **Analisar Impacto com IA**: as classes do diagrama afetadas pelos comentários do Radar e da Patrulha e pelas alterações sem commit, destacadas no diagrama | Não |
 | 📦 Caixa-Preta | **Analisar com IA**, no bug gerado e em Ver Logs de Erro: causa provável e correção; no bug, a análise entra no fim do `bug.md` | Não |
 
 Revisar não é alterar: **enquanto um PR está em revisão na Patrulha, a IA não altera o código**, porque o checkout
@@ -705,10 +655,6 @@ mecanismo não vai funcionar, avisa qual e por quê, com **Ver Compatibilidade**
   Erro**, que abre o Reportar Bug com esse erro e o mecanismo dele.
 - 🚨 Quando o plugin lança uma exceção, a janela de erros da própria IDE ganha o botão **Reportar ao Iron
   Dome IA**, que abre o Reportar Bug com o erro e a nota que você escreveu lá.
-- 🆙 **Versão do IntelliJ:** ao abrir o projeto, o plugin confere se a IDE tem as APIs que cada mecanismo
-  usa (testado com o IntelliJ 2025.2.6). É só informativo: se faltar alguma, desliga só os mecanismos
-  afetados e avisa uma vez por versão da IDE, sem pedir para atualizar; as abas deles mostram o que falta.
-
 - 🩺 **Iron Dome IA: Verificar Compatibilidade** (menu **Help** ou engrenagem do painel) mostra a situação de
   cada mecanismo (OK, opcional, limitado ou indisponível), o que fazer para resolver e os erros recentes do
   plugin no `idea.log`, com **Copiar Diagnóstico**, **Abrir idea.log** e **Reportar Bug**.
@@ -768,7 +714,7 @@ O arquivo `ironhawk/iron-dome/historico-interceptacoes.md` é só histórico: n�
 <details>
 <summary><b>Com qual IA ele funciona?</b></summary>
 
-Com qualquer assistente que leia arquivos do projeto: Cursor, Claude Code e outros. O roteiro é um
+Com qualquer assistente que leia arquivos do projeto: Cursor, Claude Code, Codex e outros. O roteiro é um
 Markdown comum, sem depender de ferramentas de um produto específico.
 </details>
 
@@ -841,16 +787,14 @@ O código fica em `src/main/kotlin/com/mio/irondome`, com um pacote por mecanism
 | --- | --- | --- |
 | `radar` | 📡 Radar | Comentários, formulário, margem do editor, cartões e a aba Radar |
 | `comando` | 🎯 Centro de Comando | Geração e leitura do `.md`, histórico consolidado e as ações de salvar |
-| `impacto` | 💥 Raio de Impacto | Análise de dependências, diagrama e métricas (só com o plugin Java) |
+| `impacto` | 💥 Raio de Impacto | Diagrama de classes das dependências (só com o plugin Java) |
 | `sentinela` | 👁️ Sentinela | Aba Sentinela e o diff dos arquivos não commitados |
 | `escudo` | 🛡️ Escudo | Execução dos testes JUnit, formatação do `@DisplayName` e a aba Escudo (só com o plugin JUnit) |
 | `patrulha` | 🛰️ Patrulha | Cliente do GitHub, checkout e revisão dos PRs, os pedidos em `.md` e as verificações de código, conversa e IA (só com os plugins Git e GitHub) |
 | `caixapreta` | 📦 Caixa-Preta | Formulário de bug, print e gravação em GIF, leitura dos erros do plugin no `idea.log`, o `.md` do relatório, o envio ao Linear e a verificação de compatibilidade |
 | `base` | 🏰 Base | Tool window, abas extras, a barra flutuante do editor e os componentes visuais compartilhados (cabeçalho de resumo, etiquetas, barras e linhas das árvores) |
 
-O diagrama usa o [AntV G6](https://g6.antv.antgroup.com/) (licença MIT). As licenças de todas as
-bibliotecas embutidas no `g6.min.js`, todas permissivas e livres para uso comercial, estão em
-`src/main/resources/diagram/THIRD-PARTY-NOTICES.txt`, que vai junto no plugin.
+O diagrama de classes é desenhado em SVG puro, sem biblioteca de terceiros.
 
 ---
 
