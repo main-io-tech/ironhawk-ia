@@ -129,8 +129,14 @@ onde acompanha a revisão aberta e o histórico.
   resultado, e **Última Verificação das Regras de IA** reabre o último. Os alvos marcados levam a origem
   *Regras de IA* no `.md`.
 - 🚦 **Dois modos por comentário:** *Aplicar direto* para o que é óbvio; *Discutir antes de alterar*
-  para a IA explicar por que o código está assim, o impacto de manter, alterar ou remover e até 5
-  opções com prévia da alteração, e argumentar com você até a decisão final.
+  para a IA ler o código e perguntar antes de mexer, com as opções, o que muda e o risco de cada uma.
+- 💬 **As perguntas aparecem no Radar, sem `.md` para você ler:** ao disparar um alvo de *Discutir antes de alterar*
+  com a IA pronta, ela roda só lendo e devolve as perguntas, que aparecem no topo da aba Radar, um bloco por
+  comentário, com as opções (a recomendada marcada) e um campo de texto livre. Pergunta sem resposta usa a recomendação
+  da IA. **Enviar respostas** faz a IA aplicar o que foi decidido, e ela pode, uma única vez, fazer mais perguntas se
+  ainda tiver uma dúvida que muda o resultado. Depois disso ela aplica de qualquer jeito, assume a melhor opção onde
+  restar dúvida e lista as suposições no resumo. Os alvos de *Aplicar direto* seguem o fluxo de sempre, e **Cancelar
+  discussão** deixa os comentários como estavam. Sem a IA configurada, o pedido continua sendo copiado para você colar na sua.
 - ✏️ **Ciclo completo:** edite, cancele com desfazer e acompanhe o status de cada alvo.
 - 👁️ **Interceptados à vista ou não:** o **Ocultar** do cartão tira do editor um alvo já interceptado, e
   **Mostrar no Editor**, na aba Radar, traz de volta, inclusive os de revisões encerradas.

@@ -87,6 +87,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             add(JPanel(VerticalLayout(0)).apply {
                 add(header)
                 add(AgentProgressPanel(project, DefenseTabs.RADAR, this@CommentsPanel))
+                add(DiscussionPanel(project, this@CommentsPanel))
             }, BorderLayout.NORTH)
             add(ScrollPaneFactory.createScrollPane(tree, true), BorderLayout.CENTER)
         })

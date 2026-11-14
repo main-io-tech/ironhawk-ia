@@ -13,6 +13,7 @@ import com.intellij.openapi.project.Project
 import com.mio.irondome.base.IronDomeIcons
 import com.mio.irondome.base.DefenseTabs
 import com.mio.irondome.base.rootPath
+import com.mio.irondome.radar.DiscussionService
 import com.mio.irondome.radar.ReviewComment
 import com.mio.irondome.radar.ReviewCommentService
 import java.awt.datatransfer.StringSelection
@@ -63,11 +64,14 @@ class FireWithAiAction : DumbAwareAction() {
             "Revisando o PR #$number: o código local é o do PR e a IA não o altera. Saia da revisão na aba Patrulha para disparar"
 
         fun fire(project: Project) {
-            if (AgentRunner.getInstance(project).refusesWrite()) return
+            val runner = AgentRunner.getInstance(project)
+            val everything = project.service<ReviewCommentService>().activeComments()
+            // Os de discussão têm o fluxo próprio, com as perguntas no painel: o resto segue como sempre.
+            if (runner.available() && fireable(everything).any { it.discuss }) return fireTargets(project, everything)
+            if (runner.refusesWrite()) return
             val service = project.service<ReviewCommentService>()
             val written = service.exportAll().firstOrNull() ?: return
             val relative = relativeTo(project.rootPath(), written)
-            val runner = AgentRunner.getInstance(project)
             runner.run(
                 AgentTask(
                     "Disparar ${written.fileName}",
@@ -89,9 +93,14 @@ class FireWithAiAction : DumbAwareAction() {
          * configurada, copia o pedido para colar no assistente de IA que o usuário preferir.
          */
         fun fireTargets(project: Project, comments: Collection<ReviewComment>) {
-            val targets = fireable(comments).sortedWith(ReviewComment.ORDER)
-            if (targets.isEmpty() || AgentRunner.getInstance(project).refusesWrite()) return
+            val all = fireable(comments).sortedWith(ReviewComment.ORDER)
+            val runner = AgentRunner.getInstance(project)
+            // Com a IA pronta, "discutir antes de alterar" tem as perguntas no painel do Radar; sem ela, vale o pedido copiado.
+            val (discuss, targets) = if (runner.available()) all.partition { it.discuss } else emptyList<ReviewComment>() to all
+            if (all.isEmpty() || (targets.isEmpty() && discuss.isEmpty())) return
             val service = project.service<ReviewCommentService>()
+            if (targets.isEmpty()) return project.service<DiscussionService>().start(discuss)
+            if (runner.refusesWrite()) return
             val written = service.exportPaths(targets.map { it.filePath }) ?: return
             val relative = relativeTo(project.rootPath(), written)
             val ids = targets.joinToString(", ") { it.id }
@@ -99,7 +108,6 @@ class FireWithAiAction : DumbAwareAction() {
             val prompt = "Execute somente $what da ordem de interceptação em $relative, seguindo as instruções do arquivo: corrija o " +
                 "código e marque [x] nos atendidos. Não mexa nos outros alvos. Nos alvos marcados para discutir antes, só apresente a " +
                 "análise e a proposta, sem alterar."
-            val runner = AgentRunner.getInstance(project)
             if (!runner.available()) {
                 CopyPasteManager.getInstance().setContents(StringSelection(prompt))
                 NotificationGroupManager.getInstance().getNotificationGroup("Iron Dome IA")
@@ -121,7 +129,7 @@ class FireWithAiAction : DumbAwareAction() {
                     origin = DefenseTabs.RADAR,
                 ),
                 "Abrir ${written.fileName}" to { _ -> runner.open(written) },
-            )
+            ) { if (discuss.isNotEmpty()) project.service<DiscussionService>().start(discuss) }
         }
 
         private fun relativeTo(base: String?, file: Path): String =
