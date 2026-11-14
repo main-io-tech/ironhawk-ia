@@ -109,12 +109,41 @@ class SpecKitLayout(val root: Path) {
         return found
     }
 
+    /**
+     * O que o Spec Kit instalou no projeto: a `.specify/` e as skills e arquivos de comando `speckit` de todas as
+     * integrações, nas pastas ocultas da raiz. A `specs/` fica de fora: é o trabalho das features.
+     */
+    fun installed(): List<Path> {
+        val found = mutableListOf<Path>()
+        if (specifyDir.isDirectory()) found.add(specifyDir)
+        if (!root.isDirectory()) return found
+        val dirs = Files.list(root).use { entries ->
+            entries.filter { it.isDirectory() && it.name.startsWith(".") && it.name !in IGNORED_DIRS }.toList()
+        }.sortedBy { it.name }
+        for (dir in dirs) {
+            val files = runCatching {
+                Files.walk(dir, SEARCH_DEPTH).use { walk -> walk.filter { it.isRegularFile() }.toList() }
+            }.getOrDefault(emptyList())
+            for (file in files.sorted()) {
+                val name = file.name.lowercase()
+                val skill = file.parent?.takeIf { name == "skill.md" && ANY_SKILL.matches(it.name.lowercase()) }
+                when {
+                    skill != null -> found.add(skill)
+                    ANY_COMMAND.matches(name) -> found.add(file)
+                }
+            }
+        }
+        return found.distinct()
+    }
+
     companion object {
         private val TEMPLATE_PLACEHOLDER = Regex("""\[(PROJECT_NAME|PRINCIPLE_\d+_NAME|CONSTITUTION_VERSION)]""")
         private val IGNORED_DIRS = setOf(".git", ".idea", ".gradle", ".kotlin", ".intellijPlatform", ".venv", ".specify", ".vscode")
         private const val SEARCH_DEPTH = 4
         private val SKILL_DIR = Regex("""speckit[-.]([a-z]+)""")
         private val COMMAND_FILE = Regex("""speckit\.([a-z]+)(\.prompt|\.agent)?\.(md|toml|mdc)""")
+        private val ANY_SKILL = Regex("""speckit[-.][a-z][a-z-]*""")
+        private val ANY_COMMAND = Regex("""speckit\.[a-z][a-z-]*(\.prompt|\.agent)?\.(md|toml|mdc)""")
 
         /** A etapa de um arquivo de comando ou skill do Spec Kit, ou nulo se não for um. */
         fun commandRef(file: Path): CommandRef? {

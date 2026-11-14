@@ -5,6 +5,7 @@ import com.intellij.execution.configurations.PathEnvironmentVariableUtil
 import com.intellij.execution.util.ExecUtil
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.util.SystemInfo
+import com.mio.ironhawk.IronHawkFolder
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -13,7 +14,7 @@ import java.nio.file.StandardCopyOption
 
 /**
  * O ponto de restauração antes de cada missão: o projeto inteiro, com o que não foi commitado e os arquivos novos
- * (menos o que o `.gitignore` ignora e a pasta do Tomahawk), num commit solto em `refs/tomahawk/<execução>`. Usa um
+ * (menos o que o `.gitignore` ignora e a pasta `ironhawk/`), num commit solto em `refs/tomahawk/<execução>`. Usa um
  * índice temporário, então não mexe no índice, na branch nem no stash do usuário. Desfazer volta os arquivos para o
  * ponto e apaga os que apareceram depois, guardando antes o estado de agora, para dar para voltar atrás.
  */
@@ -77,11 +78,11 @@ object Checkpoints {
         val added = names(root, "diff", "--name-only", "--no-renames", "--diff-filter=A", "-z", point.commit, safety.commit).orEmpty()
         val changed = names(root, "diff", "--name-only", "--no-renames", "--diff-filter=MDT", "-z", point.commit, safety.commit).orEmpty()
         if (changed.isNotEmpty()) {
-            git(root, emptyMap(), "restore", "--source=${point.commit}", "--worktree", "--", ".", ":(exclude)${RunStore.DIR}")
+            git(root, emptyMap(), "restore", "--source=${point.commit}", "--worktree", "--", ".", ":(exclude)${IronHawkFolder.ROOT}")
                 ?: throw IllegalStateException("O git restore falhou; o estado antes de desfazer está em ${safety.ref}.")
         }
         var removed = 0
-        added.filterNot { it == RunStore.DIR || it.startsWith(RunStore.DIR + "/") }.forEach { relative ->
+        added.filterNot { it == IronHawkFolder.ROOT || it.startsWith(IronHawkFolder.ROOT + "/") }.forEach { relative ->
             val file = root.resolve(relative).normalize()
             if (file.startsWith(root) && runCatching { Files.deleteIfExists(file) }.getOrDefault(false)) {
                 removed++
@@ -102,7 +103,7 @@ object Checkpoints {
             val real = git(root, emptyMap(), "rev-parse", "--git-path", "index")?.trim()?.takeIf { it.isNotEmpty() }?.let { root.resolve(it) }
             if (real != null && Files.isRegularFile(real)) Files.copy(real, index, StandardCopyOption.REPLACE_EXISTING) else Files.delete(index)
             val env = mapOf("GIT_INDEX_FILE" to index.toString())
-            git(root, env, "add", "-A", "--", ".", ":(exclude)${RunStore.DIR}") ?: git(root, env, "add", "-A") ?: return null
+            git(root, env, "add", "-A", "--", ".", ":(exclude)${IronHawkFolder.ROOT}") ?: git(root, env, "add", "-A") ?: return null
             val tree = git(root, env, "write-tree")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
             val head = git(root, emptyMap(), "rev-parse", "--verify", "-q", "HEAD")?.trim()?.takeIf { it.isNotEmpty() }
             val args = listOf("commit-tree", tree) + (head?.let { listOf("-p", it) } ?: emptyList()) + listOf("-m", message)

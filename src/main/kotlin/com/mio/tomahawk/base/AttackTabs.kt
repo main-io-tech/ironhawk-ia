@@ -13,9 +13,10 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentFactory
-import com.intellij.ui.jcef.JBCefApp
 import com.intellij.util.messages.Topic
 import com.intellij.util.ui.JBUI
+import com.mio.irondome.base.NoticeBox
+import com.mio.irondome.base.Tone
 import com.mio.ironhawk.IronHawkSystem
 import com.mio.ironhawk.IronHawkToolWindowFactory
 import com.mio.ironhawk.IronHawkWindow
@@ -24,13 +25,8 @@ import com.mio.tomahawk.settings.TomahawkConfigurable
 import com.mio.tomahawk.speckit.SddStep
 import com.mio.tomahawk.ui.EvaluationPanel
 import com.mio.tomahawk.ui.LauncherPanel
-import com.mio.tomahawk.ui.RadioFallback
+import com.mio.tomahawk.ui.RadioPanel
 import com.mio.tomahawk.ui.TelemetryPanel
-import com.mio.tomahawk.ui.web.EvaluationWeb
-import com.mio.tomahawk.ui.web.LauncherWeb
-import com.mio.tomahawk.ui.web.RadioWeb
-import com.mio.tomahawk.ui.web.TelemetryWeb
-import com.mio.tomahawk.ui.web.WebTab
 import java.awt.BorderLayout
 import javax.swing.Icon
 import javax.swing.JComponent
@@ -49,35 +45,27 @@ object AttackTabs {
 
     /** Cria as abas do Ataque, fora do painel. */
     fun create(project: Project): List<Content> = buildList {
-        val web = JBCefApp.isSupported()
         add(content(LAUNCHER, TomahawkIcons.lancador, "Dispara as etapas do Spec Kit: a missão SDD da feature ativa, etapa por etapa") {
-            if (web) LauncherWeb(project) else LauncherPanel(project)
+            LauncherPanel(project)
         })
         add(content(EVALUATION, TomahawkIcons.avaliacao, "Avalia o que foi gerado: spec, plano, tarefas, checklists e pendências") {
-            if (web) EvaluationWeb(project) else EvaluationPanel(project)
+            EvaluationPanel(project)
         })
         add(content(TELEMETRY, TomahawkIcons.telemetria, "Monitora as missões: a execução em voo, o log ao vivo e o histórico") {
-            if (web) TelemetryWeb(project) else TelemetryPanel(project)
+            TelemetryPanel(project)
         })
         if (PullRequestGateway.available() != null) {
             add(content(RADIO, TomahawkIcons.radio, "Os comentários dos seus PRs no GitHub, com a resposta escrita pela IA") {
-                if (web) RadioWeb(project) else RadioFallback(project)
+                RadioPanel(project)
             })
         }
     }
 
-    /**
-     * Uma aba que não abre não pode levar as outras junto: o erro vai para o log e para o lugar dela. [create] devolve
-     * um componente Swing ou uma [WebTab], descartada com a aba.
-     */
-    private fun content(title: String, icon: Icon, description: String, create: () -> Any): Content {
+    /** Uma aba que não abre não pode levar as outras junto: o erro vai para o log e para o lugar dela. */
+    private fun content(title: String, icon: Icon, description: String, create: () -> JComponent): Content {
         var disposable: Disposable? = null
         val component = try {
-            when (val created = create()) {
-                is WebTab -> created.component.also { disposable = created }
-                is JComponent -> created.also { disposable = it as? Disposable }
-                else -> error("Aba $title sem componente")
-            }
+            create().also { disposable = it as? Disposable }
         } catch (error: Throwable) {
             if (error is ControlFlowException || error is VirtualMachineError) throw error
             LOG.warn("A aba $title do Tomahawk IA não pôde ser aberta", error)

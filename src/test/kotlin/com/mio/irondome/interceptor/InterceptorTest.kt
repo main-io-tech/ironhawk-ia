@@ -109,7 +109,7 @@ class InterceptorTest {
         val read = AgentCommand.guarded(readOnly.copy(prompt = "Revise"))
 
         assertEquals("Corrija ${AgentCommand.PULL_REQUEST_RULE} ${AgentGuard.RULE}", write)
-        assertTrue("iron-dome/pull-requests/" in write)
+        assertTrue("ironhawk/iron-dome/pull-requests/" in write)
         assertTrue("quem altera arquivos sabe o que não pode", "git push" in write)
         assertEquals("Revise ${AgentCommand.READ_ONLY_RULE}", read)
     }
@@ -237,7 +237,7 @@ class InterceptorTest {
         val dir = Files.createTempDirectory("irondome agente")
         val shim = dir.resolve("agent.cmd")
         Files.writeString(shim, "@echo off\r\n>\"%~dp0args.txt\" echo %*\r\necho {\"type\":\"result\",\"is_error\":false,\"result\":\"ok\"}\r\n")
-        val task = AgentTask("Teste", "Execute a ordem em iron-dome/ordem-interceptacao-3.md: corrija a função de frete (peso)", write = true)
+        val task = AgentTask("Teste", "Execute a ordem em ironhawk/iron-dome/ordem-interceptacao-3.md: corrija a função de frete (peso)", write = true)
 
         val command = AgentCommand.build(AgentProvider.CURSOR, shim.toString(), task, dir.toString(), null, 5)
         val output = ExecUtil.execAndGetOutput(GeneralCommandLine(command).withWorkDirectory(dir.toFile()).withCharset(StandardCharsets.UTF_8), 30_000)
@@ -246,7 +246,7 @@ class InterceptorTest {
         assertEquals(AgentEvent.Result("ok", false), output.stdoutLines.mapNotNull(AgentEvents::parse).single())
         val received = Files.readString(dir.resolve("args.txt"), StandardCharsets.ISO_8859_1)
         assertTrue(received, received.contains("--force"))
-        assertTrue("sem acento, o prompt chega igual", received.contains("iron-dome/ordem-interceptacao-3.md: corrija a funcao de frete (peso)"))
+        assertTrue("sem acento, o prompt chega igual", received.contains("ironhawk/iron-dome/ordem-interceptacao-3.md: corrija a funcao de frete (peso)"))
         assertTrue("o diretório com espaço chega como um argumento só", received.contains("\"$dir\""))
     }
 

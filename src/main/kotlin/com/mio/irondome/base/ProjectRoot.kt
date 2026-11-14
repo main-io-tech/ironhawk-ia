@@ -16,7 +16,7 @@ import com.intellij.util.messages.Topic
 import com.mio.irondome.radar.ReviewCommentService
 
 /**
- * Pasta de onde saem os caminhos dos comentários e do `iron-dome/`: o projeto escolhido no Iron Dome quando a
+ * Pasta de onde saem os caminhos dos comentários e do `ironhawk/iron-dome/`: o projeto escolhido no Iron Dome quando a
  * janela tem mais de um, senão o `basePath`. Prefere o `basePath` ao [guessProjectDir], que num projeto com o
  * `.iml` dentro da `.idea` e outros módulos devolve a própria `.idea`.
  */
@@ -33,7 +33,7 @@ class RootCandidate(val path: String, val name: String)
 
 /**
  * Com mais de um projeto na janela (módulos em pastas separadas, como os anexados com Attach), qual deles o
- * Iron Dome vigia. Cada projeto guarda os seus comentários e a sua pasta `iron-dome/`.
+ * Iron Dome vigia. Cada projeto guarda os seus comentários e a sua pasta `ironhawk/iron-dome/`.
  */
 @Service(Service.Level.PROJECT)
 @State(name = "IronDomeRoot", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])

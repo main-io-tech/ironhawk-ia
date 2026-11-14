@@ -11,6 +11,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.util.messages.Topic
+import com.mio.ironhawk.IronHawkFolder
 import com.mio.irondome.base.rootPath
 import com.mio.irondome.radar.CommentTarget
 import com.mio.irondome.radar.ReviewComment
@@ -33,7 +34,7 @@ class RepoContext(val repository: GitRepository, val remote: String, val repo: G
 
 class PatrulhaException(message: String) : Exception(message)
 
-/** Alterações não commitadas fora de `iron-dome/` e `.idea/`, como no `git status --porcelain`. */
+/** Alterações não commitadas fora de `ironhawk/` e `.idea/`, como no `git status --porcelain`. */
 class LocalChanges(val branch: String?, val files: List<String>)
 
 /** O que fazer com as alterações não commitadas antes do checkout do PR. */
@@ -942,8 +943,8 @@ class PatrulhaService(private val project: Project) : PersistentStateComponent<P
         /** A branch atual ou, sem branch, `@<sha>` do commit. */
         fun refOf(repository: GitRepository): String? = repository.currentBranchName ?: repository.currentRevision?.let { "@$it" }
 
-        /** Revisões do Radar e pedidos dos PRs ficam fora do stash, e as configurações da IDE também. */
-        private val KEPT_OUT = arrayOf(ReviewCommentService.REVIEW_DIR, ".idea")
+        /** O que o plugin grava (revisões do Radar, pedidos dos PRs, missões) fica fora do stash, e as configurações da IDE também. */
+        private val KEPT_OUT = arrayOf(IronHawkFolder.ROOT, ".idea")
 
         /**
          * Os caminhos do stash e do status: o projeto menos [KEPT_OUT]. Os que estão em [ignored] ficam sem o

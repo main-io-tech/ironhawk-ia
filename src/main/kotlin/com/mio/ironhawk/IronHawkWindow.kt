@@ -10,8 +10,6 @@ import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
-import com.intellij.openapi.diagnostic.ControlFlowException
-import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbAwareAction
@@ -32,16 +30,13 @@ import com.mio.irondome.base.IronDomeRoot
 import com.mio.irondome.base.ProjectRootSelector
 import com.mio.irondome.base.TabErrorPanel
 import com.mio.irondome.base.onPanel
-import com.mio.irondome.base.web.WebTab as SwingWebTab
 import com.mio.irondome.interceptor.AgentProgressPanel
-import com.mio.irondome.interceptor.InterceptorPanel
 import com.mio.irondome.interceptor.InterceptorTab
 import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.base.TomahawkIcons
 import com.mio.tomahawk.speckit.SpecKitService
 import java.awt.BorderLayout
 import javax.swing.Icon
-import javax.swing.JComponent
 import javax.swing.JPanel
 
 class IronHawkToolWindowFactory : ToolWindowFactory, DumbAware {
@@ -171,26 +166,16 @@ class IronHawkWindow(private val project: Project) {
     }
 
     private fun createArsenal(toolWindow: ToolWindow): Content {
-        val web = if (SwingWebTab.supported) {
-            runCatching { ArsenalWeb(project) }
-                .onFailure { if (it is ControlFlowException) throw it else LOG.warn("O Arsenal web não abriu; vale o painel sem navegador", it) }
-                .getOrNull()
-        } else {
-            null
-        }
-        val component: JComponent = if (web != null) {
-            JPanel(BorderLayout()).apply {
-                add(AgentProgressPanel(project, InterceptorTab.TITLE, web), BorderLayout.NORTH)
-                add(web.component, BorderLayout.CENTER)
-            }
-        } else {
-            InterceptorPanel(project)
+        val panel = ArsenalPanel(project)
+        val component = JPanel(BorderLayout()).apply {
+            add(AgentProgressPanel(project, InterceptorTab.TITLE, panel), BorderLayout.NORTH)
+            add(panel, BorderLayout.CENTER)
         }
         return ContentFactory.getInstance().createContent(component, InterceptorTab.TITLE, false).apply {
             icon = IronDomeIcons.arsenal
             description = "A IA dos dois sistemas: qual CLI usar, o teste da integração, o que é de cada sistema e as execuções recentes"
             putUserData(ToolWindow.SHOW_CONTENT_ICON, true)
-            setDisposer(web ?: component as InterceptorPanel)
+            setDisposer(panel)
         }
     }
 
@@ -229,7 +214,6 @@ class IronHawkWindow(private val project: Project) {
 
     companion object {
         private const val CURRENT_KEY = "IronHawk.Window.System"
-        private val LOG = logger<IronHawkWindow>()
 
         fun getInstance(project: Project): IronHawkWindow = project.service()
 

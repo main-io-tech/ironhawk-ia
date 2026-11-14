@@ -23,10 +23,10 @@ class PatrulhaTest {
     }
 
     @Test
-    fun theStashLeavesOutIronDomeAndIdeaWithoutExcludingWhatGitAlreadyIgnores() {
-        assertEquals(listOf(".", ":(exclude)iron-dome", ":(exclude).idea"), PatrulhaService.workPaths(emptySet()).toList())
-        assertEquals(listOf(".", ":(exclude)iron-dome"), PatrulhaService.workPaths(setOf(".idea")).toList())
-        assertEquals(listOf("."), PatrulhaService.workPaths(setOf(".idea", "iron-dome")).toList())
+    fun theStashLeavesOutIronHawkAndIdeaWithoutExcludingWhatGitAlreadyIgnores() {
+        assertEquals(listOf(".", ":(exclude)ironhawk", ":(exclude).idea"), PatrulhaService.workPaths(emptySet()).toList())
+        assertEquals(listOf(".", ":(exclude)ironhawk"), PatrulhaService.workPaths(setOf(".idea")).toList())
+        assertEquals(listOf("."), PatrulhaService.workPaths(setOf(".idea", "ironhawk")).toList())
     }
 
     @Test

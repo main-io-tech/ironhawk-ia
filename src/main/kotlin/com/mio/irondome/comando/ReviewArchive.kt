@@ -5,7 +5,7 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * Histórico consolidado: as revisões encerradas de `iron-dome/` reunidas em [FILE_NAME], uma seção
+ * Histórico consolidado: as revisões encerradas de `ironhawk/iron-dome/` reunidas em [FILE_NAME], uma seção
  * `# Revisão: <nome>` por revisão, com o conteúdo do `.md` original menos as instruções para a IA.
  */
 object ReviewArchive {

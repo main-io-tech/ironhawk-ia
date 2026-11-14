@@ -290,7 +290,7 @@ class ReviewCommentServiceTest : HeavyPlatformTestCase() {
 
     fun testPullRequestReviewDoesNotCommentOnTheFilesTheReviewGenerates() {
         val root = first.parent.parent
-        val record = VfsTestUtil.createFile(root, "iron-dome/pull-requests/pr-12.md", "# Pedidos\n")
+        val record = VfsTestUtil.createFile(root, "ironhawk/iron-dome/pull-requests/pr-12.md", "# Pedidos\n")
         val document = FileDocumentManager.getInstance().getDocument(record)!!
         assertTrue("fora do modo revisão continua aceitando", service.accepts(document))
 
@@ -301,8 +301,10 @@ class ReviewCommentServiceTest : HeavyPlatformTestCase() {
         service.stopPullRequestReview()
 
         assertTrue(service.pullRequestComments(12).isEmpty())
-        assertTrue(ReviewCommentService.isReviewOutput("iron-dome") && ReviewCommentService.isReviewOutput("iron-dome/ia/x.md"))
-        assertFalse(ReviewCommentService.isReviewOutput("iron-dome-ia/src/A.kt"))
+        assertTrue(ReviewCommentService.isReviewOutput("ironhawk") && ReviewCommentService.isReviewOutput("ironhawk/iron-dome/ia/x.md"))
+        assertTrue(ReviewCommentService.isReviewOutput("ironhawk/tomahawk/execucoes/x.md"))
+        assertFalse(ReviewCommentService.isReviewOutput("ironhawk-ia/src/A.kt"))
+        assertFalse(ReviewCommentService.isReviewOutput("iron-dome/ia/x.md"))
     }
 
     fun testOnlyPullRequestCommentsKeepSuggestedCode() {

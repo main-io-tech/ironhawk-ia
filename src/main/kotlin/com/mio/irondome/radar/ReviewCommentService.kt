@@ -19,6 +19,7 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
+import com.mio.ironhawk.IronHawkFolder
 import com.mio.irondome.base.rootDir
 import com.mio.irondome.base.rootPath
 import com.mio.irondome.comando.ReviewArchive
@@ -32,7 +33,7 @@ import java.time.LocalDateTime
 /**
  * Acessado só pela EDT.
  *
- * Há no máximo uma revisão aberta por projeto, gravada em `iron-dome/ordem-interceptacao-<id>.md`. Ela é
+ * Há no máximo uma revisão aberta por projeto, gravada em `ironhawk/iron-dome/ordem-interceptacao-<id>.md`. Ela é
  * encerrada quando todos os comentários dela ficam resolvidos; a partir daí o `.md` não é mais
  * regravado e o próximo comentário abre uma revisão nova.
  *
@@ -188,7 +189,7 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
         return state.comments.filter { it.reviewId == reviewId }.sortedWith(ReviewComment.ORDER)
     }
 
-    /** `.md` gravados em `iron-dome/`, do mais recente para o mais antigo. */
+    /** `.md` gravados em `ironhawk/iron-dome/`, do mais recente para o mais antigo. */
     fun savedReviews(): List<Pair<Int, Path>> {
         val root = reviewRoot()?.takeIf(Files::isDirectory) ?: return emptyList()
         val name = Regex("""${Regex.escape(REVIEW_PREFIX)}(\d+)\.md""")
@@ -199,7 +200,7 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
         }.sortedByDescending { it.first }
     }
 
-    /** Revisões encerradas em `.md` avulsos: todas as de `iron-dome/` menos a aberta. */
+    /** Revisões encerradas em `.md` avulsos: todas as de `ironhawk/iron-dome/` menos a aberta. */
     fun historyReviews(): List<Pair<Int, Path>> = savedReviews().filter { it.first != state.activeReviewId }
 
     fun archiveFile(): Path? = reviewRoot()?.resolve(ReviewArchive.FILE_NAME)
@@ -593,7 +594,7 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
     private fun scopeOf(file: VirtualFile?): Scope? =
         if (file == null) Scope.ALL else relativePath(file)?.let { Scope(setOf(it)) }
 
-    /** Chamado quando um `.md` de `iron-dome/` muda no disco (por exemplo, a IA marcou `[x]`). */
+    /** Chamado quando um `.md` de `ironhawk/iron-dome/` muda no disco (por exemplo, a IA marcou `[x]`). */
     fun importStatus(changedPaths: Collection<String>) {
         val target = activeReviewFile()?.toString()?.replace('\\', '/') ?: return
         if (changedPaths.none { it.replace('\\', '/') == target }) return
@@ -771,10 +772,10 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
     }
 
     companion object {
-        const val REVIEW_DIR = "iron-dome"
+        const val REVIEW_DIR = IronHawkFolder.DEFENSE
 
-        /** Arquivo gerado pelas revisões, dentro de [REVIEW_DIR]; [path] relativo à raiz do projeto. */
-        fun isReviewOutput(path: String): Boolean = path == REVIEW_DIR || path.startsWith("$REVIEW_DIR/")
+        /** Arquivo gerado pelo plugin, dentro de `ironhawk/`, como as revisões; [path] relativo à raiz do projeto. */
+        fun isReviewOutput(path: String): Boolean = path == IronHawkFolder.ROOT || path.startsWith("${IronHawkFolder.ROOT}/")
         private const val REVIEW_PREFIX = "ordem-interceptacao-"
         private val LOG = logger<ReviewCommentService>()
 

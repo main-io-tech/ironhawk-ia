@@ -1,20 +1,40 @@
-package com.mio.tomahawk.ui.web
+package com.mio.tomahawk.ui
 
 import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.util.ui.UIUtil
+import com.mio.irondome.base.MechanismList
+import com.mio.irondome.base.MechanismTree
+import com.mio.ironhawk.ArsenalPanel
 import com.mio.tomahawk.run.RunStatus
 import com.mio.tomahawk.run.RunStore
-import com.mio.ironhawk.ArsenalWeb
 import com.mio.tomahawk.run.TomahawkSettings
 import com.mio.tomahawk.run.Transcript
 import com.mio.tomahawk.run.Verdict
 import com.mio.tomahawk.speckit.SddStep
 import com.mio.tomahawk.speckit.SpecKitService
+import com.mio.tomahawk.speckit.StepStatus
+import java.awt.Container
 import java.nio.file.Files
 import java.nio.file.Path
+import javax.swing.JButton
+import javax.swing.JComponent
+import javax.swing.ListCellRenderer
+import javax.swing.tree.DefaultMutableTreeNode
 
-/** Monta as abas web de verdade sobre um projeto Spec Kit de exemplo e grava as páginas em build/preview. */
-class WebPagesTest : BasePlatformTestCase() {
+/** Monta as abas nativas do Ataque e o Arsenal sobre um projeto Spec Kit de exemplo. */
+class NativeTabsTest : BasePlatformTestCase() {
+
+    private fun buttons(root: Container): List<String> = UIUtil.findComponentsOfType(root as JComponent, JButton::class.java).map { it.text }
+
+    private fun renderAll(list: MechanismList<*>) {
+        list.setSize(400, 600)
+        @Suppress("UNCHECKED_CAST")
+        val renderer = list.cellRenderer as ListCellRenderer<Any?>
+        (0 until list.model.size).forEach { index ->
+            assertNotNull(renderer.getListCellRendererComponent(list, list.model.getElementAt(index), index, false, false))
+        }
+    }
 
     private fun write(root: Path, relative: String, text: String) {
         val file = root.resolve(relative)
@@ -91,46 +111,67 @@ class WebPagesTest : BasePlatformTestCase() {
         }
     }
 
-    fun testRendersTheFourTabs() {
+    fun testTheLauncherPutsTheConstitutionAboveTheEightFeatureSteps() {
         val root = Path.of(project.basePath!!)
         sampleProject(root)
         SpecKitService.getInstance(project).refreshNow()
         TomahawkSettings.launch()?.let { TomahawkSettings.markVerified("04/11/2026 14:00") }
-        val out = Path.of(System.getProperty("user.dir"), "build", "preview")
-        Files.createDirectories(out)
-        val pages = mapOf(
-            "web-launcher" to LauncherWeb(project),
-            "web-evaluation" to EvaluationWeb(project),
-            "web-telemetry" to TelemetryWeb(project),
-            "web-arsenal" to ArsenalWeb(project),
-        )
-        pages.forEach { (name, tab) ->
-            Disposer.register(testRootDisposable, tab)
-            val html = tab.html()
-            Files.writeString(out.resolve("$name.html"), html)
-            assertTrue(name, html.contains("class=\"top\"") || html.contains("class=\"ln-top\""))
+        val panel = LauncherPanel(project)
+        Disposer.register(testRootDisposable, panel)
+        val list = UIUtil.findComponentOfType(panel, MechanismList::class.java)!!
+        val steps = (0 until list.model.size).map { index ->
+            val row = list.model.getElementAt(index)!!
+            row.javaClass.getDeclaredField("status").apply { isAccessible = true }.get(row) as StepStatus
         }
-        val launcher = pages.getValue("web-launcher").html()
-        assertTrue(launcher.contains("class=\"stepper ln-steps\""))
-        assertTrue(launcher.contains("Álbuns") || launcher.contains("photo-albums"))
-        assertTrue(pages.getValue("web-evaluation").html().contains("class=\"acard"))
-        assertTrue(pages.getValue("web-telemetry").html().contains("class=\"chart\""))
-        assertTrue(pages.getValue("web-arsenal").html().contains("Salvar e testar"))
+        assertEquals(SddStep.CONSTITUTION, steps.first().step)
+        assertEquals(8, steps.drop(1).size)
+        assertFalse(steps.drop(1).any { it.step == SddStep.CONSTITUTION })
+        renderAll(list)
+        assertTrue(buttons(panel).contains("Lançar"))
     }
 
-    fun testRendersTheLauncherBeforeTheSpecKit() {
+    fun testTheNativeTelemetryListsTheRunsByDay() {
+        val root = Path.of(project.basePath!!)
+        sampleProject(root)
+        SpecKitService.getInstance(project).refreshNow()
+        val panel = TelemetryPanel(project)
+        Disposer.register(testRootDisposable, panel)
+        val list = UIUtil.findComponentOfType(panel, MechanismList::class.java)!!
+        assertEquals(SpecKitService.getInstance(project).snapshot.runs.size, list.model.size)
+        assertTrue(list.model.size > 0)
+        renderAll(list)
+    }
+
+    fun testTheEvaluationShowsTheConstitutionAndTheActiveFeature() {
+        val root = Path.of(project.basePath!!)
+        sampleProject(root)
+        SpecKitService.getInstance(project).refreshNow()
+        val panel = EvaluationPanel(project)
+        Disposer.register(testRootDisposable, panel)
+        val tree = UIUtil.findComponentOfType(panel, MechanismTree::class.java)!!
+        val rootNode = tree.model.root as DefaultMutableTreeNode
+        assertEquals(2, rootNode.childCount)
+    }
+
+    fun testTheArsenalHasTheAiAndTheSpecKit() {
+        val root = Path.of(project.basePath!!)
+        sampleProject(root)
+        SpecKitService.getInstance(project).refreshNow()
+        val panel = ArsenalPanel(project)
+        Disposer.register(testRootDisposable, panel)
+        val labels = buttons(panel)
+        assertTrue(labels.toString(), "Salvar e Testar" in labels)
+        assertTrue(labels.toString(), "Remover do Projeto" in labels)
+    }
+
+    fun testTheLauncherBeforeTheSpecKitOffersToInitialize() {
         val root = Path.of(project.basePath!!)
         root.resolve(".specify").toFile().deleteRecursively()
         SpecKitService.getInstance(project).refreshNow()
-        val out = Path.of(System.getProperty("user.dir"), "build", "preview")
-        Files.createDirectories(out)
-        val tab = LauncherWeb(project)
-        Disposer.register(testRootDisposable, tab)
-        val html = tab.html()
-        Files.writeString(out.resolve("web-launcher-init.html"), html)
-        assertTrue(html.contains("Prepare a base de lançamento"))
-        assertTrue(html.contains("class=\"setup-box\""))
-        assertTrue(html.contains("data-cmd=\"init-copy\""))
-        assertFalse(html.contains("class=\"btn primary big\" data-cmd=\"init\""))
+        val panel = LauncherPanel(project)
+        Disposer.register(testRootDisposable, panel)
+        assertTrue(UIUtil.findComponentOfType(panel, SpecKitSetupPanel::class.java)!!.isVisible)
+        assertTrue(buttons(panel).contains("Inicializar o Spec Kit"))
+        assertEquals(0, UIUtil.findComponentOfType(panel, MechanismList::class.java)!!.model.size)
     }
 }

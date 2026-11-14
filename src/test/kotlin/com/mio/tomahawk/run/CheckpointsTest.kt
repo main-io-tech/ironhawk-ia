@@ -51,7 +51,7 @@ class CheckpointsTest {
         Files.delete(root.resolve("README.md"))
         Files.delete(root.resolve("notas.txt"))
         write(root, "src/novo/Gerado.kt", "criado pela IA")
-        write(root, "tomahawk/execucoes/registro.md", "o registro fica")
+        write(root, "ironhawk/tomahawk/execucoes/registro.md", "o registro fica")
         assertEquals(4, Checkpoints.changes(root, point!!)!!.size)
 
         val undo = Checkpoints.restore(root, point)
@@ -59,10 +59,10 @@ class CheckpointsTest {
         assertEquals("leia", Files.readString(root.resolve("README.md")))
         assertEquals("arquivo novo do usuario", Files.readString(root.resolve("notas.txt")))
         assertFalse(Files.exists(root.resolve("src/novo")))
-        assertTrue(Files.exists(root.resolve("tomahawk/execucoes/registro.md")))
+        assertTrue(Files.exists(root.resolve("ironhawk/tomahawk/execucoes/registro.md")))
         assertEquals(1, undo.removed)
         assertEquals(head, git(root, "rev-parse", "HEAD").trim())
-        assertEquals(status, git(root, "status", "--porcelain").lines().filterNot { it.contains("tomahawk/") }.joinToString("\n"))
+        assertEquals(status, git(root, "status", "--porcelain").lines().filterNot { it.contains("ironhawk/") }.joinToString("\n"))
         assertEquals("Designar Alvo", Checkpoints.latest(root)?.label)
 
         val redo = Checkpoints.restore(root, undo.safety!!)

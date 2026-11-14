@@ -71,7 +71,7 @@ alvo como resolvido e você vê o resultado em verde no editor.
     <td align="center" width="33%">
       <h3>📨 2. Envie as ordens</h3>
       <b>Disparar Este Arquivo</b> ou <b>Disparar Todos</b> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) gera
-      <code>iron-dome/ordem-interceptacao-&lt;id&gt;.md</code> com cada comentário e o trecho de código.
+      <code>ironhawk/iron-dome/ordem-interceptacao-&lt;id&gt;.md</code> com cada comentário e o trecho de código.
     </td>
     <td align="center" width="33%">
       <h3>💥 3. A IA intercepta</h3>
@@ -88,7 +88,7 @@ Cada mecanismo é independente e tem uma aba própria no painel lateral **Iron D
 | Mecanismo | Missão | Onde fica |
 | --- | --- | --- |
 | 📡 [**Radar**](#radar) | Marca os alvos: comentários inline que acompanham o código, e guarda o histórico de revisões. | Editor e aba Radar |
-| 🎯 [**Centro de Comando**](#centro-de-comando) | Transforma os alvos em ordens de interceptação em Markdown e evita o fogo amigo. | Barra do editor e `iron-dome/` |
+| 🎯 [**Centro de Comando**](#centro-de-comando) | Transforma os alvos em ordens de interceptação em Markdown e evita o fogo amigo. | Barra do editor e `ironhawk/iron-dome/` |
 | 💥 [**Raio de Impacto**](#raio-de-impacto) | Mede o estrago que uma mudança pode causar antes de você mexer na classe. | Aba Raio de Impacto |
 | 👁️ [**Sentinela**](#sentinela) | Vigia o perímetro: tudo o que ainda não foi commitado, com o diff a um clique. | Aba Sentinela |
 | 🛡️ [**Escudo**](#escudo) | Executa os testes JUnit e mostra o resultado agrupado e com os nomes formatados. | Aba Escudo |
@@ -141,12 +141,12 @@ aberta com um indicador por status e a barra de proporção entre eles.
 
 ### 🗄️ Histórico: consolidar e limpar
 
-Cada revisão encerrada continua em `iron-dome/` como um `ordem-interceptacao-<id>.md`, e com o tempo a
+Cada revisão encerrada continua em `ironhawk/iron-dome/` como um `ordem-interceptacao-<id>.md`, e com o tempo a
 lista cresce. Dois botões na barra da aba Radar resolvem isso:
 
 | Botão | O que faz |
 | --- | --- |
-| 🔀 **Consolidar Histórico** | Junta todas as revisões encerradas em **`iron-dome/historico-interceptacoes.md`** e apaga os `.md` avulsos. Nada se perde: cada revisão vira uma seção, com os trechos de código e os comentários. Consolidar de novo acrescenta as novas revisões ao mesmo arquivo. |
+| 🔀 **Consolidar Histórico** | Junta todas as revisões encerradas em **`ironhawk/iron-dome/historico-interceptacoes.md`** e apaga os `.md` avulsos. Nada se perde: cada revisão vira uma seção, com os trechos de código e os comentários. Consolidar de novo acrescenta as novas revisões ao mesmo arquivo. |
 | 🧹 **Limpar Histórico** | Apaga os `.md` das revisões encerradas e o histórico consolidado. Antes, mostra quantos comentários vão sair e avisa se algum ainda está pendente; a mesma janela oferece **Consolidar em Vez Disso**. |
 
 - 🛡️ **A revisão aberta nunca entra:** só as encerradas são consolidadas ou apagadas.
@@ -466,7 +466,7 @@ foi atendido.
    Token** na aba, com um token pessoal classic com escopo `repo`.
 2. **Revise.** **Revisar Este PR** traz o código do PR para a branch local `pr-<número>` e entra no modo
    revisão do PR; se você já está na `pr-<número>`, no head do PR, só entra no modo revisão. Outra branch no mesmo
-   commit, como a do autor do PR, não conta: ela pode ter alterações não commitadas. O que não estiver commitado (fora de `iron-dome/` e
+   commit, como a do autor do PR, não conta: ela pode ter alterações não commitadas. O que não estiver commitado (fora de `ironhawk/` e
    `.idea/`) vai para o stash, com a lista dos arquivos e a sua aprovação antes. Não há botão de checkout
    à parte: se o PR receber commits novos, o mesmo botão vira **Atualizar ou Encerrar Revisão**.
    **Encerrar Revisão** oferece voltar para a branch de antes e devolver o stash. O modo revisão só vale na
@@ -517,7 +517,7 @@ foi atendido.
    **Excluir** apaga o comentário selecionado: o não enviado, o rascunho (no GitHub também) ou o publicado
    (no GitHub só se você escolher). **Excluir Todos** faz isso com o PR inteiro: os não enviados, o rascunho
    descartado no GitHub e os publicados, que só saem do GitHub se você marcar.
-5. **Verifique.** Os pedidos ficam em `iron-dome/pull-requests/pr-<número>.md`. **Verificar Pedidos**
+5. **Verifique.** Os pedidos ficam em `ironhawk/iron-dome/pull-requests/pr-<número>.md`. **Verificar Pedidos**
    confere cada um de dois jeitos:
 
 | Verificação | Como funciona |
@@ -593,7 +593,7 @@ na sua máquina sobre o projeto aberto. Enquanto ela trabalha, a aba que pediu (
 aba Arsenal mostram uma barra com o passo atual (como *Lendo src/Frete.kt*), o tempo, a última linha que a
 IA escreveu e **Cancelar**; o ícone da aba e o do painel viram o ícone de IA, para dar para ver mesmo com o
 painel fechado. Execuções sem aba própria, como as da Caixa-Preta, aparecem em todas as abas. Cada execução fica
-registrada em `iron-dome/ia/` com o pedido, os passos, os arquivos alterados e a resposta (**Ver Resposta**).
+registrada em `ironhawk/iron-dome/ia/` com o pedido, os passos, os arquivos alterados e a resposta (**Ver Resposta**).
 
 No Windows, o CLI também pode estar no **WSL**: em **Onde está o CLI**, escolha **No WSL** e a distribuição (a lista
 vem do `wsl.exe`, sem as internas do Docker Desktop). O plugin roda o CLI dentro dela pelo shell de login, que acha o
@@ -609,7 +609,7 @@ dentro. Sem o devcontainer, a IA não roda na aba, e o aviso oferece criá-lo; o
 só roda no terminal. No terminal, cada pedido abre uma aba do terminal com o CLI à vista: o Cursor
 abre interativo, para acompanhar e conversar com a IA (vale o login do `agent login`; a chave de API não vai para o
 terminal, para não ficar no histórico do shell), e o Antigravity roda o pedido e mostra a resposta. A IA grava a
-resposta final em `iron-dome/ia/respostas/`, e o plugin segue dali como na aba: os rascunhos do Revisar com IA, a
+resposta final em `ironhawk/iron-dome/ia/respostas/`, e o plugin segue dali como na aba: os rascunhos do Revisar com IA, a
 análise no `bug.md`, os avisos. Enquanto isso, a barra da aba mostra **Mostrar Terminal** e **Parar de Esperar**.
 Sem o plugin de terminal da IDE, a IA roda na aba.
 
@@ -629,15 +629,15 @@ comando, o login ou o PATH.
 
 Revisar não é alterar: **enquanto um PR está em revisão na Patrulha, a IA não altera o código**, porque o checkout
 local é o do PR. Os disparos do Radar e o Corrigir com IA ficam desligados até você sair da revisão. E, em qualquer
-pedido que altera código, a IA é instruída a não seguir os comentários de pull request (`iron-dome/pull-requests/`
-e as revisões de PR em `iron-dome/ia/`); nos pedidos só de leitura, também no terminal, ela é instruída a não
+pedido que altera código, a IA é instruída a não seguir os comentários de pull request (`ironhawk/iron-dome/pull-requests/`
+e as revisões de PR em `ironhawk/iron-dome/ia/`); nos pedidos só de leitura, também no terminal, ela é instruída a não
 alterar nada.
 
 **Contenção da IA**, sempre ligada, para a IA não danificar a máquina nem o projeto:
 
 | Proteção | Como funciona |
 | --- | --- |
-| ⏪ Ponto de restauração | Antes de cada tarefa que altera arquivos, o plugin tira uma foto dos arquivos do projeto no git, inclusive o que não foi commitado nem adicionado, numa referência própria (`refs/iron-dome/antes-da-ia/`, as 10 últimas), sem mexer no seu índice, na branch nem nos stashes. O aviso do fim traz **Desfazer Alterações da IA**: o que a IA alterou ou apagou volta, o que ela criou sai, e os registros em `iron-dome/ia/` ficam. Fora de um repositório git, o ponto é o do Local History da IDE, que só volta o que a IDE já tinha lido. |
+| ⏪ Ponto de restauração | Antes de cada tarefa que altera arquivos, o plugin tira uma foto dos arquivos do projeto no git, inclusive o que não foi commitado nem adicionado, numa referência própria (`refs/iron-dome/antes-da-ia/`, as 10 últimas), sem mexer no seu índice, na branch nem nos stashes. O aviso do fim traz **Desfazer Alterações da IA**: o que a IA alterou ou apagou volta, o que ela criou sai, e os registros em `ironhawk/iron-dome/ia/` ficam. Fora de um repositório git, o ponto é o do Local History da IDE, que só volta o que a IDE já tinha lido. |
 | 🔒 Ambiente contido | Na aba, a IA roda sem `git push` (qualquer push dela falha; buscar do remoto continua), sem o git pedir senha e sem os tokens, senhas e chaves do ambiente que o CLI não usa, como `GITHUB_TOKEN` ou `AWS_SECRET_ACCESS_KEY`. |
 | 🚫 Bloqueio no CLI | O Claude Code recusa antes de rodar os comandos destrutivos, mexer no `.git` e ler ou alterar `~/.ssh` e `~/.aws`. No WSL, e fora do Windows, o Cursor roda no sandbox dele. |
 | 🧯 Vigia | O plugin confere cada passo que o CLI informa e para a IA na hora se ela tentar apagar pastas (`rm -rf`, `Remove-Item -Recurse`, `rd /s`), descartar alterações ou reescrever o histórico do git (`reset --hard`, `clean -f`, `checkout --`, `rebase`, `push`), rodar como administrador, formatar disco, desligar a máquina, alterar o registro, baixar e executar scripts, ou escrever fora do projeto ou no `.git`. O aviso diz o que ela tentou. |
@@ -688,7 +688,7 @@ era esperado.
 - 💾 **Gerar só local:** em **Destino**, escolha entre enviar ao Linear ou **Gerar só local**, que cria o
   relatório sem rede e abre o `bug.md` no editor. Nos dois casos, cada relatório ganha uma pasta
   `bug-<data>/`, com o `bug.md`, o `print.png` e o `gravacao.gif`, dentro da **Pasta local**: por padrão
-  `~/iron-dome-ia/bugs/`, com atalhos para a `iron-dome/bugs/` do projeto ou outra pasta qualquer. A pasta e o
+  `~/iron-dome-ia/bugs/`, com atalhos para a `ironhawk/iron-dome/bugs/` do projeto ou outra pasta qualquer. A pasta e o
   destino escolhidos ficam para o próximo relatório. Se o envio ao Linear falhar, a notificação oferece
   **Tentar de Novo**.
 
@@ -741,9 +741,9 @@ O `.md` gerado já traz as instruções para a IA. Para que ela trate as revisõ
 pedir, adicione ao `AGENTS.md` (ou a uma rule do Cursor) do projeto revisado:
 
 ```markdown
-## Revisões em `iron-dome/`
+## Revisões em `ironhawk/iron-dome/`
 
-Quando houver arquivos em `iron-dome/ordem-interceptacao-*.md` com comentários pendentes (`[ ]`), trate cada
+Quando houver arquivos em `ironhawk/iron-dome/ordem-interceptacao-*.md` com comentários pendentes (`[ ]`), trate cada
 um no arquivo indicado na seção dele (código, spec, documentação ou configuração), localizando o
 ponto pelo trecho citado, e marque-o como `[x]` ao terminar. Não edite o restante do `.md`.
 Comentários de arquivo inteiro valem para o arquivo todo, e os de pacote inteiro, para todos os
@@ -755,7 +755,7 @@ sem consulta. Nos de `**Modo:** discutir antes de alterar`, siga o modo de discu
 escreva a análise completa (por que o código está assim, se o apontamento procede e o impacto de
 manter, alterar ou remover), de 2 a 5 opções com prévia da alteração e a sua recomendação, discuta
 com o usuário e só altere depois da decisão final.
-O arquivo `iron-dome/historico-interceptacoes.md` é só histórico: não aplique nem marque nada nele.
+O arquivo `ironhawk/iron-dome/historico-interceptacoes.md` é só histórico: não aplique nem marque nada nele.
 ```
 
 > [!TIP]
@@ -782,7 +782,7 @@ Patrulha, que lê e comenta os pull requests do seu repositório no GitHub com a
 </details>
 
 <details>
-<summary><b>A pasta <code>iron-dome/</code> vai encher de arquivos?</b></summary>
+<summary><b>A pasta <code>ironhawk/iron-dome/</code> vai encher de arquivos?</b></summary>
 
 Não precisa. Na aba Radar, **Consolidar Histórico** junta todas as revisões encerradas num único
 `historico-interceptacoes.md` e apaga os avulsos, e **Limpar Histórico** apaga o histórico de vez. A

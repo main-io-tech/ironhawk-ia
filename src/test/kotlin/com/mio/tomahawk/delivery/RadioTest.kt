@@ -71,7 +71,7 @@ class RadioTest {
         assertTrue(text, "### @rafa (autor do PR)" in text)
         assertTrue(text, "## Anotações do autor para a resposta\n\nconcordo, vou trocar" in text)
 
-        val prompt = DeliveryWriter.replyPrompt("tomahawk/pedidos/r.md", "rafa", 7, "001-albuns", hasNotes = true)
+        val prompt = DeliveryWriter.replyPrompt("ironhawk/tomahawk/pedidos/r.md", "rafa", 7, "001-albuns", hasNotes = true)
         assertTrue("@rafa" in prompt && "#7" in prompt && "git show 001-albuns:path" in prompt && "notes of the author" in prompt)
     }
 }

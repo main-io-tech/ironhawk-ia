@@ -97,8 +97,31 @@ open class MechanismTree(model: TreeModel, private val icon: Icon, private val t
     }
 }
 
-/** Lista de uma aba, com o estado vazio com o ícone do mecanismo. */
-open class MechanismList<T>(model: ListModel<T>, private val icon: Icon, private val tone: Tone) : JBList<T>(model) {
+/**
+ * Lista de uma aba, com o estado vazio com o ícone do mecanismo. Com [fitWidth], as linhas acompanham a largura da
+ * aba e o renderer quebra o texto nela.
+ */
+open class MechanismList<T>(
+    model: ListModel<T>,
+    private val icon: Icon,
+    private val tone: Tone,
+    private val fitWidth: Boolean = false,
+) : JBList<T>(model) {
+
+    private var lastWidth = -1
+
+    override fun getScrollableTracksViewportWidth() = fitWidth || super.getScrollableTracksViewportWidth()
+
+    override fun setBounds(x: Int, y: Int, width: Int, height: Int) {
+        super.setBounds(x, y, width, height)
+        if (fitWidth && width != lastWidth) {
+            lastWidth = width
+            SwingUtilities.invokeLater {
+                fixedCellHeight = 1
+                fixedCellHeight = -1
+            }
+        }
+    }
 
     override fun paintComponent(g: Graphics) {
         super.paintComponent(g)

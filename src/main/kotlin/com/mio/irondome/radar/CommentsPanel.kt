@@ -63,7 +63,7 @@ import javax.swing.tree.TreePath
 
 /**
  * Revisões em árvore (revisão > arquivo > comentário): a aberta, com o estado atual do editor, e as
- * gravadas em `iron-dome/`. Clique leva ao comentário no código.
+ * gravadas em `ironhawk/iron-dome/`. Clique leva ao comentário no código.
  */
 class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, true), Disposable {
 

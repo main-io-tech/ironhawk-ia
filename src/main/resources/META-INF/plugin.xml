@@ -11,7 +11,7 @@
     que podem ser ligados e desligados em Settings &gt; Tools &gt; IronHawk IA.</p>
     <h3>🛡️ Defesa: Iron Dome</h3>
     <p>Revise o código como num pull request e deixe a IA interceptar as correções. Marque qualquer linha ou trecho
-    como alvo no editor; ao salvar, as ordens de interceptação vão para <code>iron-dome/ordem-interceptacao-&lt;id&gt;.md</code>,
+    como alvo no editor; ao salvar, as ordens de interceptação vão para <code>ironhawk/iron-dome/ordem-interceptacao-&lt;id&gt;.md</code>,
     prontas para qualquer assistente de IA ler, aplicar e marcar como resolvidas.</p>
     <ul>
       <li><b>📡 Radar:</b> marque os alvos com o <b>+</b> da margem, duplo clique no número da linha ou
@@ -93,6 +93,7 @@
                                  id="com.mio.irondome.settings.agent"
                                  displayName="Arsenal (IA)"/>
         <postStartupActivity implementation="com.mio.ironhawk.ArsenalMigrationStartup"/>
+        <postStartupActivity implementation="com.mio.ironhawk.IronHawkFolderStartup" order="first"/>
         <errorHandler implementation="com.mio.irondome.caixapreta.IronDomeErrorSubmitter"/>
     </extensions>
 

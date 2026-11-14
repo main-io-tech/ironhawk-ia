@@ -19,9 +19,9 @@ class DefenseConfigurable : Configurable {
 
     override fun createComponent(): JComponent = FormBuilder.createFormBuilder()
         .addComponent(feedback)
-        .addComponent(comment("Fica em iron-dome/defesa/aprendizado-revisao.md: escreva ali também regras do time, uma por linha."))
+        .addComponent(comment("Fica em ironhawk/iron-dome/defesa/aprendizado-revisao.md: escreva ali também regras do time, uma por linha."))
         .addComponent(dossier)
-        .addComponent(comment("Decisões por classe em iron-dome/defesa/decisoes.md, numa seção ## Arquivo.kt com itens - ."))
+        .addComponent(comment("Decisões por classe em ironhawk/iron-dome/defesa/decisoes.md, numa seção ## Arquivo.kt com itens - ."))
         .addComponent(conflicts)
         .addComponent(comment("O aviso oferece pedir à IA uma síntese do que os dois comentários querem."))
         .addComponentFillVertically(JPanel(), 0)

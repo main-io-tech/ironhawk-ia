@@ -22,6 +22,7 @@ import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.jcef.JBCefApp
+import com.mio.ironhawk.IronHawkFolder
 import com.mio.irondome.base.DefenseTabs
 import com.mio.irondome.base.TabFailures
 import com.mio.irondome.base.rootPath
@@ -103,8 +104,8 @@ object BugReports {
         get() = PropertiesComponent.getInstance().getBoolean(LOCAL_ONLY_KEY)
         set(value) = PropertiesComponent.getInstance().setValue(LOCAL_ONLY_KEY, value)
 
-    /** Pasta `iron-dome/bugs` do projeto aberto, ao lado das revisões do Radar. */
-    fun projectFolder(project: Project): Path? = project.rootPath()?.let { Path.of(it, "iron-dome", "bugs") }
+    /** Pasta `ironhawk/iron-dome/bugs` do projeto aberto, ao lado das revisões do Radar. */
+    fun projectFolder(project: Project): Path? = project.rootPath()?.let { Path.of(it, IronHawkFolder.DEFENSE, "bugs") }
 
     /** [recording] é um arquivo temporário, movido para a pasta do relatório. */
     fun submit(project: Project, report: BugReport, screenshot: BufferedImage?, recording: Path?, folder: Path, sendToLinear: Boolean) {

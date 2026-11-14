@@ -47,7 +47,7 @@ enum class Verdict(val label: String) {
     }
 }
 
-/** Uma execução registrada em `tomahawk/execucoes/`, lida do cabeçalho do registro. */
+/** Uma execução registrada em `ironhawk/tomahawk/execucoes/`, lida do cabeçalho do registro. */
 data class RunRecord(
     val file: Path,
     val step: SddStep?,

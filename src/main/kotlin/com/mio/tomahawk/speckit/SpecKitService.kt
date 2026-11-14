@@ -54,7 +54,7 @@ class Snapshot(
 
 /**
  * Lê o Spec Kit do projeto fora da EDT e avisa as abas quando muda. Os arquivos de `.specify/`, `specs/`,
- * `tomahawk/` e das pastas de comandos dos agentes disparam uma nova leitura.
+ * `ironhawk/tomahawk/` e das pastas de comandos dos agentes disparam uma nova leitura.
  */
 @Service(Service.Level.PROJECT)
 class SpecKitService(private val project: Project) : Disposable {

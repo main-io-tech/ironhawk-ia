@@ -63,4 +63,30 @@ class SpecKitLayoutTest {
         assertTrue(claude.getValue(SddStep.SPECIFY).skill)
         assertEquals("-", claude.getValue(SddStep.SPECIFY).separator)
     }
+
+    @Test
+    fun `lista o que o Spec Kit instalou, de todas as integracoes, sem a specs`() {
+        val root = temp.root.toPath()
+        write(root, ".specify/memory/constitution.md")
+        write(root, ".claude/skills/speckit-specify/SKILL.md")
+        write(root, ".claude/skills/speckit-taskstoissues/SKILL.md")
+        write(root, ".claude/skills/minha-skill/SKILL.md")
+        write(root, ".cursor/commands/speckit.plan.md")
+        write(root, ".cursor/commands/outro.md")
+        write(root, ".github/prompts/speckit.tasks.prompt.md")
+        write(root, ".git/speckit.analyze.md")
+        write(root, "specs/001-first/spec.md")
+
+        val installed = SpecKitLayout(root).installed().map { root.relativize(it).toString().replace('\\', '/') }
+        assertEquals(
+            listOf(
+                ".specify",
+                ".claude/skills/speckit-specify",
+                ".claude/skills/speckit-taskstoissues",
+                ".cursor/commands/speckit.plan.md",
+                ".github/prompts/speckit.tasks.prompt.md",
+            ),
+            installed,
+        )
+    }
 }

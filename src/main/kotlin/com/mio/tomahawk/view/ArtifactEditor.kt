@@ -25,7 +25,7 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 
 /**
- * Os Markdown do Spec Kit (`specs/`, a constituição) e do Tomahawk (`tomahawk/`) abrem primeiro na
+ * Os Markdown do Spec Kit (`specs/`, a constituição) e do Tomahawk (`ironhawk/tomahawk/`) abrem primeiro na
  * Visualização, formatada; a aba de texto continua ao lado para editar.
  */
 class ArtifactEditorProvider : FileEditorProvider, DumbAware {

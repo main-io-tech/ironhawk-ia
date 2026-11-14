@@ -5,16 +5,19 @@ import com.intellij.execution.util.ExecUtil
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.messages.Topic
 import com.mio.tomahawk.base.TomahawkIcons
 import com.mio.tomahawk.speckit.SpecKitService
 import java.awt.datatransfer.StringSelection
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -56,6 +59,7 @@ object SpecKitSetup {
     private const val CHECK_TIMEOUT_MS = 30_000
     private const val WAIT_MS = 10 * 60_000L
     private const val POLL_MS = 3_000L
+    private const val MAX_LISTED = 12
     private val VERSION = Regex("""v?(\d+\.\d+\.\d+[\w.+-]*)""")
     private val UPDATE = Regex("""Update available:\s*v?(\S+)\s*\S+\s*v?(\d+\.\d+\.\d+[\w.+-]*)""")
     private val CRASH = Regex("""Traceback \(most recent call last\)|ModuleNotFoundError|ImportError""")
@@ -270,6 +274,66 @@ object SpecKitSetup {
             watch(started, { modified(specify) != before }) { ok ->
                 if (ok) notify("Spec Kit atualizado", "O specify foi trocado pela versão nova.", NotificationType.INFORMATION)
             }
+        }
+    }
+
+    /**
+     * Na EDT. Tira o Spec Kit do projeto: a `.specify/` e as skills e comandos `speckit` da IA; a `specs/` só se o
+     * usuário escolher. Apaga pela VFS, então o Local History da IDE guarda o que saiu.
+     */
+    fun remove(project: Project) {
+        if (job != null) return
+        val service = SpecKitService.getInstance(project)
+        val layout = service.layout() ?: return
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val targets = layout.installed()
+            val specs = layout.specsDir.takeIf { Files.isDirectory(it) }
+            ApplicationManager.getApplication().invokeLater({
+                if (targets.isEmpty()) {
+                    notify("Nada a remover", "O projeto não tem a pasta .specify/ nem comandos do Spec Kit.", NotificationType.INFORMATION)
+                    return@invokeLater
+                }
+                val shown = targets.take(MAX_LISTED).joinToString("\n") { "• " + layout.relative(it) } +
+                    if (targets.size > MAX_LISTED) "\n• e mais ${targets.size - MAX_LISTED}" else ""
+                val message = "Remover o Spec Kit deste projeto? Saem a constituição, os modelos e os comandos de SDD da IA:\n\n$shown\n\n" +
+                    (if (specs != null) "A pasta specs/ tem a spec, o plano e as tarefas de cada feature. Apagar ela também?\n\n" else "") +
+                    "O Local History da IDE guarda os arquivos apagados."
+                val options = if (specs != null) arrayOf("Remover e manter specs/", "Remover tudo, com specs/", Messages.getCancelButton())
+                else arrayOf("Remover", Messages.getCancelButton())
+                val choice = Messages.showDialog(project, message, "Remover o Spec Kit", options, 0, Messages.getWarningIcon())
+                if (choice < 0 || choice == options.lastIndex) return@invokeLater
+                val paths = if (specs != null && choice == 1) targets + listOf(specs) else targets
+                val failure = delete(project, layout.root, paths)
+                service.refresh(0)
+                if (failure == null) {
+                    notify("Spec Kit removido do projeto", "Saíram ${paths.size} item(ns). Para voltar, inicialize o Spec Kit de novo ou recupere pelo Local History.", NotificationType.INFORMATION)
+                } else {
+                    notify("O Spec Kit não saiu por inteiro", failure, NotificationType.ERROR)
+                }
+            }, project.disposed)
+        }
+    }
+
+    /** Apaga [paths] e as pastas que ficaram vazias por causa disso, sem passar de [root]; o erro, se houver. */
+    private fun delete(project: Project, root: Path, paths: List<Path>): String? {
+        val fs = LocalFileSystem.getInstance()
+        val base = fs.refreshAndFindFileByNioFile(root) ?: return "A pasta do projeto não foi encontrada."
+        val files = paths.mapNotNull(fs::refreshAndFindFileByNioFile)
+        return runCatching {
+            WriteCommandAction.writeCommandAction(project).withName("Remover o Spec Kit").run<IOException> {
+                val parents = files.mapNotNull { it.parent }.distinct()
+                files.filter { it.isValid }.forEach { it.delete(this) }
+                parents.forEach { prune(it, base) }
+            }
+        }.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
+    }
+
+    private fun prune(start: VirtualFile, root: VirtualFile) {
+        var dir: VirtualFile? = start
+        while (dir != null && dir != root && dir.isValid && dir.isDirectory && dir.children.isEmpty()) {
+            val parent = dir.parent
+            dir.delete(this)
+            dir = parent
         }
     }
 

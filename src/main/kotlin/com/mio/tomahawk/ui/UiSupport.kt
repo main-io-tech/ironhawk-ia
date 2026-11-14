@@ -6,7 +6,7 @@ import com.mio.tomahawk.view.ArtifactEditorProvider
 import com.mio.tomahawk.view.ArtifactFileEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
-import com.mio.tomahawk.base.Tone
+import com.mio.irondome.base.Tone
 import com.mio.tomahawk.run.RunStatus
 import com.mio.tomahawk.run.Verdict
 import com.mio.tomahawk.speckit.StepState

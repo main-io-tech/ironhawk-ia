@@ -41,7 +41,7 @@ import com.mio.tomahawk.run.AgentProvider as ContainerProvider
 
 /**
  * O que a IA fez: [answer] é a resposta final; [files] os arquivos que ela escreveu ou editou;
- * [transcript], o registro da execução em `iron-dome/ia/`.
+ * [transcript], o registro da execução em `ironhawk/iron-dome/ia/`.
  */
 class AgentResult(
     val task: AgentTask,
@@ -237,7 +237,7 @@ class AgentRunner(private val project: Project) {
     }
 
     /**
-     * Volta os arquivos do projeto para [checkpoint], marcado antes de [task]. Os registros da IA em `iron-dome/ia/`
+     * Volta os arquivos do projeto para [checkpoint], marcado antes de [task]. Os registros da IA em `ironhawk/iron-dome/ia/`
      * continuam, para conferir depois o que ela fez.
      */
     private fun undo(checkpoint: Checkpoint, task: AgentTask) {
@@ -525,7 +525,7 @@ class AgentRunner(private val project: Project) {
         process.destroyForcibly()
     }
 
-    /** Os arquivos que a IA mexeu aparecem atualizados no editor, e os `.md` de `iron-dome/` disparam as abas. */
+    /** Os arquivos que a IA mexeu aparecem atualizados no editor, e os `.md` de `ironhawk/iron-dome/` disparam as abas. */
     private fun refresh(result: AgentResult) {
         val base = project.rootPath()?.let { LocalFileSystem.getInstance().refreshAndFindFileByPath(it) } ?: return
         VfsUtil.markDirtyAndRefresh(true, true, true, base)
@@ -579,7 +579,7 @@ class AgentRunner(private val project: Project) {
     }
 
     /**
-     * Grava instruções longas num arquivo que o prompt manda ler, em `iron-dome/ia/pedidos/`; devolve o
+     * Grava instruções longas num arquivo que o prompt manda ler, em `ironhawk/iron-dome/ia/pedidos/`; devolve o
      * caminho relativo ao projeto.
      */
     fun writeInstructions(name: String, content: String): String? {

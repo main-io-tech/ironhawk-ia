@@ -86,7 +86,7 @@ data class ChangeRequest(
         get() = !deleted && !likelyDone && (code == CodeStatus.UNCHANGED || code == CodeStatus.MOVED)
 }
 
-/** Os pedidos de um PR, gravados em `iron-dome/pull-requests/pr-<número>.md`. */
+/** Os pedidos de um PR, gravados em `ironhawk/iron-dome/pull-requests/pr-<número>.md`. */
 data class PullRequestRecord(
     val number: Int,
     val title: String,

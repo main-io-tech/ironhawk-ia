@@ -42,7 +42,7 @@ class DiscardLocalChangesTest {
         write("src/Novo.kt", "val novo = 1\n")
         git("add", "src/Novo.kt")
         write("src/rascunho/Ideia.kt", "val ideia = 1\n")
-        write("iron-dome/ordem-interceptacao-1.md", "# revisão\n")
+        write("ironhawk/iron-dome/ordem-interceptacao-1.md", "# revisão\n")
         write(".idea/workspace.xml", "<project/>\n")
         write("build.log", "log\n")
 
@@ -52,11 +52,11 @@ class DiscardLocalChangesTest {
         assertEquals("val pedido = 1\n", read("src/Pedido.kt"))
         assertFalse("o novo que estava no index é apagado", Files.exists(root.resolve("src/Novo.kt")))
         assertFalse("a pasta nova vazia também sai", Files.exists(root.resolve("src/rascunho")))
-        assertTrue("as revisões ficam", Files.exists(root.resolve("iron-dome/ordem-interceptacao-1.md")))
+        assertTrue("as revisões ficam", Files.exists(root.resolve("ironhawk/iron-dome/ordem-interceptacao-1.md")))
         assertTrue("as configurações da IDE ficam", Files.exists(root.resolve(".idea/workspace.xml")))
         assertTrue("o ignorado pelo .gitignore fica", Files.exists(root.resolve("build.log")))
         assertEquals("", git("stash", "list"))
-        assertEquals(listOf("?? .idea/", "?? iron-dome/"), git("status", "--porcelain").lines().filter { it.isNotBlank() }.sorted())
+        assertEquals(listOf("?? .idea/", "?? ironhawk/"), git("status", "--porcelain").lines().filter { it.isNotBlank() }.sorted())
     }
 
     private fun write(path: String, text: String) {

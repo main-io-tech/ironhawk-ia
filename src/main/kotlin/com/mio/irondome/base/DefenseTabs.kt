@@ -124,7 +124,7 @@ internal class ProjectRootSelector : ComboBoxAction(), DumbAware {
         val current = project.rootPath()
         e.presentation.text = candidates.firstOrNull { it.path == current }?.name ?: current?.substringAfterLast('/') ?: "Projeto"
         e.presentation.icon = AllIcons.Nodes.Module
-        e.presentation.description = "O projeto que o Iron Dome vigia: os comentários, as alterações, o Git e a pasta iron-dome/ são dele"
+        e.presentation.description = "O projeto que o Iron Dome vigia: os comentários, as alterações, o Git e a pasta ironhawk/iron-dome/ são dele"
     }
 
     override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {

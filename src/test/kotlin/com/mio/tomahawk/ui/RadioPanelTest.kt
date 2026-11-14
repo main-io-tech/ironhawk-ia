@@ -1,9 +1,11 @@
-package com.mio.tomahawk.ui.web
+package com.mio.tomahawk.ui
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.ExtensionTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.util.ui.UIUtil
+import com.mio.irondome.base.MechanismTree
 import com.mio.tomahawk.delivery.DeliveryRequest
 import com.mio.tomahawk.delivery.DeliveryResult
 import com.mio.tomahawk.delivery.LocalState
@@ -16,11 +18,12 @@ import com.mio.tomahawk.delivery.RadarSnapshot
 import com.mio.tomahawk.delivery.RemoteInfo
 import com.mio.tomahawk.delivery.ThreadKind
 import com.mio.tomahawk.delivery.WatchedPr
-import java.nio.file.Files
-import java.nio.file.Path
+import javax.swing.JEditorPane
+import javax.swing.tree.DefaultMutableTreeNode
+import javax.swing.tree.TreePath
 
-/** Monta o Rádio sobre um PR de exemplo e grava a página em build/preview. */
-class RadioWebTest : BasePlatformTestCase() {
+/** Monta o Rádio sobre um PR de exemplo, com o GitHub falso. */
+class RadioPanelTest : BasePlatformTestCase() {
 
     private class FakeGateway(private val snap: RadarSnapshot) : PullRequestGateway {
         override fun local(project: Project): LocalState? = null
@@ -61,20 +64,25 @@ class RadioWebTest : BasePlatformTestCase() {
         ),
     )
 
-    fun testRendersTheConversations() {
+    fun testListsThePendingConversationsAndShowsTheChosenOne() {
         ExtensionTestUtil.maskExtensions(PullRequestGateway.EP, listOf(FakeGateway(snap)), testRootDisposable)
         val radar = PrRadarService.getInstance(project)
         PrRadarService::class.java.getDeclaredField("snapshot").apply { isAccessible = true }.set(radar, snap)
-        val tab = RadioWeb(project)
-        Disposer.register(testRootDisposable, tab)
-        RadioWeb::class.java.getDeclaredField("filter").apply { isAccessible = true }.set(tab, "all")
-        val html = tab.html()
-        val out = Path.of(System.getProperty("user.dir"), "build", "preview")
-        Files.createDirectories(out)
-        Files.writeString(out.resolve("web-radio.html"), html)
-        assertTrue(html.contains("class=\"code folded\""))
-        assertTrue(html.contains("data-fold=\"t|t:1\""))
-        assertTrue(html.contains("done folded\" data-form=\"reply\" data-fold=\"t|t:3\""))
-        assertTrue(html.contains("<td class=\"gt\"><span>121</span><span>121</span></td>"))
+        val panel = RadioPanel(project)
+        Disposer.register(testRootDisposable, panel)
+        val tree = UIUtil.findComponentOfType(panel, MechanismTree::class.java)!!
+        val root = tree.model.root as DefaultMutableTreeNode
+        assertEquals(1, root.childCount)
+        val pr = root.getChildAt(0) as DefaultMutableTreeNode
+        assertEquals("a resolvida fica fora do filtro de pendentes", 2, pr.childCount)
+
+        tree.selectionPath = TreePath((pr.getChildAt(0) as DefaultMutableTreeNode).path)
+        val hunk = UIUtil.findComponentOfType(panel, HunkView::class.java)!!
+        assertTrue("a conversa de código mostra o trecho do diff", hunk.isVisible)
+        val comments = UIUtil.findComponentOfType(panel, JEditorPane::class.java)!!
+        assertTrue(comments.text.contains("@ana") && comments.text.contains("Map"))
+
+        tree.selectionPath = TreePath((pr.getChildAt(1) as DefaultMutableTreeNode).path)
+        assertFalse("a conversa geral não tem trecho", hunk.isVisible)
     }
 }

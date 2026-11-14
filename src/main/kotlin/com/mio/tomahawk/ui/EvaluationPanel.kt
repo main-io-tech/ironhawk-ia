@@ -17,17 +17,20 @@ import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.util.ui.tree.TreeUtil
-import com.mio.tomahawk.base.MechanismTree
-import com.mio.tomahawk.base.RichTreeCellRenderer
-import com.mio.tomahawk.base.Segment
-import com.mio.tomahawk.base.Stat
-import com.mio.tomahawk.base.SummaryHeader
-import com.mio.tomahawk.base.Tone
+import com.mio.irondome.base.MechanismTree
+import com.mio.irondome.base.RichTreeCellRenderer
+import com.mio.irondome.base.Segment
+import com.mio.irondome.base.Stat
+import com.mio.irondome.base.SummaryHeader
+import com.mio.irondome.base.Tone
+import com.mio.irondome.base.wrapping
+import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.base.TomahawkIcons
 import com.mio.tomahawk.base.refreshAction
 import com.mio.tomahawk.run.Mission
 import com.mio.tomahawk.run.MissionRunner
 import com.mio.tomahawk.run.RunMode
+import com.mio.tomahawk.run.TomahawkSettings
 import com.mio.tomahawk.speckit.CheckItem
 import com.mio.tomahawk.speckit.Checklist
 import com.mio.tomahawk.speckit.FeatureReport
@@ -67,7 +70,7 @@ private sealed class EvalNode(val file: Path?, val line: Int = 0) {
     class Checklists(val lists: List<Checklist>) : EvalNode(lists.firstOrNull()?.file)
     class ChecklistFile(val list: Checklist) : EvalNode(list.file)
     class Check(file: Path, val item: CheckItem) : EvalNode(file, item.line)
-    class Missing(val label: String, val hint: String) : EvalNode(null)
+    class Missing(val label: String, val step: SddStep) : EvalNode(null)
 }
 
 /**
@@ -101,7 +104,26 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
         toolbar = ActionManager.getInstance().createActionToolbar(
             "Tomahawk.EvaluationToolbar",
             DefaultActionGroup(
-                refreshAction { service.refresh(0) },
+                object : DumbAwareAction("Abrir", "Abre o artefato na Visualização, ou o trecho no texto; o que falta abre no Lançador", AllIcons.Actions.EditSource) {
+                    override fun actionPerformed(e: AnActionEvent) = openSelected()
+                    override fun update(e: AnActionEvent) {
+                        e.presentation.isEnabled = selectedNode().let { it?.file != null || it is EvalNode.Missing }
+                    }
+                    override fun getActionUpdateThread() = ActionUpdateThread.EDT
+                },
+                object : DumbAwareAction("Tornar Ativa", "Torna a feature selecionada a ativa para os comandos do Spec Kit", AllIcons.Actions.SetDefault) {
+                    override fun actionPerformed(e: AnActionEvent) {
+                        (selectedNode() as? EvalNode.Feature)?.let { service.activate(it.report.dir) }
+                    }
+                    override fun update(e: AnActionEvent) {
+                        e.presentation.isEnabled = (selectedNode() as? EvalNode.Feature)?.active == false
+                    }
+                    override fun getActionUpdateThread() = ActionUpdateThread.EDT
+                },
+                Separator.getInstance(),
+                launchAction(SddStep.ANALYZE, AllIcons.Actions.Checked),
+                launchAction(SddStep.CONVERGE, TomahawkIcons.avaliacao),
+                Separator.getInstance(),
                 object : DumbAwareToggleAction("Só a Feature Ativa", "Mostra só a feature ativa ou todas as de specs/", AllIcons.General.Filter) {
                     override fun isSelected(e: AnActionEvent) = onlyActive
                     override fun setSelected(e: AnActionEvent, state: Boolean) {
@@ -113,11 +135,10 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
                 actions.createExpandAllAction(expander, tree),
                 actions.createCollapseAllAction(expander, tree),
                 Separator.getInstance(),
-                launchAction(SddStep.ANALYZE, AllIcons.Actions.Checked),
-                launchAction(SddStep.CONVERGE, TomahawkIcons.avaliacao),
+                refreshAction { service.refresh(0) },
             ),
             true,
-        ).apply { targetComponent = this@EvaluationPanel }.component
+        ).apply { targetComponent = this@EvaluationPanel }.wrapping().component
         tree.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount == 2) openSelected()
@@ -145,14 +166,23 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
             override fun update(e: AnActionEvent) {
                 val snapshot = service.snapshot
                 e.presentation.text = "${step.codename} (${snapshot.invocation(step)})"
-                e.presentation.isEnabled = snapshot.active?.tasks != null && runner.progress == null && step in snapshot.commands
+                e.presentation.isEnabled = snapshot.active?.tasks != null && runner.progress == null && step in snapshot.commands && TomahawkSettings.ready
+                e.presentation.description = if (TomahawkSettings.ready) step.purpose else "Teste a integração com a IA no Arsenal"
             }
 
             override fun getActionUpdateThread() = ActionUpdateThread.EDT
         }
 
+    private fun selectedNode(): EvalNode? = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? EvalNode
+
+    /** O artefato abre na Visualização, ou o trecho no texto; o que ainda não foi gerado abre a etapa no Lançador. */
     private fun openSelected() {
-        val node = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? EvalNode ?: return
+        val node = selectedNode() ?: return
+        if (node is EvalNode.Missing) {
+            project.messageBus.syncPublisher(AttackTabs.GOTO).goto(node.step)
+            AttackTabs.showTab(project, AttackTabs.LAUNCHER)
+            return
+        }
         node.file?.let { openFile(project, it, node.line) }
     }
 
@@ -196,7 +226,7 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
         val node = DefaultMutableTreeNode(EvalNode.Feature(report, active))
         val spec = report.spec
         if (spec == null) {
-            node.add(DefaultMutableTreeNode(EvalNode.Missing("spec.md", "lance Designar Alvo")))
+            node.add(DefaultMutableTreeNode(EvalNode.Missing("spec.md", SddStep.SPECIFY)))
         } else {
             node.add(DefaultMutableTreeNode(EvalNode.Spec(report)).apply {
                 spec.stories.forEach { add(DefaultMutableTreeNode(EvalNode.Story(spec.file, it))) }
@@ -209,7 +239,7 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
         }
         val plan = report.plan
         if (plan == null) {
-            if (spec != null) node.add(DefaultMutableTreeNode(EvalNode.Missing("plan.md", "lance Plano de Voo")))
+            if (spec != null) node.add(DefaultMutableTreeNode(EvalNode.Missing("plan.md", SddStep.PLAN)))
         } else {
             node.add(DefaultMutableTreeNode(EvalNode.Plan(report)).apply {
                 plan.context.forEach { (key, value) -> add(DefaultMutableTreeNode(EvalNode.Context(plan.file, key, value))) }
@@ -222,7 +252,7 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
         }
         val tasks = report.tasks
         if (tasks == null) {
-            if (plan != null) node.add(DefaultMutableTreeNode(EvalNode.Missing("tasks.md", "lance Waypoints")))
+            if (plan != null) node.add(DefaultMutableTreeNode(EvalNode.Missing("tasks.md", SddStep.TASKS)))
         } else {
             node.add(DefaultMutableTreeNode(EvalNode.Tasks(report)).apply {
                 tasks.phases.forEach { phase ->
@@ -405,7 +435,7 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
                 is EvalNode.Missing -> {
                     row.icon(AllIcons.General.Add)
                     row.text(node.label, SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                    row.text("ainda não gerado: ${node.hint}", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+                    row.text("ainda não gerado: duplo clique lança ${node.step.codename} no Lançador", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
                 }
                 null -> Unit
             }

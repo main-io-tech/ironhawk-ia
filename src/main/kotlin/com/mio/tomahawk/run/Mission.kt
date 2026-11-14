@@ -1,5 +1,6 @@
 package com.mio.tomahawk.run
 
+import com.mio.ironhawk.IronHawkFolder
 import com.mio.tomahawk.speckit.SddStep
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -111,9 +112,9 @@ object MissionPrompt {
     }
 }
 
-/** Onde ficam os registros e os pedidos das missões: `tomahawk/execucoes/` e `tomahawk/pedidos/`. */
+/** Onde ficam os registros e os pedidos das missões: `ironhawk/tomahawk/execucoes/` e `ironhawk/tomahawk/pedidos/`. */
 object RunStore {
-    const val DIR = "tomahawk"
+    const val DIR = IronHawkFolder.ATTACK
     const val RUNS_DIR = "execucoes"
     const val INPUTS_DIR = "pedidos"
     private const val MAX_RUNS = 300
@@ -136,7 +137,7 @@ object RunStore {
 
     fun newName(step: SddStep, now: LocalDateTime = LocalDateTime.now()): String = "${now.format(FILE_TIME)}-${step.command}.md"
 
-    /** Grava a entrada do usuário em `tomahawk/pedidos/`; devolve o caminho relativo à raiz. */
+    /** Grava a entrada do usuário em `ironhawk/tomahawk/pedidos/`; devolve o caminho relativo à raiz. */
     fun writeInput(root: Path, name: String, text: String): String {
         val dir = root.resolve(DIR).resolve(INPUTS_DIR)
         Files.createDirectories(dir)

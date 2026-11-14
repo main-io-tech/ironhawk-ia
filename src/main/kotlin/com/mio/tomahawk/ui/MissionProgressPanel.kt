@@ -14,12 +14,12 @@ import com.intellij.util.ui.GraphicsUtil
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import com.mio.tomahawk.base.IconTile
-import com.mio.tomahawk.base.Pill
-import com.mio.tomahawk.base.StatChip
-import com.mio.tomahawk.base.Tone
+import com.mio.irondome.base.IconTile
+import com.mio.irondome.base.Pill
+import com.mio.irondome.base.StatChip
+import com.mio.irondome.base.Tone
 import com.mio.tomahawk.base.TomahawkIcons
-import com.mio.tomahawk.base.WrapText
+import com.mio.irondome.base.WrapText
 import com.intellij.util.ui.WrapLayout
 import com.mio.tomahawk.run.MissionRunner
 import java.awt.BorderLayout

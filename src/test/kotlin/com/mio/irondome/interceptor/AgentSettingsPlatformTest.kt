@@ -1,7 +1,9 @@
 package com.mio.irondome.interceptor
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.mio.ironhawk.ArsenalWeb
+import com.intellij.testFramework.PlatformTestUtil
+import com.mio.ironhawk.ArsenalPanel
+import com.mio.ironhawk.panelText
 import com.mio.ironhawk.IronHawkSystem
 import java.nio.file.Files
 
@@ -62,12 +64,12 @@ class AgentSettingsPlatformTest : BasePlatformTestCase() {
         }
     }
 
-    fun testTheWebTabShowsEveryCliAndTheState() {
+    fun testTheArsenalShowsEveryCliAndTheState() {
         AgentSettings.autoSetupTried = true
         IronHawkSystem.ATTACK.enabled = false
-        val tab = ArsenalWeb(project)
+        val tab = ArsenalPanel(project)
         try {
-            val html = tab.html()
+            val html = panelText(tab)
             AgentProvider.entries.forEach { assertTrue("${it.title} no seletor", it.title in html) }
             assertTrue("Configuração automática" in html)
             assertTrue("Argumentos extras" in html)
@@ -77,7 +79,8 @@ class AgentSettingsPlatformTest : BasePlatformTestCase() {
             assertTrue("a contenção aparece no Arsenal", "Contenção da IA" in html && "Desfazer Alterações da IA" in html)
 
             AgentSettings.confirmWrites = false
-            val off = tab.html()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            val off = panelText(tab)
             assertTrue("dá para voltar a perguntar", "Voltar a perguntar antes de alterar arquivos" in off)
         } finally {
             AgentSettings.confirmWrites = true

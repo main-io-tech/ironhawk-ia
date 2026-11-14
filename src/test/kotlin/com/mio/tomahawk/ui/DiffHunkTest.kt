@@ -1,6 +1,6 @@
-package com.mio.tomahawk.ui.web
+package com.mio.tomahawk.ui
 
-import com.mio.tomahawk.ui.web.HunkLine.Kind
+import com.mio.tomahawk.ui.HunkLine.Kind
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

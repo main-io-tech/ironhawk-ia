@@ -86,8 +86,8 @@ class RunTest {
             AgentCommand.terminal(AgentProvider.CLAUDE, "claude", "go", null, extra, ShellKind.POSIX),
         )
         assertEquals(
-            "& 'agent' '-p' '--trust' '--mode' 'ask' '--output-format' 'text' '--approve-mcps' 'OK' | Out-File -Encoding utf8 'tomahawk/testes/t.md'",
-            AgentCommand.terminal(AgentProvider.CURSOR, "agent", "OK", null, extra, ShellKind.POWERSHELL, interactive = false, output = "tomahawk/testes/t.md"),
+            "& 'agent' '-p' '--trust' '--mode' 'ask' '--output-format' 'text' '--approve-mcps' 'OK' | Out-File -Encoding utf8 'ironhawk/tomahawk/testes/t.md'",
+            AgentCommand.terminal(AgentProvider.CURSOR, "agent", "OK", null, extra, ShellKind.POWERSHELL, interactive = false, output = "ironhawk/tomahawk/testes/t.md"),
         )
         assertEquals(
             "'claude' '-p' '--allowedTools' 'Read,Grep,Glob' '--permission-mode' 'dontAsk' '--approve-mcps' 'OK' > 't.md'",
@@ -101,12 +101,12 @@ class RunTest {
             Mission(SddStep.PLAN, "Kotlin", "specs/001-x"),
             "/speckit-plan",
             ".claude/skills/speckit-plan/SKILL.md",
-            "tomahawk/pedidos/x.md",
+            "ironhawk/tomahawk/pedidos/x.md",
             interactive = false,
         )
         assertTrue(prompt.contains("/speckit-plan"))
         assertTrue(prompt.contains(".claude/skills/speckit-plan/SKILL.md"))
-        assertTrue(prompt.contains("tomahawk/pedidos/x.md"))
+        assertTrue(prompt.contains("ironhawk/tomahawk/pedidos/x.md"))
         assertTrue(prompt.contains("specs/001-x"))
         assertTrue(prompt.contains("non-interactive"))
         val specify = MissionPrompt.build(Mission(SddStep.SPECIFY, "", null), "/speckit.specify", null, null, interactive = true)

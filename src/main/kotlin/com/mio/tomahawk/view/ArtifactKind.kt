@@ -22,11 +22,13 @@ enum class ArtifactKind(val label: String, val emoji: String, val css: String) {
     companion object {
         fun of(file: Path): ArtifactKind {
             val name = file.fileName?.toString()?.lowercase().orEmpty()
-            val parts = file.toString().replace('\\', '/').lowercase().split('/')
+            val path = file.toString().replace('\\', '/').lowercase()
+            val parts = path.split('/')
             val parent = parts.getOrNull(parts.size - 2)
+            val ours = path.startsWith("${RunStore.DIR}/") || "/${RunStore.DIR}/" in path
             return when {
-                parent == RunStore.RUNS_DIR && RunStore.DIR in parts -> RUN
-                parent == RunStore.INPUTS_DIR && RunStore.DIR in parts -> INPUT
+                parent == RunStore.RUNS_DIR && ours -> RUN
+                parent == RunStore.INPUTS_DIR && ours -> INPUT
                 name == "constitution.md" -> CONSTITUTION
                 parent == "checklists" -> CHECKLIST
                 "contracts" in parts -> CONTRACT
@@ -41,7 +43,7 @@ enum class ArtifactKind(val label: String, val emoji: String, val css: String) {
         }
 
         /**
-         * O que o visualizador do Tomahawk abre: os Markdown de `specs/`, a constituição e os de `tomahawk/`, e os
+         * O que o visualizador do Tomahawk abre: os Markdown de `specs/`, a constituição e os de `ironhawk/tomahawk/`, e os
          * contratos OpenAPI (YAML ou JSON) das pastas `contracts/`.
          */
         fun handles(relative: String): Boolean {

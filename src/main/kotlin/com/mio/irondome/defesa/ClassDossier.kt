@@ -25,7 +25,7 @@ data class DossierEntry(
 
 /**
  * O dossiê por classe que acompanha os pedidos à IA: comentários anteriores (e o que foi feito com eles), correções
- * no histórico do git e decisões registradas em `iron-dome/defesa/decisoes.md`. Com ele, a IA diz "esse mesmo ponto
+ * no histórico do git e decisões registradas em `ironhawk/iron-dome/defesa/decisoes.md`. Com ele, a IA diz "esse mesmo ponto
  * gerou bug em março" em vez de recomendar no genérico, e o contexto fica menor que o diff inteiro.
  */
 object ClassDossier {

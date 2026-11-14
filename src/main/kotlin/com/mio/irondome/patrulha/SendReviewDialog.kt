@@ -179,7 +179,7 @@ internal class SendReviewDialog(
                 ),
             )
             .addComponent(JBScrollPane(general).apply { preferredSize = JBUI.size(640, 80) })
-            .addComponent(comment("Os pedidos ficam em iron-dome/pull-requests/pr-${pr.number}.md para você verificar depois se foram atendidos."))
+            .addComponent(comment("Os pedidos ficam em ironhawk/iron-dome/pull-requests/pr-${pr.number}.md para você verificar depois se foram atendidos."))
             .panel
     }
 

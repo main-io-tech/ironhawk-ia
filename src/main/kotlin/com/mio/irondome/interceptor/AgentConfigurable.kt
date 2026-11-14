@@ -20,6 +20,7 @@ import com.intellij.util.ui.UIUtil
 import com.mio.irondome.base.IronDomeIcons
 import com.mio.irondome.base.NoticeBox
 import com.mio.irondome.base.Tone
+import com.mio.ironhawk.ArsenalPanel
 import java.awt.FlowLayout
 import javax.swing.JButton
 import javax.swing.JComponent
@@ -102,7 +103,7 @@ class AgentConfigurable : Configurable {
             .addLabeledComponent("Argumentos extras:", extraArgs)
             .addComponentToRightColumn(comment("Vão para o CLI antes do pedido, separados por espaço; aspas agrupam."))
             .addLabeledComponent("Onde rodar a IA:", runMode)
-            .addComponentToRightColumn(JBLabel("<html>${InterceptorPanel.RUN_MODE_HINT}<br>${InterceptorPanel.ATTACK_RUN_MODE_HINT}</html>").apply {
+            .addComponentToRightColumn(JBLabel("<html>${ArsenalPanel.RUN_MODE_HINT}<br>${ArsenalPanel.ATTACK_RUN_MODE_HINT}</html>").apply {
                 componentStyle = UIUtil.ComponentStyle.SMALL
                 foreground = UIUtil.getContextHelpForeground()
             })

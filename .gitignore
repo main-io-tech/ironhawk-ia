@@ -7,5 +7,4 @@ out/
 .idea/
 *.iml
 
-iron-dome/
-/tomahawk/
+/ironhawk/

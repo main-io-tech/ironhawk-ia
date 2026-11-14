@@ -13,7 +13,7 @@ import com.mio.tomahawk.delivery.PullRequestGateway
 import com.mio.tomahawk.delivery.RadarSnapshot
 import com.mio.tomahawk.delivery.RemoteInfo
 import com.mio.tomahawk.delivery.ThreadKind
-import com.mio.tomahawk.run.RunStore
+import com.mio.ironhawk.IronHawkFolder
 import git4idea.commands.Git
 import git4idea.commands.GitCommand
 import git4idea.commands.GitLineHandler
@@ -280,7 +280,7 @@ class GitHubPullRequests : PullRequestGateway {
         const val MAX_DIFF = 60_000
         const val QUOTE_LINES = 4
 
-        /** As execuções do Tomahawk e as configurações da IDE não entram no PR. */
-        val KEPT_OUT = listOf(RunStore.DIR, ".idea")
+        /** O que o plugin grava, como as execuções do Tomahawk, e as configurações da IDE não entram no PR. */
+        val KEPT_OUT = listOf(IronHawkFolder.ROOT, ".idea")
     }
 }

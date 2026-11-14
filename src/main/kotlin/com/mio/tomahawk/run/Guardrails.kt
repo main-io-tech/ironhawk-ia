@@ -226,7 +226,7 @@ object Guardrails {
         }
     }
 
-    /** Grava as regras do Claude Code em `tomahawk/protecoes/claude.json` e devolve o arquivo. */
+    /** Grava as regras do Claude Code em `ironhawk/tomahawk/protecoes/claude.json` e devolve o arquivo. */
     fun writeClaudeSettings(root: Path): Path {
         val file = root.resolve(RunStore.DIR).resolve("protecoes").resolve("claude.json")
         Files.createDirectories(file.parent)

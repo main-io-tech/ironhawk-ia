@@ -109,9 +109,9 @@ class PullRequestDraftTest {
 
     @Test
     fun `prompts mandam ler o contexto e nao alterar nada`() {
-        val commit = DeliveryWriter.commitPrompt("tomahawk/pedidos/x.md")
-        assertTrue("tomahawk/pedidos/x.md" in commit && "Do not modify any file" in commit && "Conventional Commits" in commit)
-        val pr = DeliveryWriter.pullRequestPrompt("tomahawk/pedidos/y.md", "001-x", "develop", "specs/001-x")
+        val commit = DeliveryWriter.commitPrompt("ironhawk/tomahawk/pedidos/x.md")
+        assertTrue("ironhawk/tomahawk/pedidos/x.md" in commit && "Do not modify any file" in commit && "Conventional Commits" in commit)
+        val pr = DeliveryWriter.pullRequestPrompt("ironhawk/tomahawk/pedidos/y.md", "001-x", "develop", "specs/001-x")
         assertTrue("from the branch 001-x into develop" in pr && "specs/001-x" in pr && "Como testar" in pr)
     }
 

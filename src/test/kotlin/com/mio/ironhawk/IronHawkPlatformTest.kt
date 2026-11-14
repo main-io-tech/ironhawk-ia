@@ -83,23 +83,26 @@ class IronHawkPlatformTest : BasePlatformTestCase() {
 
     fun testTheArsenalShowsOnlyTheSystemsThatAreOn() {
         AgentSettings.autoSetupTried = true
-        val tab = ArsenalWeb(project)
+        val tab = ArsenalPanel(project)
         try {
-            val both = tab.html()
+            val both = panelText(tab)
             assertTrue("Contenção da IA" in both && "Proteções das missões" in both)
-            assertEquals("uma escolha só de onde rodar a IA", 1, Regex("name=\"runMode\"").findAll(both).count())
+            assertEquals("uma escolha só de onde rodar a IA", 1, Regex("Onde rodar a IA").findAll(both).count())
 
             IronHawkSystem.DEFENSE.enabled = false
-            val attack = tab.html()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            val attack = panelText(tab)
             assertTrue("Proteções das missões" in attack && "Contenção da IA" !in attack)
             assertTrue("a IA comum continua", "CLI de IA" in attack && "Onde rodar a IA" in attack)
 
             IronHawkSystem.DEFENSE.enabled = true
             IronHawkSystem.ATTACK.enabled = false
-            val defense = tab.html()
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            val defense = panelText(tab)
             assertTrue("Contenção da IA" in defense && "Proteções das missões" !in defense && "Spec Kit" !in defense)
-            assertTrue("a Defesa também roda no devcontainer", "📦 Devcontainer" in defense && "Na aba, no devcontainer" in defense)
+            assertTrue("a Defesa também roda no devcontainer", "Devcontainer" in defense && "só no devcontainer" in defense)
         } finally {
+            IronHawkSystem.ATTACK.enabled = true
             Disposer.dispose(tab)
         }
     }
@@ -135,6 +138,10 @@ class IronHawkPlatformTest : BasePlatformTestCase() {
 
     fun testTheWindowSwitchesSystemsAndKeepsTheArsenalLast() {
         val toolWindow = ToolWindowHeadlessManagerImpl.MockToolWindow(project)
+        Disposer.register(testRootDisposable) {
+            Disposer.dispose(toolWindow.disposable)
+            toolWindow.contentManager.removeAllContents(true)
+        }
         val window = IronHawkWindow.getInstance(project)
         window.install(toolWindow)
         val titles = { toolWindow.contentManager.contents.map { it.displayName } }

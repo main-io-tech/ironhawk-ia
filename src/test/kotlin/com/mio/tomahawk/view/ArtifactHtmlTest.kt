@@ -210,7 +210,7 @@ class ArtifactHtmlTest {
         val html = ArtifactHtml.decorate(ArtifactHtml.toHtml("Use `T001 [P]` aqui e T002 fora"))
         assertTrue(html.contains("<code>T001 [P]</code>"))
         assertTrue(html.contains("<span class=\"b id\">T002</span>"))
-        assertEquals(ArtifactKind.RUN, ArtifactKind.of(Path.of("tomahawk/execucoes/20261104-plan.md")))
+        assertEquals(ArtifactKind.RUN, ArtifactKind.of(Path.of("ironhawk/tomahawk/execucoes/20261104-plan.md")))
         assertEquals(ArtifactKind.CONSTITUTION, ArtifactKind.of(Path.of(".specify/memory/constitution.md")))
         assertTrue(ArtifactKind.handles("specs/001/spec.md"))
         assertFalse(ArtifactKind.handles("README.md"))
