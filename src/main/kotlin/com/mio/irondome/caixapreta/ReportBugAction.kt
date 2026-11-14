@@ -7,8 +7,8 @@ import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 
 /**
- * Abre o formulário de bug com o print da IDE, os erros do plugin no log e o ambiente. O print é tirado
- * antes do formulário aparecer, para mostrar a IDE como estava.
+ * Abre o formulário de bug com os erros do plugin no log e o ambiente. O print só é tirado se o usuário pedir, no
+ * formulário.
  */
 class ReportBugAction : DumbAwareAction() {
 
@@ -33,16 +33,14 @@ class ReportBugAction : DumbAwareAction() {
             val area = ScreenCapture.windowArea(project)
             ApplicationManager.getApplication().executeOnPooledThread {
                 Thread.sleep(MENU_CLOSE_DELAY_MS)
-                val screenshot = area?.let(ScreenCapture::screenshot)
                 val recent = runCatching { PluginLog.recentErrors(ERRORS) }.getOrDefault(emptyList())
                 val errors = if (focus == null) recent else (listOf(focus) + recent.filter { it != focus }).take(ERRORS)
-                val linearProject = runCatching { LinearSettings.projectLabel(LinearSettings.project).takeIf { LinearSettings.configured } }.getOrNull()
                 val mechanism = focus?.mechanism
                     ?: context.activeTab
                     ?: errors.firstNotNullOfOrNull { it.mechanism }
                     ?: Mechanism.RADAR
                 ApplicationManager.getApplication().invokeLater({
-                    ReportBugDialog(project, area, screenshot, mechanism, errors, context.entries, linearProject).show()
+                    ReportBugDialog(project, area, mechanism, errors, context.entries).show()
                 }, project.disposed)
             }
         }

@@ -341,6 +341,18 @@ class GitHubClient(private val apiUrl: String, private val graphQlUrl: String, p
         graphQl(mutation, JsonObject().apply { add("input", JsonObject().apply { addProperty("threadId", threadNodeId) }) })
     }
 
+    /** Uma issue criada: o [number] e o [url] da página dela. */
+    class CreatedIssue(val number: Int, val url: String)
+
+    /** Issue nova em [repo]. A API não anexa imagens: elas vão pela página da issue. */
+    fun createIssue(repo: GitHubRepo, title: String, body: String): CreatedIssue {
+        val json = request("POST", "${repoPath(repo)}/issues", JsonObject().apply {
+            addProperty("title", title)
+            addProperty("body", body)
+        }).asJsonObject
+        return CreatedIssue(json.get("number").asInt, json.string("html_url"))
+    }
+
     /** Comentário novo na conversa geral do PR. */
     fun addConversationComment(repo: GitHubRepo, number: Int, body: String): DiscussionComment {
         val json = request("POST", "${repoPath(repo)}/issues/$number/comments", JsonObject().apply { addProperty("body", body) }).asJsonObject

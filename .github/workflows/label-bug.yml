@@ -1,0 +1,26 @@
+name: Label de bug
+
+# O Reportar Bug do plugin cria issues com o título começando por "[Bug]". Quem reporta não tem permissão de triagem e
+# não consegue definir labels pela API, então esta Action aplica a label `bug`.
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    if: startsWith(github.event.issue.title, '[Bug]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aplicar a label bug
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['bug'],
+            });

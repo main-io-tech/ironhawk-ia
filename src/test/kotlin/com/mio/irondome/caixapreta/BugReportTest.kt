@@ -81,14 +81,68 @@ class BugReportTest {
     }
 
     @Test
-    fun mediaUrlsReplaceTheLocalFiles() {
-        val markdown = BugReportMarkdown.render(report(Mechanism.RADAR, emptyList(), screenshot = true, recording = true)) {
-            "https://uploads.linear.app/$it"
-        }
+    fun theIssueBodyDoesNotEmbedImagesBecauseTheApiCannotAttachThem() {
+        val markdown = BugReportMarkdown.render(report(Mechanism.RADAR, emptyList(), screenshot = true, recording = true), inline = false)
 
-        assertTrue("![Print da janela da IDE](https://uploads.linear.app/print.png)" in markdown)
-        assertTrue("![Gravação da janela da IDE](https://uploads.linear.app/gravacao.gif)" in markdown)
+        assertFalse("![" in markdown)
+        assertTrue("O autor do relatório vai anexar o print e a gravação nos comentários desta issue." in markdown)
         assertTrue("Nenhum erro ou aviso do plugin no `idea.log`." in markdown)
+        assertFalse("sem captura, sem a seção", "## Capturas" in BugReportMarkdown.render(report(Mechanism.RADAR, emptyList()), inline = false))
+    }
+
+    @Test
+    fun aReportTheAiDidNotOrganizeKeepsTheTextAsWrittenAndSaysSo() {
+        val raw = report(Mechanism.RADAR, emptyList()).copy(description = "A árvore sumiu quando digitei na busca.", steps = "", structured = false)
+
+        val markdown = BugReportMarkdown.render(raw, inline = false)
+
+        assertTrue("## O que aconteceu\n\nA árvore sumiu quando digitei na busca." in markdown)
+        assertTrue("_Texto como o autor escreveu: não foi organizado em partes._" in markdown)
+        assertFalse("Passos para reproduzir" in markdown)
+        assertFalse("O que era esperado" in markdown)
+    }
+
+    @Test
+    fun theIssueTitleKeepsThePrefixTheGitHubActionLooksFor() {
+        assertEquals("[Bug] Sentinela: Árvore some ao filtrar", BugReports.issueTitle(report(Mechanism.SENTINELA, emptyList())))
+    }
+
+    @Test
+    fun theAiOrganizesOnlyTheUsersTextAndNeverReadsTheProject() {
+        val text = BugStructuring.instructions("Árvore some", "Digitei na busca e a árvore sumiu.")
+
+        assertTrue("Digitei na busca e a árvore sumiu." in text)
+        assertTrue("Não leia nem altere nenhum arquivo do projeto aberto" in text)
+        assertTrue("Não invente nada" in text)
+    }
+
+    @Test
+    fun readsTheStructuredPartsAndRejectsAnAnswerWithoutDescription() {
+        val parsed = BugStructuring.parse("```json\n{\"description\": \"A árvore some\", \"steps\": \"1. Abra\", \"expected\": \"\"}\n```")!!
+
+        assertEquals(StructuredBug("A árvore some", "1. Abra", ""), parsed)
+        assertNull(BugStructuring.parse("""{"description": "  ", "steps": "x"}"""))
+        assertNull(BugStructuring.parse("não consegui"))
+    }
+
+    @Test
+    fun aForbiddenOrMissingRepositoryIsReportedAsMissingPermission() {
+        val denied = BugGitHub.describe(com.mio.irondome.patrulha.GitHubException("negado", 403))
+        val missing = BugGitHub.describe(com.mio.irondome.patrulha.GitHubException("não achei", 404))
+
+        assertTrue("Sem permissão neste repositório (main-io-tech/ironhawk-ia)" in denied)
+        assertEquals(denied, missing)
+        assertEquals("rede caiu", BugGitHub.describe(com.mio.irondome.patrulha.GitHubException("rede caiu", 500)))
+    }
+
+    @Test
+    fun theNewIssuePageCarriesTheTitleAndBodyEncodedAndCutWhenTooLong() {
+        val url = BugGitHub.newIssueUrl("[Bug] Radar: falha & erro", "linha 1\nlinha 2")
+
+        assertTrue(url.startsWith("https://github.com/main-io-tech/ironhawk-ia/issues/new?title="))
+        assertTrue("title=%5BBug%5D+Radar%3A+falha+%26+erro" in url)
+        assertTrue("body=linha+1%0Alinha+2" in url)
+        assertTrue("texto+cortado" in BugGitHub.newIssueUrl("t", "a".repeat(7_000)))
     }
 
     @Test
@@ -150,17 +204,6 @@ class BugReportTest {
         assertEquals("Falha ao abrir · Nota: cliquei em Revisar", error.message)
         assertEquals("java.lang.IllegalStateException: quebrou", error.exception)
         assertTrue(error.stack.size > 1)
-    }
-
-    @Test
-    fun linearProjectIsReadFromTheUrlTheSlugOrTheId() {
-        assertEquals("f447654e94fc", LinearSettings.projectSlugId(LinearSettings.DEFAULT_PROJECT))
-        assertEquals("f447654e94fc", LinearSettings.projectSlugId("https://linear.app/mainio/project/iron-dome-ai-f447654e94fc"))
-        assertEquals("f447654e94fc", LinearSettings.projectSlugId("iron-dome-ai-f447654e94fc"))
-        assertEquals("f447654e94fc", LinearSettings.projectSlugId(" f447654e94fc "))
-        assertNull(LinearSettings.projectSlugId("https://linear.app/mainio/team/ENG"))
-        assertNull(LinearSettings.projectSlugId(""))
-        assertEquals("iron-dome-ai", LinearSettings.projectLabel(LinearSettings.DEFAULT_PROJECT))
     }
 
     private fun report(

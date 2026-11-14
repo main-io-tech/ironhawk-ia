@@ -109,7 +109,7 @@
         <postStartupActivity implementation="com.mio.irondome.caixapreta.CompatibilityStartup"/>
         <postStartupActivity implementation="com.mio.irondome.defesa.DefenseStartup"/>
         <applicationConfigurable parentId="com.mio.ironhawk.settings"
-                                 instance="com.mio.irondome.caixapreta.LinearConfigurable"
+                                 instance="com.mio.irondome.caixapreta.IronDomeConfigurable"
                                  id="com.mio.irondome.settings"
                                  displayName="Iron Dome IA"/>
         <applicationConfigurable parentId="com.mio.irondome.settings"
@@ -218,7 +218,7 @@
         <action id="IronDome.ReportBug"
                 class="com.mio.irondome.caixapreta.ReportBugAction"
                 text="Reportar Bug do IronHawk IA"
-                description="Gera um .md dizendo onde o bug aconteceu no plugin, com print, gravação em GIF e os erros do log, e envia ao Linear"
+                description="Reporta um bug do plugin como issue no GitHub, dizendo onde ele aconteceu, com os erros do log e, se você quiser, print e gravação em GIF"
                 icon="/icons/caixaPreta.svg">
             <add-to-group group-id="HelpMenu" anchor="last"/>
         </action>

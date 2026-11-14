@@ -37,7 +37,8 @@ data class Environment(
     val extraTabs: Set<String>,
     /** Abas que não abriram nesta sessão, pelo título, com a mensagem do erro. */
     val tabFailures: Map<String, String>,
-    val linearConfigured: Boolean,
+    /** Há uma conta do GitHub no IntelliJ para o repositório onde os bugs viram issues. */
+    val githubAccount: Boolean,
     /** O CLI de IA escolhido e onde ele foi encontrado; nulo se não foi. */
     val agentProvider: String = "Cursor",
     val agentCli: String? = null,
@@ -65,7 +66,7 @@ object Compatibility {
             vcs = ProjectLevelVcsManager.getInstance(project).allActiveVcss.map { it.displayName },
             extraTabs = ReviewToolWindowTab.EP_NAME.extensionList.mapTo(mutableSetOf()) { it.title },
             tabFailures = TabFailures.all,
-            linearConfigured = runCatching { LinearSettings.configured }.getOrDefault(false),
+            githubAccount = runCatching { BugGitHub.hasAccount(project) }.getOrDefault(false),
             agentProvider = AgentSettings.provider.title,
             agentCli = runCatching { AgentSettings.launch()?.description }.getOrNull(),
         )
@@ -174,11 +175,19 @@ object Compatibility {
     }
 
     private fun caixaPreta(env: Environment): CompatibilityCheck = when {
-        env.linearConfigured -> CompatibilityCheck(Mechanism.CAIXA_PRETA, CheckStatus.OK, "Linear configurado: os bugs podem ser enviados.")
+        !env.githubPlugins -> CompatibilityCheck(
+            Mechanism.CAIXA_PRETA, CheckStatus.INFO,
+            "Os plugins Git e GitHub da IDE estão ausentes ou desativados: o Reportar Bug abre a página de nova issue no navegador.",
+            "Ative os plugins Git e GitHub em Settings > Plugins > Installed para criar a issue direto da IDE.",
+        )
+        env.githubAccount -> CompatibilityCheck(
+            Mechanism.CAIXA_PRETA, CheckStatus.OK,
+            "Conta do GitHub conectada: o bug vira uma issue em ${BugGitHub.REPOSITORY.fullName}.",
+        )
         else -> CompatibilityCheck(
             Mechanism.CAIXA_PRETA, CheckStatus.INFO,
-            "Linear não configurado: os relatórios de bug são gerados só localmente.",
-            "Informe a API key em Settings > Tools > Iron Dome IA.",
+            "Nenhuma conta do GitHub no IntelliJ: o Reportar Bug não consegue criar a issue.",
+            "Entre em Settings > Version Control > GitHub.",
         )
     }
 

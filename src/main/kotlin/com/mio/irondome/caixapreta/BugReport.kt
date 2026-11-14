@@ -13,7 +13,7 @@ enum class Mechanism(val title: String, val packageName: String, val contents: S
     PATRULHA("Patrulha", "patrulha", "pull requests do GitHub, envio dos pedidos de alteração e a verificação deles"),
     INTERCEPTOR("Arsenal", "interceptor", "integração com a IA pelo Cursor CLI ou Antigravity CLI: configuração, execução e registro"),
     BASE("Base", "base", "tool window, abas extras, barra flutuante do editor e componentes visuais compartilhados"),
-    CAIXA_PRETA("Caixa-Preta", "caixapreta", "o próprio Reportar Bug: formulário, capturas e envio ao Linear");
+    CAIXA_PRETA("Caixa-Preta", "caixapreta", "o próprio Reportar Bug: formulário, capturas e envio como issue no GitHub");
 
     val qualifiedPackage get() = "$ROOT_PACKAGE.$packageName"
     val sourceDir get() = "src/main/kotlin/${qualifiedPackage.replace('.', '/')}/"
@@ -63,6 +63,8 @@ data class BugReport(
     val screenshot: Boolean,
     val recording: Boolean,
     val createdAt: LocalDateTime = LocalDateTime.now(),
+    /** A IA organizou o texto em partes; sem ela, [description] guarda o texto como foi escrito. */
+    val structured: Boolean = true,
 )
 
 object BugReportMarkdown {
@@ -74,8 +76,13 @@ object BugReportMarkdown {
     private const val LEADING_FRAMES = 4
     private val DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss")
 
-    /** [mediaUrl] troca o nome do arquivo da captura pelo endereço onde ela foi publicada. */
-    fun render(report: BugReport, mediaUrl: (String) -> String = { it }): String = buildString {
+    private const val UNSTRUCTURED_NOTE = "_Texto como o autor escreveu: não foi organizado em partes._"
+
+    /**
+     * [inline] mostra as capturas pelo nome do arquivo, ao lado do `bug.md`; fora dele, no corpo de uma issue, o GitHub não
+     * recebe imagens pela API, então o texto avisa que o autor as anexa à issue.
+     */
+    fun render(report: BugReport, inline: Boolean = true): String = buildString {
         val mechanism = report.mechanism
         val origin = report.errors.firstNotNullOfOrNull { it.origin }
 
@@ -98,20 +105,32 @@ object BugReportMarkdown {
         appendLine("> **Para quem for corrigir, pessoa ou IA:** reproduza com os passos abaixo, comece pela origem provável e")
         appendLine("> pelo pacote indicado e confira os erros do log no fim do relatório.")
 
-        section("O que aconteceu", report.description)
-        section("Passos para reproduzir", report.steps)
-        section("O que era esperado", report.expected)
+        if (report.structured) {
+            section("O que aconteceu", report.description)
+            section("Passos para reproduzir", report.steps)
+            section("O que era esperado", report.expected)
+        } else {
+            section("O que aconteceu", report.description)
+            appendLine()
+            appendLine(UNSTRUCTURED_NOTE)
+        }
 
         if (report.screenshot || report.recording) {
             appendLine()
             appendLine("## Capturas")
-            if (report.screenshot) {
+            if (inline) {
+                if (report.screenshot) {
+                    appendLine()
+                    appendLine("![Print da janela da IDE]($SCREENSHOT)")
+                }
+                if (report.recording) {
+                    appendLine()
+                    appendLine("![Gravação da janela da IDE]($RECORDING)")
+                }
+            } else {
                 appendLine()
-                appendLine("![Print da janela da IDE](${mediaUrl(SCREENSHOT)})")
-            }
-            if (report.recording) {
-                appendLine()
-                appendLine("![Gravação da janela da IDE](${mediaUrl(RECORDING)})")
+                val what = listOfNotNull("o print".takeIf { report.screenshot }, "a gravação".takeIf { report.recording }).joinToString(" e ")
+                appendLine("O autor do relatório vai anexar $what nos comentários desta issue.")
             }
         }
 

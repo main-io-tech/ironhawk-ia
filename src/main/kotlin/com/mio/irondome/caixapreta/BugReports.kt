@@ -3,7 +3,6 @@ package com.mio.irondome.caixapreta
 import com.intellij.ide.BrowserUtil
 import com.intellij.ide.actions.RevealFileAction
 import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
@@ -13,7 +12,6 @@ import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.options.ShowSettingsUtil
-import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
@@ -22,7 +20,6 @@ import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.jcef.JBCefApp
-import com.mio.ironhawk.IronHawkFolder
 import com.mio.irondome.base.DefenseTabs
 import com.mio.irondome.base.TabFailures
 import com.mio.irondome.base.rootPath
@@ -82,64 +79,54 @@ internal class BugContext(val activeTab: Mechanism?, val entries: List<Pair<Stri
 }
 
 /**
- * Gera cada relatório numa pasta própria dentro de [folder] e, se pedido, cria a issue no Linear com as
- * capturas. A pasta e o destino escolhidos ficam como padrão para o próximo relatório.
+ * Publica o relatório como issue no GitHub do plugin ([BugGitHub]). O print e a gravação não vão pela API: ficam, com o
+ * `bug.md`, numa pasta temporária que o plugin abre ao lado da issue, para o autor arrastá-los para ela.
  */
 object BugReports {
 
-    private const val FOLDER_KEY = "IronDome.Bugs.Folder"
-    private const val LOCAL_ONLY_KEY = "IronDome.Bugs.LocalOnly"
     private val STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
+    private const val TITLE_PREFIX = "[Bug]"
 
-    val defaultFolder: Path get() = Path.of(System.getProperty("user.home"), "iron-dome-ia", "bugs")
+    /** O prefixo `[Bug]` é o que a GitHub Action do repositório usa para pôr a label `bug` nas issues novas. */
+    fun issueTitle(report: BugReport) = "$TITLE_PREFIX ${report.mechanism.title}: ${report.title.trim()}"
 
-    var folder: Path
-        get() = PropertiesComponent.getInstance().getValue(FOLDER_KEY)
-            ?.let { runCatching { Path.of(it) }.getOrNull() }
-            ?: defaultFolder
-        set(value) = PropertiesComponent.getInstance().setValue(FOLDER_KEY, value.toString().takeIf { value != defaultFolder })
-
-    /** Último destino escolhido: só gerar o `.md` local, ou também enviar ao Linear. */
-    var localOnly: Boolean
-        get() = PropertiesComponent.getInstance().getBoolean(LOCAL_ONLY_KEY)
-        set(value) = PropertiesComponent.getInstance().setValue(LOCAL_ONLY_KEY, value)
-
-    /** Pasta `ironhawk/iron-dome/bugs` do projeto aberto, ao lado das revisões do Radar. */
-    fun projectFolder(project: Project): Path? = project.rootPath()?.let { Path.of(it, IronHawkFolder.DEFENSE, "bugs") }
+    /** O texto da issue, como será publicado. */
+    fun issueBody(report: BugReport) = BugReportMarkdown.render(report, inline = false)
 
     /** [recording] é um arquivo temporário, movido para a pasta do relatório. */
-    fun submit(project: Project, report: BugReport, screenshot: BufferedImage?, recording: Path?, folder: Path, sendToLinear: Boolean) {
-        object : Task.Backgroundable(project, if (sendToLinear) "Reportando o bug" else "Gerando o relatório de bug", false) {
+    fun submit(project: Project, report: BugReport, screenshot: BufferedImage?, recording: Path?) {
+        object : Task.Backgroundable(project, "Reportando o bug", false) {
             private var dir: Path? = null
-            private var issue: LinearClient.Issue? = null
-            private var linearError: String? = null
+            private var issue: BugIssue? = null
+            private var failure: BugReportException? = null
 
             override fun run(indicator: ProgressIndicator) {
-                indicator.text = "Salvando o relatório"
-                val dir = folder.resolve("bug-${report.createdAt.format(STAMP)}").also { Files.createDirectories(it) }
+                indicator.text = "Salvando os anexos"
+                val dir = Files.createTempDirectory("iron-dome-bug-${report.createdAt.format(STAMP)}-")
                 this.dir = dir
                 screenshot?.let { ImageIO.write(it, "png", dir.resolve(BugReportMarkdown.SCREENSHOT).toFile()) }
                 recording?.let { Files.move(it, dir.resolve(BugReportMarkdown.RECORDING), StandardCopyOption.REPLACE_EXISTING) }
                 Files.writeString(dir.resolve(BugReportMarkdown.FILE_NAME), BugReportMarkdown.render(report))
-                if (!sendToLinear) return
-                indicator.text = "Enviando ao Linear"
+                indicator.text = "Criando a issue no GitHub"
+                create(project, report)
+            }
+
+            private fun create(project: Project, report: BugReport) {
                 try {
-                    issue = sendToLinear(report, dir)
-                } catch (error: ProcessCanceledException) {
-                    throw error
-                } catch (error: Exception) {
-                    linearError = error.message ?: error.javaClass.simpleName
+                    issue = BugGitHub.createIssue(project, issueTitle(report), issueBody(report))
+                } catch (error: BugReportException) {
+                    failure = error
                 }
             }
 
             override fun onSuccess() {
                 val dir = dir ?: return
-                notifyResult(project, report, dir, issue, linearError, sentToLinear = sendToLinear)
+                notifyResult(project, report, dir, issue, failure)
             }
 
             override fun onThrowable(error: Throwable) {
                 group().createNotification(
-                    "Não foi possível salvar o relatório de bug",
+                    "Não foi possível preparar o relatório de bug",
                     error.message ?: error.javaClass.simpleName,
                     NotificationType.ERROR,
                 ).notify(project)
@@ -148,57 +135,52 @@ object BugReports {
     }
 
     private fun retry(project: Project, report: BugReport, dir: Path) {
-        object : Task.Backgroundable(project, "Enviando o bug ao Linear", false) {
-            private var issue: LinearClient.Issue? = null
-            private var linearError: String? = null
+        object : Task.Backgroundable(project, "Criando a issue no GitHub", false) {
+            private var issue: BugIssue? = null
+            private var failure: BugReportException? = null
 
             override fun run(indicator: ProgressIndicator) {
                 try {
-                    issue = sendToLinear(report, dir)
-                } catch (error: ProcessCanceledException) {
-                    throw error
-                } catch (error: Exception) {
-                    linearError = error.message ?: error.javaClass.simpleName
+                    issue = BugGitHub.createIssue(project, issueTitle(report), issueBody(report))
+                } catch (error: BugReportException) {
+                    failure = error
                 }
             }
 
-            override fun onSuccess() = notifyResult(project, report, dir, issue, linearError, sentToLinear = true)
+            override fun onSuccess() = notifyResult(project, report, dir, issue, failure)
         }.queue()
     }
 
-    private fun sendToLinear(report: BugReport, dir: Path): LinearClient.Issue {
-        val apiKey = LinearSettings.apiKey
-            ?: throw LinearException("Linear não configurado: informe a API key em Settings > Tools > Iron Dome IA.")
-        val slugId = LinearSettings.projectSlugId(LinearSettings.project)
-            ?: throw LinearException("URL do projeto do Linear não reconhecida em Settings > Tools > Iron Dome IA.")
-        val client = LinearClient(apiKey)
-        val project = client.project(slugId)
-        val team = project.teamFor(LinearSettings.teamKey)
-        val urls = buildMap {
-            if (report.screenshot) put(BugReportMarkdown.SCREENSHOT, client.upload(dir.resolve(BugReportMarkdown.SCREENSHOT), "image/png"))
-            if (report.recording) put(BugReportMarkdown.RECORDING, client.upload(dir.resolve(BugReportMarkdown.RECORDING), "image/gif"))
-        }
-        return client.createIssue(
-            team.id,
-            project.id,
-            "[Bug] ${report.mechanism.title}: ${report.title.trim()}",
-            BugReportMarkdown.render(report) { urls[it] ?: it },
-        )
-    }
-
-    private fun notifyResult(project: Project, report: BugReport, dir: Path, issue: LinearClient.Issue?, linearError: String?, sentToLinear: Boolean) {
+    private fun notifyResult(project: Project, report: BugReport, dir: Path, issue: BugIssue?, failure: BugReportException?) {
+        val captures = report.screenshot || report.recording
+        val files = listOfNotNull(BugReportMarkdown.SCREENSHOT.takeIf { report.screenshot }, BugReportMarkdown.RECORDING.takeIf { report.recording })
         val notification = when {
-            issue != null -> group().createNotification("Bug ${issue.identifier} criado no Linear", report.title, NotificationType.INFORMATION)
-                .addAction(NotificationAction.createSimpleExpiring("Abrir no Linear") { BrowserUtil.browse(issue.url) })
-            sentToLinear -> group().createNotification("Relatório de bug salvo, mas não foi para o Linear", linearError.orEmpty(), NotificationType.WARNING)
-                .addAction(NotificationAction.createSimpleExpiring("Tentar de Novo") { retry(project, report, dir) })
-                .addAction(NotificationAction.createSimple("Configurar Linear") {
-                    ShowSettingsUtil.getInstance().showSettingsDialog(project, LinearConfigurable::class.java)
-                })
-            else -> {
-                openReport(project, dir)
-                group().createNotification("Relatório de bug gerado", dir.toString(), NotificationType.INFORMATION)
+            issue != null -> {
+                BrowserUtil.browse(issue.url)
+                if (captures) RevealFileAction.openDirectory(dir.toFile())
+                val attach = if (captures) "Arraste ${files.joinToString(" e ")} da pasta que abri para a issue, no navegador: o GitHub só aceita anexos pela página." else "Aberta no navegador."
+                group().createNotification("Issue #${issue.number} criada no GitHub", "${report.title}\n$attach", NotificationType.INFORMATION)
+                    .addAction(NotificationAction.createSimple("Abrir a Issue") { BrowserUtil.browse(issue.url) })
             }
+            failure?.noPlugin == true -> {
+                BrowserUtil.browse(BugGitHub.newIssueUrl(issueTitle(report), issueBody(report)))
+                if (captures) RevealFileAction.openDirectory(dir.toFile())
+                group().createNotification(
+                    "Abri a página de nova issue",
+                    "Os plugins Git e GitHub da IDE não estão ativos, então não deu para criar a issue por aqui. Confira o texto e clique em Submit." +
+                        if (captures) " Arraste ${files.joinToString(" e ")} da pasta que abri." else "",
+                    NotificationType.INFORMATION,
+                )
+            }
+            else -> group().createNotification("O bug não foi enviado ao GitHub", failure?.message.orEmpty(), NotificationType.WARNING)
+                .addAction(NotificationAction.createSimpleExpiring("Tentar de Novo") { retry(project, report, dir) })
+                .apply {
+                    if (failure?.needsAccount == true) {
+                        addAction(NotificationAction.createSimple("Abrir as Configurações do GitHub") {
+                            ShowSettingsUtil.getInstance().showSettingsDialog(project, BugGitHub.GITHUB_SETTINGS)
+                        })
+                    }
+                }
         }
         notification.addOpenActions(project, dir).notify(project)
     }

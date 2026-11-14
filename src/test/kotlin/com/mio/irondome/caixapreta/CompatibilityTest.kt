@@ -18,7 +18,7 @@ class CompatibilityTest {
         vcs = listOf("Git"),
         extraTabs = setOf("Raio de Impacto", "Escudo", "Patrulha"),
         tabFailures = emptyMap(),
-        linearConfigured = true,
+        githubAccount = true,
         agentCli = "C:/Users/dev/.local/bin/agent.exe",
     )
 
@@ -87,7 +87,7 @@ class CompatibilityTest {
 
     @Test
     fun optionalSettingsAreInformationOnlyAndDoNotWarn() {
-        val env = healthy.copy(vcs = emptyList(), linearConfigured = false, agentCli = null)
+        val env = healthy.copy(vcs = emptyList(), githubAccount = false, agentCli = null)
 
         assertEquals(CheckStatus.INFO, check(env, Mechanism.SENTINELA).status)
         assertEquals(CheckStatus.INFO, check(env, Mechanism.CAIXA_PRETA).status)
