@@ -109,6 +109,9 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         "IronDome.CommentsToolbar",
         DefaultActionGroup(
             refreshAction { refresh() },
+            projectCommentAction(),
+            rulesCheckAction(),
+            lastRulesCheckAction(),
             ActionManager.getInstance().getAction("IronDome.SaveReview"),
             ActionManager.getInstance().getAction("IronDome.FireWithAi"),
             fireSelectedAction(),
@@ -133,6 +136,63 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         ),
         true,
     ).apply { targetComponent = tree }.wrapping().component
+
+    /** Comentário sobre o projeto todo, sem depender de arquivo aberto; não vale durante a revisão de um PR. */
+    private fun projectCommentAction() = object : DumbAwareAction(
+        "Comentário Geral",
+        "Marca um alvo sobre o projeto como um todo, sem arquivo nem linha",
+        ReviewIcons.addComment,
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        override fun update(e: AnActionEvent) {
+            val reviewing = service.activePullRequest != 0
+            e.presentation.isEnabled = !reviewing
+            e.presentation.description = if (reviewing) {
+                "Durante a revisão de um PR, os comentários vão para ele; saia da revisão na aba Patrulha para comentar o projeto"
+            } else {
+                "Marca um alvo sobre o projeto como um todo, sem arquivo nem linha"
+            }
+        }
+
+        override fun actionPerformed(e: AnActionEvent) = TargetComments.markProject(project)
+    }
+
+    /** A IA, só lendo, confere se as alterações cumprem as regras de IA do projeto; o resultado abre num diálogo. */
+    private fun rulesCheckAction() = object : DumbAwareAction(
+        "Verificar Regras de IA",
+        "A IA confere se as alterações do projeto cumprem CLAUDE.md, AGENTS.md e as outras regras de IA, sem alterar nada",
+        IronDomeIcons.ia,
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        override fun update(e: AnActionEvent) {
+            val runner = AgentRunner.getInstance(project)
+            e.presentation.isEnabled = runner.available() && runner.running == null
+            e.presentation.description = when {
+                !runner.available() -> FireWithAiAction.NOT_READY
+                runner.running != null -> "A IA já está trabalhando"
+                else -> "A IA confere se as alterações do projeto cumprem CLAUDE.md, AGENTS.md e as outras regras de IA, sem alterar nada"
+            }
+        }
+
+        override fun actionPerformed(e: AnActionEvent) = RulesCheckRunner.start(project)
+    }
+
+    /** Reabre o resultado da última verificação das regras de IA. */
+    private fun lastRulesCheckAction() = object : DumbAwareAction(
+        "Última Verificação das Regras de IA",
+        "Abre de novo o resultado da última verificação das regras de IA",
+        AllIcons.Actions.Show,
+    ) {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        override fun update(e: AnActionEvent) {
+            e.presentation.isEnabled = project.service<RulesCheckState>().last != null
+        }
+
+        override fun actionPerformed(e: AnActionEvent) = RulesCheckRunner.show(project)
+    }
 
     private fun historyAction(text: String, description: String, icon: Icon, enabled: () -> Boolean, perform: () -> Unit) =
         object : DumbAwareAction(text, description, icon) {
@@ -271,7 +331,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         }
         val statuses = comments.map(service::statusOf)
         fun count(status: CommentStatus) = statuses.count { it == status }
-        val files = comments.map { it.filePath }.distinct().size
+        val files = comments.filter { it.target != CommentTarget.PROJECT }.map { it.filePath }.distinct().size
         val open = statuses.count { it != CommentStatus.RESOLVED }
         header.update(
             title = ReviewCommentService.reviewName(service.activeReviewId),
@@ -502,6 +562,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         ((tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? CommentItem)?.live
 
     private fun navigate(item: CommentItem, focus: Boolean) {
+        if (item.target == CommentTarget.PROJECT) return
         if (item.target == CommentTarget.PACKAGE) {
             if (focus) TargetComments.reveal(project, item.filePath)
             return
@@ -515,6 +576,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     }
 
     private fun openFile(item: FileItem) {
+        if (item.filePath == ReviewCommentService.PROJECT_PATH) return
         if (item.isPackage) return TargetComments.reveal(project, item.filePath)
         val file = service.findFile(item.filePath) ?: return
         OpenFileDescriptor(project, file).navigate(true)
@@ -583,7 +645,12 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                     row.text(ReviewArchive.FILE_NAME, SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
                     row.tooltip("${ReviewCommentService.REVIEW_DIR}/${ReviewArchive.FILE_NAME} · duplo clique abre o arquivo")
                 }
-                is FileItem -> {
+                is FileItem -> if (item.filePath == ReviewCommentService.PROJECT_PATH) {
+                    row.icon(AllIcons.Nodes.Project)
+                    row.text("Projeto", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                    row.pill(plural(item.count, "alvo", "alvos"), Tone.GRAY)
+                    row.tooltip("Comentários sobre o projeto como um todo")
+                } else {
                     val name = item.filePath.substringAfterLast('/')
                     row.icon(if (item.isPackage) AllIcons.Nodes.Package else FileTypeManager.getInstance().getFileTypeByFileName(name).icon)
                     row.text(if (item.isPackage) "$name/" else name)

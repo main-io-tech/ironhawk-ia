@@ -85,24 +85,39 @@ class IronHawkPlatformTest : BasePlatformTestCase() {
         AgentSettings.autoSetupTried = true
         val tab = ArsenalPanel(project)
         try {
-            val both = panelText(tab)
+            val both = allTabsText(tab)
             assertTrue("Contenção da IA" in both && "Proteções das missões" in both)
             assertEquals("uma escolha só de onde rodar a IA", 1, Regex("Onde rodar a IA").findAll(both).count())
 
             IronHawkSystem.DEFENSE.enabled = false
             PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-            val attack = panelText(tab)
+            val attack = allTabsText(tab)
             assertTrue("Proteções das missões" in attack && "Contenção da IA" !in attack)
             assertTrue("a IA comum continua", "CLI de IA" in attack && "Onde rodar a IA" in attack)
 
             IronHawkSystem.DEFENSE.enabled = true
             IronHawkSystem.ATTACK.enabled = false
             PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-            val defense = panelText(tab)
+            val defense = allTabsText(tab)
             assertTrue("Contenção da IA" in defense && "Proteções das missões" !in defense && "Spec Kit" !in defense)
             assertTrue("a Defesa também roda no devcontainer", "Devcontainer" in defense && "só no devcontainer" in defense)
         } finally {
             IronHawkSystem.ATTACK.enabled = true
+            Disposer.dispose(tab)
+        }
+    }
+
+    fun testTheArsenalHasFourTabsAndOpensWhereThereIsSomethingToSolve() {
+        AgentSettings.autoSetupTried = true
+        val tab = ArsenalPanel(project)
+        try {
+            assertEquals(listOf("IA", "Execução", "Recursos", "Execuções"), tabTitles(tab))
+            val expected = if (AgentSettings.ready) "Execuções" else "IA"
+            assertEquals("abre na aba do problema, ou nas execuções com tudo pronto", expected, selectedTab(tab))
+            assertTrue("o cabeçalho de estado fica à vista", "Configuração" in panelText(tab) || "IA" in panelText(tab))
+            val text = allTabsText(tab)
+            assertEquals("cada aba mostra o seu assunto", true, "CLI de IA" in text && "Onde rodar a IA" in text && "O que a IA libera" in text)
+        } finally {
             Disposer.dispose(tab)
         }
     }

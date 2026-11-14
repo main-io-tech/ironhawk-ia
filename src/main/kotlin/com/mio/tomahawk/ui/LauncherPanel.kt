@@ -12,6 +12,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
@@ -35,14 +36,19 @@ import com.mio.irondome.base.Stat
 import com.mio.irondome.base.SummaryHeader
 import com.mio.irondome.base.Tone
 import com.mio.irondome.base.WrapText
+import com.mio.irondome.interceptor.AgentProgressPanel
+import com.mio.irondome.interceptor.AgentRunner
+import com.mio.irondome.interceptor.AgentTask
 import com.mio.irondome.base.wrapping
 import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.base.TomahawkIcons
 import com.mio.tomahawk.base.refreshAction
+import com.mio.tomahawk.run.ExtraSkills
 import com.mio.tomahawk.run.LaunchTerminal
 import com.mio.tomahawk.run.Mission
 import com.mio.tomahawk.run.MissionRunner
 import com.mio.tomahawk.run.RunMode
+import com.mio.tomahawk.run.Skill
 import com.mio.tomahawk.run.SpecKitSetup
 import com.mio.tomahawk.run.TomahawkSettings
 import com.mio.tomahawk.speckit.FeatureReport
@@ -156,6 +162,10 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     }
     private val openArtifact = JButton("Abrir Artefato", AllIcons.Actions.EditSource).apply { addActionListener { artifactOf()?.let { openFile(project, it) } } }
     private val delivery = DeliveryPanel(project, this)
+    private val agent = AgentRunner.getInstance(project)
+
+    /** Os botões das skills extras que o usuário marcou no Arsenal; some quando não há nenhuma. */
+    private val skillsRow = JPanel(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)).apply { isOpaque = false }
 
     /** O texto escrito em cada etapa, para trocar de etapa sem perder o rascunho. */
     private val drafts = mutableMapOf<SddStep, String>()
@@ -183,6 +193,7 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 add(openArtifact)
             })
             add(modeHint)
+            add(skillsRow)
             add(JPanel(BorderLayout()).apply {
                 isOpaque = false
                 border = JBUI.Borders.emptyTop(8)
@@ -200,6 +211,7 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             add(JPanel(VerticalLayout(0)).apply {
                 add(header)
                 add(MissionProgressPanel(project, this@LauncherPanel))
+                add(AgentProgressPanel(project, AttackTabs.LAUNCHER, this@LauncherPanel))
                 add(initPanel)
             }, BorderLayout.NORTH)
             add(splitter, BorderLayout.CENTER)
@@ -242,6 +254,14 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         project.messageBus.connect(this).subscribe(
             MissionRunner.RUNS,
             MissionRunner.Listener { ApplicationManager.getApplication().invokeLater({ updateButtons() }, project.disposed) },
+        )
+        project.messageBus.connect(this).subscribe(
+            AgentRunner.RUNS,
+            AgentRunner.Listener { ApplicationManager.getApplication().invokeLater({ updateButtons() }, project.disposed) },
+        )
+        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+            ExtraSkills.Listener.TOPIC,
+            ExtraSkills.Listener { ApplicationManager.getApplication().invokeLater({ updateButtons() }, project.disposed) },
         )
         project.messageBus.connect(this).subscribe(AttackTabs.GOTO, AttackTabs.GotoListener { goto(it) })
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
@@ -400,6 +420,7 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         openArtifact.isEnabled = artifactOf() != null
         reason.isVisible = status != null
         updateHint()
+        updateSkills()
     }
 
     private fun updateHint() {
@@ -455,6 +476,64 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             bar = featureSteps.map { Segment(1, it.state.tone.accent) },
             warning = aiWarning
                 ?: if (!snapshot.constitutionReady) "A constituição ainda é o modelo: comece pelas Regras de Engajamento, que guiam as outras etapas." else null,
+        )
+    }
+
+    /** Um botão por skill extra marcada no Arsenal; desligado se ela sumiu ou a IA não pode rodar agora. */
+    private fun updateSkills() {
+        skillsRow.removeAll()
+        val chosen = ExtraSkills.selected.sorted()
+        skillsRow.isVisible = chosen.isNotEmpty()
+        if (chosen.isEmpty()) return
+        val home = runCatching { Path.of(System.getProperty("user.home")) }.getOrNull()
+        val found = ExtraSkills.discover(service.root(), home).associateBy { it.name }
+        skillsRow.add(JBLabel("Skills extras").apply { font = JBFont.small().asBold(); foreground = UIUtil.getContextHelpForeground() })
+        skillsRow.add(wrapRow().apply {
+            chosen.forEach { name ->
+                val skill = found[name]
+                val why = when {
+                    skill == null -> "Skill não encontrada neste projeto nem nesta máquina: ajuste no Arsenal"
+                    !agent.available() -> "Teste a integração com a IA no Arsenal"
+                    agent.running != null -> "A IA já está trabalhando"
+                    runner.progress != null -> "Há uma missão em voo: acompanhe na Telemetria"
+                    else -> null
+                }
+                add(JButton(name, AllIcons.Actions.Execute).apply {
+                    isEnabled = why == null
+                    toolTipText = why ?: skill?.description?.takeIf { it.isNotBlank() } ?: "Roda a skill $name"
+                    addActionListener { skill?.let(::runSkill) }
+                })
+            }
+        })
+        skillsRow.revalidate()
+        skillsRow.repaint()
+    }
+
+    /** Pede uma instrução opcional e roda a skill com o CLI, o host e as proteções do Arsenal, sobre a feature escolhida. */
+    private fun runSkill(skill: Skill) {
+        val text = Messages.showMultilineInputDialog(
+            project,
+            "Instrução opcional para a skill ${skill.name}. Pode deixar em branco.",
+            "Skill ${skill.name}",
+            "",
+            AllIcons.Actions.Execute,
+            null,
+        ) ?: return
+        val content = runCatching { Files.readString(skill.file) }.getOrNull()
+        if (content == null) {
+            Messages.showErrorDialog(project, "Não consegui ler ${skill.file}.", "Skill ${skill.name}")
+            return
+        }
+        val feature = selectedFeature()?.let { service.snapshot.relative(it.dir) }
+        val safeName = skill.name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val file = agent.writeInstructions("skill-$safeName.md", ExtraSkills.instructions(skill, content, feature, text)) ?: return
+        agent.run(
+            AgentTask(
+                "Skill ${skill.name}",
+                "Execute a skill ${skill.name} seguindo as instruções em $file.",
+                write = true,
+                origin = AttackTabs.LAUNCHER,
+            ),
         )
     }
 

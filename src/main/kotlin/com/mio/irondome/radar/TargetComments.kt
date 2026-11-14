@@ -62,6 +62,27 @@ object TargetComments {
         service.addTargetComment(target, dialog.text, dialog.discuss, dialog.suggestion)
     }
 
+    /** Comentário sobre o projeto todo: sem arquivo, escrito e editado no mesmo diálogo dos de arquivo e pacote. */
+    fun markProject(project: Project) {
+        val service = project.service<ReviewCommentService>()
+        if (service.activePullRequest != 0) return
+        val dialog = TargetCommentDialog(
+            project,
+            title = "Comentário geral sobre o projeto",
+            subject = "Projeto inteiro",
+            hint = PROJECT_HINT,
+            initialText = "",
+            initialDiscuss = CommentForm.lastDiscuss,
+            initialSuggestion = "",
+            pullRequest = 0,
+            codeContext = null,
+            okText = "Marcar Alvo",
+        )
+        if (!dialog.showAndGet()) return
+        CommentForm.lastDiscuss = dialog.discuss
+        service.addProjectComment(dialog.text, dialog.discuss)
+    }
+
     /** Trechos são editados no próprio editor, em [editor] ou no arquivo aberto na linha do comentário. */
     fun edit(project: Project, comment: ReviewComment, editor: Editor? = null) {
         val service = project.service<ReviewCommentService>()
@@ -71,16 +92,21 @@ object TargetComments {
             return
         }
         val isPackage = comment.target == CommentTarget.PACKAGE
+        val isProject = comment.target == CommentTarget.PROJECT
         val dialog = TargetCommentDialog(
             project,
             title = if (comment.pullRequest != 0) "Editar ${comment.id} do PR #${comment.pullRequest}" else "Editar alvo ${comment.id}",
-            subject = if (isPackage) "${comment.filePath}/" else comment.filePath,
-            hint = hintFor(isPackage, comment.pullRequest),
+            subject = when {
+                isProject -> "Projeto inteiro"
+                isPackage -> "${comment.filePath}/"
+                else -> comment.filePath
+            },
+            hint = if (isProject) PROJECT_HINT else hintFor(isPackage, comment.pullRequest),
             initialText = comment.text,
             initialDiscuss = comment.discuss,
             initialSuggestion = comment.suggestion,
             pullRequest = comment.pullRequest,
-            codeContext = service.findFile(comment.filePath)?.takeUnless { isPackage },
+            codeContext = service.findFile(comment.filePath)?.takeUnless { isPackage || isProject },
             okText = "Atualizar",
         )
         if (dialog.showAndGet()) service.update(comment, dialog.text, dialog.discuss, dialog.suggestion)
@@ -100,6 +126,8 @@ object TargetComments {
         val line = service.currentLines(comment, document).first
         return FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, file, line, 0), true)
     }
+
+    private const val PROJECT_HINT = "Vale para o projeto como um todo: a IA decide onde mexer. Vai para o .md com Disparar Todos (Ctrl+S)."
 
     private fun hintFor(isPackage: Boolean, pullRequest: Int) = when {
         pullRequest != 0 && isPackage ->

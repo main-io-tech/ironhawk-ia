@@ -103,6 +103,75 @@ class ReviewCommentServiceTest : HeavyPlatformTestCase() {
         assertTrue(parsed.getValue("C3").discuss)
     }
 
+    fun testRuleViolationsAlreadyInTheRadarAreNotMarkedAgain() {
+        val violation = RuleViolation("Nunca desabilitar certificados", "CLAUDE.md", "src/First.kt", 1, "val a = 1", "aceita qualquer certificado")
+        val document = FileDocumentManager.getInstance().getDocument(first)!!
+        assertFalse(service.hasOpenComment("src/First.kt", CommentOrigin.REGRAS, RulesCheck.mention(violation)))
+
+        val marked = service.addComment(first, document, 0..0, RulesCheck.commentText(violation), discuss = false, origin = CommentOrigin.REGRAS)!!
+
+        assertEquals(0, marked.pullRequest)
+        assertTrue(service.hasOpenComment("src/First.kt", CommentOrigin.REGRAS, RulesCheck.mention(violation)))
+        assertFalse("outra regra no mesmo arquivo não conta", service.hasOpenComment("src/First.kt", CommentOrigin.REGRAS, "«Outra regra»"))
+        assertFalse("o de outra origem não conta", service.hasOpenComment("src/First.kt", CommentOrigin.ESCUDO, RulesCheck.mention(violation)))
+    }
+
+    fun testProjectCommentGoesFirstInASectionOfItsOwn() {
+        comment(first, "corrigir a")
+        val general = service.addProjectComment("padronizar o tratamento de erro em todo o projeto", discuss = true)!!
+
+        service.exportAll()
+
+        val markdown = Files.readString(reviewFile())
+        assertTrue(markdown.contains("## Geral"))
+        assertTrue(markdown.contains("C2 — projeto inteiro"))
+        assertTrue("a seção geral vem antes da dos arquivos", markdown.indexOf("## Geral") < markdown.indexOf("## `src/First.kt`"))
+        assertTrue(markdown.contains("padronizar o tratamento de erro"))
+        val parsed = ReviewMarkdown.parse(markdown).associateBy { it.id }
+        assertEquals(CommentTarget.PROJECT to "", parsed.getValue(general.id).let { it.target to it.filePath })
+        assertTrue(parsed.getValue(general.id).discuss)
+        assertEquals(CommentTarget.LINES to "src/First.kt", parsed.getValue("C1").let { it.target to it.filePath })
+    }
+
+    fun testProjectCommentSurvivesRestartAndCanBeEditedAndResolved() {
+        val general = service.addProjectComment("revisar a documentação", discuss = false)!!
+        service.exportAll()
+        service.loadState(XmlSerializer.deserialize(XmlSerializer.serialize(service.state), ReviewState::class.java))
+        val loaded = service.activeComments().single()
+        assertEquals(CommentTarget.PROJECT, loaded.target)
+        assertEquals("", loaded.filePath)
+
+        service.update(loaded, "revisar a documentação inteira", discuss = true)
+        assertTrue(service.isUnsaved(loaded))
+        service.exportAll()
+        val file = reviewFile()
+        Files.writeString(file, Files.readString(file).replace("### [ ] ${general.id}", "### [x] ${general.id}"))
+        service.importStatus(listOf(file.toString()))
+
+        assertTrue(loaded.resolved)
+        assertTrue(loaded.discuss)
+    }
+
+    fun testProjectCommentIsSavedWithAnyFileAndDoesNotCountAsAFileTarget() {
+        comment(first, "corrigir a")
+        service.addProjectComment("padronizar logs", discuss = false)
+
+        service.exportFile(first)
+
+        val markdown = Files.readString(reviewFile())
+        assertTrue("salvar um arquivo grava também o geral", markdown.contains("padronizar logs"))
+        assertEquals("o geral não marca arquivo nem a raiz do projeto", mapOf("src/First.kt" to 1), service.openCounts)
+    }
+
+    fun testProjectCommentIsNotAcceptedDuringAPullRequestReview() {
+        service.startPullRequestReview(7)
+
+        assertNull(service.addProjectComment("geral", discuss = false))
+
+        service.stopPullRequestReview()
+        assertNotNull(service.addProjectComment("geral", discuss = false))
+    }
+
     fun testFiringSelectedTargetsSavesOnlyTheirFiles() {
         val inFirst = comment(first, "corrigir a")
         val inSecond = comment(second, "corrigir c")

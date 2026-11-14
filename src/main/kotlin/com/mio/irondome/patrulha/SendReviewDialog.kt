@@ -190,6 +190,7 @@ internal class SendReviewDialog(
             CommentTarget.LINES -> if (comment.startLine == comment.endLine) "linha ${comment.startLine + 1}" else "linhas ${comment.startLine + 1}–${comment.endLine + 1}"
             CommentTarget.FILE -> "arquivo inteiro"
             CommentTarget.PACKAGE -> "pacote inteiro"
+            CommentTarget.PROJECT -> "projeto inteiro"
         }
         val (label, tone) = when (request.placement) {
             Placement.INLINE -> "Na linha" to Tone.GREEN

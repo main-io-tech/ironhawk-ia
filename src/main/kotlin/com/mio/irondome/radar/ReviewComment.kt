@@ -2,13 +2,14 @@ package com.mio.irondome.radar
 
 import com.intellij.util.messages.Topic
 
-/** O que o comentário aponta: um trecho, um arquivo inteiro ou um pacote (pasta) inteiro. */
-enum class CommentTarget { LINES, FILE, PACKAGE }
+/** O que o comentário aponta: um trecho, um arquivo inteiro, um pacote (pasta) inteiro ou o projeto todo. */
+enum class CommentTarget { LINES, FILE, PACKAGE, PROJECT }
 
-/** Quem marcou o alvo: o usuário no Radar ou outro mecanismo, como o Escudo nos testes fora da convenção. */
+/** Quem marcou o alvo: o usuário no Radar ou outro mecanismo, como o Escudo ou a verificação das regras de IA. */
 enum class CommentOrigin(val label: String) {
     RADAR("Radar"),
     ESCUDO("Escudo"),
+    REGRAS("Regras de IA"),
     ;
 
     companion object {
@@ -18,7 +19,8 @@ enum class CommentOrigin(val label: String) {
 
 /**
  * Linhas são 0-based; `filePath` é relativo à raiz do projeto, com `/`. Em [CommentTarget.PACKAGE],
- * `filePath` é a pasta; fora de [CommentTarget.LINES], linhas e trecho ficam vazios.
+ * `filePath` é a pasta; em [CommentTarget.PROJECT], `filePath` fica vazio; fora de [CommentTarget.LINES],
+ * linhas e trecho ficam vazios.
  */
 class ReviewComment(
     var id: String = "",

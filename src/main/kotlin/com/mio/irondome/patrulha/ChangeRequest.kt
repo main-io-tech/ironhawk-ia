@@ -72,6 +72,7 @@ data class ChangeRequest(
             CommentTarget.LINES -> if (startLine == endLine) "linha $startLine" else "linhas $startLine–$endLine"
             CommentTarget.FILE -> "arquivo inteiro"
             CommentTarget.PACKAGE -> "pacote inteiro"
+            CommentTarget.PROJECT -> "projeto inteiro"
         }
 
     /** Feito por pelo menos um dos sinais: o código mudou ou a conversa foi resolvida. */

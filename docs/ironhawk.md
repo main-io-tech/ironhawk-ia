@@ -95,7 +95,7 @@ Cada mecanismo é independente e tem uma aba própria no painel lateral **Iron D
 | 🛰️ [**Patrulha**](#patrulha) | Revisa os pull requests abertos no GitHub no modo revisão do PR, envia os pedidos de alteração e confere depois se foram atendidos. | Aba Patrulha |
 | 🛠️ [**Arsenal**](#arsenal) | Chama a IA pelo Cursor CLI ou Antigravity CLI para disparar alvos, revisar PRs, explicar falhas de teste e analisar bugs. | Ações com IA nas abas |
 | 🏰 [**Base**](#base) | O painel lateral e os componentes visuais que os mecanismos compartilham. | Lateral da IDE |
-| 📦 [**Caixa-Preta**](#caixa-preta) | Reporta bugs do próprio plugin: um `.md` dizendo onde foi o bug, com print, GIF e erros do log, enviado ao Linear. E confere se a IDE tem o que cada mecanismo precisa. | Topo do painel e menu Help |
+| 📦 [**Caixa-Preta**](#caixa-preta) | Reporta bugs do próprio plugin como issue no GitHub: texto livre, onde foi o bug, erros do log e, se você quiser, print e GIF. E confere se a IDE tem o que cada mecanismo precisa. | Topo do painel e menu Help |
 
 ---
 
@@ -113,6 +113,21 @@ onde acompanha a revisão aberta e o histórico.
   em dois"*, clique com o botão direito num pacote ou arquivo (na árvore do projeto, na aba do editor
   ou na aba Sentinela) e use **Marcar como Alvo**. O alvo de arquivo aparece no topo do editor, e a
   árvore do projeto mostra quantos alvos cada pacote e arquivo tem.
+- 🌐 **Projeto inteiro:** para o que fala do projeto como um todo (*"padronize o tratamento de erro em
+  todo o módulo de pagamentos"*), use **Comentário Geral** na barra da aba Radar, sem precisar de arquivo
+  aberto. Ele aparece no topo da lista, no nó **Projeto**, e no `.md` numa seção **Geral**, no início, que
+  a IA lê antes dos comentários por arquivo e que a deixa decidir onde mexer. Funciona como os outros alvos
+  (editar, cancelar, resolver, *Discutir antes de alterar*) e é gravado com qualquer salvamento. Durante a
+  revisão de um PR o botão fica desligado, porque os comentários vão para o PR.
+- ✅ **Verificar Regras de IA:** a IA, só lendo, confere se as alterações do projeto (as não commitadas e os
+  commits da branch além da base) cumprem as regras de IA dele: `CLAUDE.md`, `AGENTS.md`, `.cursorrules`,
+  `.claude/rules/*`, `.cursor/rules/*` e `.github/copilot-instructions.md`, na raiz e nas subpastas, detectados
+  sozinhos. Sem nenhum desses arquivos, o botão avisa e não chama a IA. O resultado abre num diálogo com a regra,
+  o arquivo, a linha e o trecho de cada violação, e você marca no Radar só as que quiser (**Enviar ao Radar**);
+  as que já estão lá aparecem como *já no Radar* e não duplicam. As regras que a IA não consegue conferir lendo o
+  código (como "responda em português") ficam numa lista **Não verificável**, no fim. Rodar de novo substitui o
+  resultado, e **Última Verificação das Regras de IA** reabre o último. Os alvos marcados levam a origem
+  *Regras de IA* no `.md`.
 - 🚦 **Dois modos por comentário:** *Aplicar direto* para o que é óbvio; *Discutir antes de alterar*
   para a IA explicar por que o código está assim, o impacto de manter, alterar ou remover e até 5
   opções com prévia da alteração, e argumentar com você até a decisão final.
@@ -325,6 +340,9 @@ A aba Sentinela vigia o perímetro: os arquivos ainda não commitados, em grupos
 
 **Executar Todos os Testes** compila o projeto e roda todos os testes JUnit pela própria IDE (a
 execução também aparece na janela Run, com o console completo). O resultado chega ao vivo.
+
+> **Em definição:** o padrão para ligar os testes aos critérios de aceite (catálogo em YAML, tags `criterio:` e `nivel:`
+> e a visão por critério) está proposto em [Escudo: critérios de aceite](escudo-criterios.md).
 
 <p align="center">
   <img src="images/escudo.png" width="820" alt="Aba Escudo com os testes agrupados por chave e os nomes formatados">
@@ -546,6 +564,22 @@ IA escreveu e **Cancelar**; o ícone da aba e o do painel viram o ícone de IA, 
 painel fechado. Execuções sem aba própria, como as da Caixa-Preta, aparecem em todas as abas. Cada execução fica
 registrada em `ironhawk/iron-dome/ia/` com o pedido, os passos, os arquivos alterados e a resposta (**Ver Resposta**).
 
+A aba Arsenal tem o estado da IA fixo no topo ("IA pronta…", "IA não configurada", "Teste a integração") e quatro abas
+internas: **IA** (configuração automática, CLI, executável, modelo e teste; tempo máximo e argumentos extras ficam
+em **Opções avançadas**, recolhidas), **Execução** (onde rodar, devcontainer e proteções), **Recursos** (o que a IA
+libera e o Spec Kit) e **Execuções** (as recentes). Uma aba com pendência ganha um ponto amarelo (falta fazer) ou
+vermelho (quebrado) no título, e o link no topo ("Resolver: …") leva a ela. A aba abre onde há algo a resolver; com
+tudo pronto, abre em **Execuções**.
+
+Na aba **Recursos**, **Skills extras** lista as skills achadas no projeto (`.claude/skills`, `.cursor/skills`,
+`.agents/skills`, `.codex/skills`) e na sua pasta pessoal, com nome e descrição lidos do `SKILL.md`; as do próprio
+Spec Kit ficam de fora. Se uma não aparecer, **Adicionar Pasta de Skills…** aponta a pasta onde ela está (uma pasta
+com várias skills, ou a de uma só). Cada skill marcada vira um botão avulso no **Lançador** do Ataque, ao lado das
+etapas do Spec Kit, e não entra no avanço da sequência. O botão pede uma instrução opcional e roda a skill com o
+CLI, o host e as proteções do Arsenal, passando a feature escolhida; sem a skill na máquina, o botão fica desligado
+com o motivo. A escolha vale só para você, nesta IDE, e nada vai para o projeto. A skill roda como uma execução da
+IA comum (aparece nas Execuções do Arsenal e tem o **Desfazer Alterações da IA**), não como missão com Telemetria.
+
 No Windows, o CLI também pode estar no **WSL**: em **Onde está o CLI**, escolha **No WSL** e a distribuição (a lista
 vem do `wsl.exe`, sem as internas do Docker Desktop). O plugin roda o CLI dentro dela pelo shell de login, que acha o
 `agent` ou o `agy` em `~/.local/bin` (ou use o caminho do Linux em **Executável**), converte a pasta do projeto para
@@ -618,29 +652,35 @@ ações estão habilitadas e as execuções recentes, que abrem com duplo clique
 ## 📦 Caixa-Preta
 
 Achou um bug no Iron Dome IA? O botão da caixa-preta laranja no topo do painel (ou **Help > Reportar Bug do
-Iron Dome IA**) abre um formulário com título, o mecanismo onde aconteceu, o que aconteceu, os passos e o que
-era esperado.
+Iron Dome IA**) abre um formulário curto: um título e um texto livre. O relatório é sobre o **plugin**, não sobre o
+seu projeto, e vira uma issue pública em
+[main-io-tech/ironhawk-ia](https://github.com/main-io-tech/ironhawk-ia/issues).
 
-- 📸 **Print:** a janela da IDE é capturada no momento do clique, antes do formulário abrir. Uma miniatura
-  mostra o que vai junto, e você pode tirar.
-- 🎥 **Gravação em GIF:** **Gravar GIF** esconde o formulário e grava a janela da IDE por até 30 s enquanto
-  você reproduz o bug. **Parar Gravação**, na notificação, traz o formulário de volta.
-- 🧭 **Onde foi o bug:** o `.md` aponta o pacote e a pasta do código do mecanismo e, se o `idea.log` tiver
-  erros que passaram pelo plugin, a **origem provável**: o primeiro ponto do plugin na pilha do erro mais
-  recente. Os erros vão no fim, com a pilha resumida aos frames que importam.
-- 🧾 **Ambiente:** versões do plugin, da IDE, do Java e do sistema, os plugins Java e JUnit, o controle de
-  versão, a aba ativa e o arquivo aberto.
-- 📨 **Linear:** o relatório vira uma issue `[Bug] <mecanismo>: <título>` no projeto
-  [Iron Dome AI](https://linear.app/mainio/project/iron-dome-ai-f447654e94fc/overview), com o print e o
-  GIF anexados. Basta colocar a sua API key pessoal em **Settings > Tools > Iron Dome IA**. O time vem do
-  próprio projeto, e o projeto pode ser trocado colando outra URL. **Testar Conexão** confere a
-  configuração, e a API key fica no cofre de senhas da IDE.
-- 💾 **Gerar só local:** em **Destino**, escolha entre enviar ao Linear ou **Gerar só local**, que cria o
-  relatório sem rede e abre o `bug.md` no editor. Nos dois casos, cada relatório ganha uma pasta
-  `bug-<data>/`, com o `bug.md`, o `print.png` e o `gravacao.gif`, dentro da **Pasta local**: por padrão
-  `~/iron-dome-ia/bugs/`, com atalhos para a `ironhawk/iron-dome/bugs/` do projeto ou outra pasta qualquer. A pasta e o
-  destino escolhidos ficam para o próximo relatório. Se o envio ao Linear falhar, a notificação oferece
-  **Tentar de Novo**.
+- ✍️ **Texto livre:** conte do seu jeito o que deu errado. Se a IA estiver pronta, ela só organiza o seu texto em
+  *o que aconteceu*, *passos* e *esperado*, sem ler o código do seu projeto nem acrescentar nada. Sem a IA, ou se
+  ela falhar, o relatório segue com o texto como você escreveu, marcado como não organizado, e nunca é bloqueado.
+- 📸 **Print sob demanda:** **Tirar print** esconde o formulário, espera 3 s para você abrir a tela do problema e
+  captura a janela da IDE. Uma miniatura mostra o que vai junto, e dá para tirar de novo ou descartar. Nenhum print
+  vai sem você pedir.
+- 🎥 **Gravação em GIF:** **Gravar GIF** esconde o formulário e grava a janela da IDE por até 30 s enquanto você
+  reproduz o bug. **Parar Gravação**, na notificação, traz o formulário de volta.
+- 👀 **Prévia antes de publicar:** a tela seguinte mostra exatamente o que será publicado, avisa que a issue é
+  pública (o texto, os erros do log, que podem trazer caminhos do seu projeto, e o ambiente) e deixa tirar os erros
+  do log antes de **Publicar no GitHub**.
+- 🧭 **Onde foi o bug:** o relatório aponta o pacote e a pasta do código do mecanismo e, se o `idea.log` tiver erros
+  que passaram pelo plugin, a **origem provável**: o primeiro ponto do plugin na pilha do erro mais recente.
+- 🧾 **Ambiente:** versões do plugin, da IDE, do Java e do sistema, os plugins Java e JUnit, o controle de versão,
+  a aba ativa e o arquivo aberto.
+- 🐙 **Conta do GitHub:** a issue `[Bug] <mecanismo>: <título>` é criada com a conta do GitHub que você já tem no
+  IntelliJ (a mesma da Patrulha, em **Settings > Version Control > GitHub**). Sem conta, o aviso leva às
+  configurações; se o repositório ficar privado e a sua conta não tiver acesso, a mensagem diz que falta permissão
+  no repositório. Sem os plugins Git e GitHub da IDE, o plugin abre a página de nova issue no navegador, já preenchida.
+- 📎 **Anexos:** a API do GitHub não anexa imagens, então a issue sai só com texto. Depois de criá-la, o plugin abre
+  a issue no navegador e a pasta com o `print.png` e o `gravacao.gif` (e o `bug.md`), e avisa para você arrastar os
+  arquivos para a issue. Eles também ficam públicos.
+- 🏷️ **Label:** o prefixo `[Bug]` no título é o que a GitHub Action do repositório
+  (`.github/workflows/label-bug.yml`) usa para aplicar a label `bug`, já que quem não tem permissão de triagem
+  não consegue definir labels pela API.
 
 ### 🩺 Verificar Compatibilidade
 
@@ -791,7 +831,7 @@ O código fica em `src/main/kotlin/com/mio/irondome`, com um pacote por mecanism
 | `sentinela` | 👁️ Sentinela | Aba Sentinela e o diff dos arquivos não commitados |
 | `escudo` | 🛡️ Escudo | Execução dos testes JUnit, formatação do `@DisplayName` e a aba Escudo (só com o plugin JUnit) |
 | `patrulha` | 🛰️ Patrulha | Cliente do GitHub, checkout e revisão dos PRs, os pedidos em `.md` e as verificações de código, conversa e IA (só com os plugins Git e GitHub) |
-| `caixapreta` | 📦 Caixa-Preta | Formulário de bug, print e gravação em GIF, leitura dos erros do plugin no `idea.log`, o `.md` do relatório, o envio ao Linear e a verificação de compatibilidade |
+| `caixapreta` | 📦 Caixa-Preta | Formulário de bug, print e gravação em GIF, leitura dos erros do plugin no `idea.log`, o `.md` do relatório, a issue no GitHub e a verificação de compatibilidade |
 | `base` | 🏰 Base | Tool window, abas extras, a barra flutuante do editor e os componentes visuais compartilhados (cabeçalho de resumo, etiquetas, barras e linhas das árvores) |
 
 O diagrama de classes é desenhado em SVG puro, sem biblioteca de terceiros.

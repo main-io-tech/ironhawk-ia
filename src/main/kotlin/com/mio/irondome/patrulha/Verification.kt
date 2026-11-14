@@ -228,6 +228,7 @@ object ReviewPlan {
         val where = when (comment.target) {
             CommentTarget.PACKAGE -> "pacote inteiro"
             CommentTarget.FILE -> "arquivo inteiro"
+            CommentTarget.PROJECT -> "projeto inteiro"
             CommentTarget.LINES -> if (first == last) "linha $first" else "linhas $first–$last"
         }
         val text = (comment.text.trim() + example(comment)).lines().joinToString("\n") { if (it.isEmpty()) it else "  $it" }.trimStart()

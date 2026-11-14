@@ -18,8 +18,10 @@ object ReviewMarkdown {
 
         1. Antes de alterar qualquer arquivo, leia esta revisão inteira e os arquivos citados. Localize
            cada comentário pendente (`[ ]`) pelo trecho citado, pois os números de linha podem ter mudado.
-           Comentários de **$WHOLE_FILE** valem para o arquivo todo, e os de **$WHOLE_PACKAGE**, para
-           todos os arquivos da pasta indicada no título da seção; eles não citam trecho.
+           Comentários de **$WHOLE_FILE** valem para o arquivo todo, os de **$WHOLE_PACKAGE**, para
+           todos os arquivos da pasta indicada no título da seção, e os de **$WHOLE_PROJECT** (seção
+           **$GENERAL_SECTION**, no início), para o projeto como um todo: você decide em quais arquivos
+           mexer. Eles não citam trecho.
         2. Analise os comentários pendentes em conjunto, inclusive os de arquivos diferentes, e procure:
            - **Contradições:** comentários que pedem coisas incompatíveis para o mesmo ponto, a mesma
              regra ou o mesmo comportamento.
@@ -75,12 +77,15 @@ object ReviewMarkdown {
 
     private const val WHOLE_FILE = "arquivo inteiro"
     private const val WHOLE_PACKAGE = "pacote inteiro"
+    private const val WHOLE_PROJECT = "projeto inteiro"
+    private const val GENERAL_SECTION = "Geral"
 
     private val resolvedHeading = Regex("""^#+ \[[xX]] (C\d+)\b""", RegexOption.MULTILINE)
     private val fileHeading = Regex("""^## `(.+)`\s*$""")
     private val packageHeading = Regex("""^## Pacote `(.+?)/?`\s*$""")
+    private val generalHeading = Regex("""^## $GENERAL_SECTION\s*$""")
     private val commentHeading =
-        Regex("""^### \[([ xX])] (C\d+) — (?:linhas? (\d+)(?:–(\d+))?|($WHOLE_FILE|$WHOLE_PACKAGE))""")
+        Regex("""^### \[([ xX])] (C\d+) — (?:linhas? (\d+)(?:–(\d+))?|($WHOLE_FILE|$WHOLE_PACKAGE|$WHOLE_PROJECT))""")
     private const val COMMENT_LABEL = "**Comentário:**"
     private const val MODE_LABEL = "**Modo:**"
     private const val ORIGIN_LABEL = "**Origem:**"
@@ -107,6 +112,7 @@ object ReviewMarkdown {
 
         for (line in markdown.lines()) {
             val file = fileHeading.matchEntire(line) ?: packageHeading.matchEntire(line)
+            val general = generalHeading.matches(line)
             val heading = commentHeading.find(line)
             val parsing = current
             val text = parsing?.text
@@ -114,6 +120,10 @@ object ReviewMarkdown {
                 file != null -> {
                     flush()
                     path = file.groupValues[1]
+                }
+                general -> {
+                    flush()
+                    path = ""
                 }
                 heading != null -> {
                     flush()
@@ -141,6 +151,7 @@ object ReviewMarkdown {
             val target = when (whole) {
                 WHOLE_FILE -> CommentTarget.FILE
                 WHOLE_PACKAGE -> CommentTarget.PACKAGE
+                WHOLE_PROJECT -> CommentTarget.PROJECT
                 else -> CommentTarget.LINES
             }
             return SavedComment(
@@ -175,7 +186,11 @@ object ReviewMarkdown {
         for ((section, fileComments) in comments.groupBy { it.filePath to (it.target == CommentTarget.PACKAGE) }) {
             val (path, isPackage) = section
             appendLine()
-            appendLine(if (isPackage) "## Pacote `$path/`" else "## `$path`")
+            appendLine(when {
+                fileComments.first().target == CommentTarget.PROJECT -> "## $GENERAL_SECTION"
+                isPackage -> "## Pacote `$path/`"
+                else -> "## `$path`"
+            })
             for (comment in fileComments) {
                 appendLine()
                 val mark = if (comment.resolved) "x" else " "
@@ -183,8 +198,8 @@ object ReviewMarkdown {
                 appendLine()
                 appendLine("**Modo:** ${if (comment.discuss) DISCUSS_MODE else APPLY_MODE}")
                 appendLine()
-                if (comment.origin == CommentOrigin.ESCUDO) {
-                    appendLine("$ORIGIN_LABEL ${CommentOrigin.ESCUDO.label} (marcado automaticamente pelo Escudo, não pelo revisor: classe de teste fora da convenção do @DisplayName)")
+                originNote(comment.origin)?.let {
+                    appendLine("$ORIGIN_LABEL ${comment.origin.label} ($it)")
                     appendLine()
                 }
                 if (comment.discuss && !comment.resolved) {
@@ -205,6 +220,13 @@ object ReviewMarkdown {
         }
     }
 
+    /** Por que o alvo não é do revisor, para a IA saber de onde ele veio; nulo nos que o usuário marcou. */
+    private fun originNote(origin: CommentOrigin): String? = when (origin) {
+        CommentOrigin.RADAR -> null
+        CommentOrigin.ESCUDO -> "marcado automaticamente pelo Escudo, não pelo revisor: classe de teste fora da convenção do @DisplayName"
+        CommentOrigin.REGRAS -> "marcado pela verificação das regras de IA, não pelo revisor: o código viola uma regra do projeto"
+    }
+
     fun describeLines(startLine: Int, endLine: Int): String =
         if (startLine == endLine) "linha ${startLine + 1}" else "linhas ${startLine + 1}–${endLine + 1}"
 
@@ -212,6 +234,7 @@ object ReviewMarkdown {
         CommentTarget.LINES -> describeLines(startLine, endLine)
         CommentTarget.FILE -> WHOLE_FILE
         CommentTarget.PACKAGE -> WHOLE_PACKAGE
+        CommentTarget.PROJECT -> WHOLE_PROJECT
     }
 
     private fun fenceFor(snippet: String): String {

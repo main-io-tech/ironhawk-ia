@@ -1959,6 +1959,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             CommentTarget.LINES -> if (comment.startLine == comment.endLine) "linha ${comment.startLine + 1}" else "linhas ${comment.startLine + 1}–${comment.endLine + 1}"
             CommentTarget.FILE -> "arquivo inteiro"
             CommentTarget.PACKAGE -> "pacote inteiro"
+            CommentTarget.PROJECT -> "projeto inteiro"
         }
 
         private fun codeTone(status: CodeStatus) = when (status) {

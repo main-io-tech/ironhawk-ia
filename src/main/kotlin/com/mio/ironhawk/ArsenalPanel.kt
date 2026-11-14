@@ -6,6 +6,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
@@ -21,8 +22,10 @@ import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPasswordField
+import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.components.panels.VerticalLayout
+import com.intellij.util.ui.ColorIcon
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -47,6 +50,7 @@ import com.mio.irondome.interceptor.AgentTerminal
 import com.mio.irondome.interceptor.AgentTranscript
 import com.mio.irondome.interceptor.AgentVerifier
 import com.mio.tomahawk.run.DevContainer
+import com.mio.tomahawk.run.ExtraSkills
 import com.mio.tomahawk.run.Guardrails
 import com.mio.tomahawk.run.LaunchTerminal
 import com.mio.tomahawk.run.MissionRunner
@@ -143,7 +147,18 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         add(clearKey)
     }
     private val cliUses = small("")
-    private val cliCard = JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)).apply {
+
+    /** Tempo máximo e argumentos extras: recolhidos, porque quase ninguém mexe neles. */
+    private val advanced = JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)).apply {
+        isOpaque = false
+        isVisible = false
+        add(labeled("Tempo máximo (min)", timeout))
+        add(small("Uma tarefa ou missão que passar disso é interrompida."))
+        add(labeled("Argumentos extras", extraArgs))
+        add(small("Vão para o CLI antes do pedido, separados por espaço; aspas agrupam."))
+    }
+    private val advancedToggle = ActionLink(ADVANCED_CLOSED) { advanced.isVisible = !advanced.isVisible; updateAdvancedToggle() }
+    private val cliCard =JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)).apply {
         isOpaque = false
         add(subtitle("CLI de IA", AllIcons.Nodes.Console))
         add(cliUses)
@@ -158,11 +173,9 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         })
         add(labeled("Modelo", model))
         add(small("Como no --model do CLI."))
-        add(labeled("Tempo máximo (min)", timeout))
-        add(small("Uma tarefa ou missão que passar disso é interrompida."))
-        add(labeled("Argumentos extras", extraArgs))
-        add(small("Vão para o CLI antes do pedido, separados por espaço; aspas agrupam."))
         add(keyRow)
+        add(advancedToggle)
+        add(advanced)
         add(hangNotice)
         add(row(saveTest, saveOnly, terminalTest))
         add(testLine)
@@ -180,8 +193,25 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         add(autoNotice)
     }
 
-    /** Os cartões que se montam de novo a cada mudança: onde rodar, proteções, recursos, Spec Kit e execuções. */
-    private val dynamic = JPanel(VerticalLayout(JBUI.scale(12), VerticalLayout.FILL)).apply { isOpaque = false }
+    /** As abas de baixo do cabeçalho; as três últimas têm cartões que se montam de novo a cada mudança. */
+    private enum class Tab(val title: String) { AI("IA"), EXECUTION("Execução"), RESOURCES("Recursos"), RUNS("Execuções") }
+
+    /** O que falta numa aba: [tone] diz se é vermelho (quebrado) ou amarelo (falta fazer) e [reason], o motivo. */
+    private class Pending(val tone: Tone, val reason: String)
+
+    private fun stack() = JPanel(VerticalLayout(JBUI.scale(12), VerticalLayout.FILL)).apply {
+        isOpaque = false
+        border = JBUI.Borders.empty(10, 14, 16, 14)
+    }
+
+    private val aiTab = stack()
+    private val executionTab = stack()
+    private val resourcesTab = stack()
+    private val runsTab = stack()
+    private val tabs = JBTabbedPane()
+    private var pendingTarget: Tab? = null
+    private val pendingLink = ActionLink("") { pendingTarget?.let { tabs.selectedIndex = it.ordinal } }.apply { isVisible = false }
+    private var initialTabChosen = false
     private val specKit = SpecKitSetupPanel(project, this, withInit = false)
     private val runsModel = DefaultListModel<Run>()
     private val runsList = MechanismList(runsModel, IronDomeIcons.ia, Tone.TEAL).apply {
@@ -199,16 +229,20 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     private var containerBusy = false
 
     init {
-        val content = JPanel(VerticalLayout(JBUI.scale(12), VerticalLayout.FILL)).apply {
-            border = JBUI.Borders.empty(10, 14, 16, 14)
-            add(TitledSeparator("A IA · comum aos dois sistemas"))
-            add(autoCard)
-            add(cliCard)
-            add(dynamic)
+        aiTab.add(autoCard)
+        aiTab.add(cliCard)
+        listOf(Tab.AI to aiTab, Tab.EXECUTION to executionTab, Tab.RESOURCES to resourcesTab, Tab.RUNS to runsTab).forEach { (tab, panel) ->
+            tabs.addTab(tab.title, ScrollPaneFactory.createScrollPane(FitWidthPanel(panel), true))
         }
         setContent(JPanel(BorderLayout()).apply {
-            add(header, BorderLayout.NORTH)
-            add(ScrollPaneFactory.createScrollPane(FitWidthPanel(content), true), BorderLayout.CENTER)
+            add(JPanel(BorderLayout()).apply {
+                add(header, BorderLayout.NORTH)
+                add(JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(14), 0)).apply {
+                    isOpaque = false
+                    add(pendingLink)
+                }, BorderLayout.CENTER)
+            }, BorderLayout.NORTH)
+            add(tabs, BorderLayout.CENTER)
         })
         toolbar = ActionManager.getInstance().createActionToolbar(
             "IronHawk.ArsenalToolbar",
@@ -232,6 +266,7 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             }, project.disposed)
         })
         app.messageBus.connect(this).subscribe(TomahawkSettings.Listener.TOPIC, TomahawkSettings.Listener { app.invokeLater({ refreshCards() }, project.disposed) })
+        app.messageBus.connect(this).subscribe(ExtraSkills.Listener.TOPIC, ExtraSkills.Listener { app.invokeLater({ refreshCards() }, project.disposed) })
         app.messageBus.connect(this).subscribe(IronHawkSystem.TOPIC, IronHawkSystem.Listener { app.invokeLater({ refreshCards() }, project.disposed) })
         app.messageBus.connect(this).subscribe(SpecKitSetup.Listener.TOPIC, SpecKitSetup.Listener { app.invokeLater({ refreshCards() }, project.disposed) })
         project.messageBus.connect(this).subscribe(SpecKitService.CHANGED, SpecKitService.Listener { refreshCards() })
@@ -432,22 +467,79 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         ).joinToString(" e ") + "."
         updateProviderFields()
 
-        dynamic.removeAll()
-        dynamic.add(TitledSeparator("Execução e proteções"))
-        dynamic.add(runCard())
-        dynamic.add(containerCard())
-        if (IronHawkSystem.DEFENSE.enabled) dynamic.add(containmentCard())
-        if (IronHawkSystem.ATTACK.enabled) dynamic.add(guardCard())
-        dynamic.add(TitledSeparator("Recursos da IA"))
-        dynamic.add(capsCard())
-        if (IronHawkSystem.ATTACK.enabled) dynamic.add(specKitCard())
-        dynamic.add(TitledSeparator("Execuções recentes"))
-        dynamic.add(small("O pedido, os passos, os arquivos alterados e a resposta de cada execução: as da Defesa em ironhawk/iron-dome/ia/ e as missões do Ataque em ironhawk/tomahawk/execucoes/. Duplo clique abre o registro."))
+        executionTab.removeAll()
+        executionTab.add(runCard())
+        executionTab.add(containerCard())
+        if (IronHawkSystem.DEFENSE.enabled) executionTab.add(containmentCard())
+        if (IronHawkSystem.ATTACK.enabled) executionTab.add(guardCard())
+        resourcesTab.removeAll()
+        resourcesTab.add(capsCard())
+        if (IronHawkSystem.ATTACK.enabled) {
+            resourcesTab.add(skillsCard())
+            resourcesTab.add(specKitCard())
+        }
+        runsTab.removeAll()
+        runsTab.add(small("O pedido, os passos, os arquivos alterados e a resposta de cada execução: as da Defesa em ironhawk/iron-dome/ia/ e as missões do Ataque em ironhawk/tomahawk/execucoes/. Duplo clique abre o registro."))
         runsModel.clear()
         runs().forEach(runsModel::addElement)
-        dynamic.add(ScrollPaneFactory.createScrollPane(runsList).apply { preferredSize = JBUI.size(120, 220) })
-        dynamic.revalidate()
-        dynamic.repaint()
+        runsTab.add(ScrollPaneFactory.createScrollPane(runsList).apply { preferredSize = JBUI.size(120, 320) })
+        listOf(executionTab, resourcesTab, runsTab).forEach {
+            it.revalidate()
+            it.repaint()
+        }
+        updateTabs()
+    }
+
+    private fun updateAdvancedToggle() {
+        advancedToggle.text = if (advanced.isVisible) ADVANCED_OPEN else ADVANCED_CLOSED
+    }
+
+    /** A pendência de uma aba, ou nulo se está tudo certo nela. */
+    private fun pending(tab: Tab): Pending? = when (tab) {
+        Tab.AI -> when {
+            AgentSettings.launch() == null -> Pending(Tone.RED, "a IA não está configurada")
+            !AgentSettings.ready -> Pending(Tone.YELLOW, "a integração ainda não foi testada")
+            else -> null
+        }
+        Tab.EXECUTION -> {
+            val root = service.root()
+            val config = root?.let(DevContainer::config)?.takeIf { Files.isRegularFile(it) }
+            val problems = config?.let { DevContainer.audit(runCatching { Files.readString(it) }.getOrDefault("")) }.orEmpty()
+            when {
+                problems.isNotEmpty() -> Pending(Tone.RED, "o devcontainer não isola a máquina")
+                AgentSettings.runMode == AgentRunMode.BACKGROUND && (config == null || DevContainer.cli() == null) ->
+                    Pending(Tone.YELLOW, "a IA roda na aba, mas o devcontainer não está pronto")
+                else -> null
+            }
+        }
+        Tab.RESOURCES -> if (!IronHawkSystem.ATTACK.enabled) {
+            null
+        } else {
+            val info = TomahawkSettings.resolveSpecify()?.let(SpecKitSetup::infoFor)
+            when {
+                TomahawkSettings.resolveSpecify() == null -> Pending(Tone.YELLOW, "o specify do Spec Kit não está instalado")
+                info?.broken == true -> Pending(Tone.RED, "o specify está com defeito")
+                else -> null
+            }
+        }
+        Tab.RUNS -> null
+    }
+
+    /** Os pontos nos títulos das abas, o link da pendência no topo e, na primeira vez, a aba em que abrir. */
+    private fun updateTabs() {
+        val pendings = Tab.entries.mapNotNull { tab -> pending(tab)?.let { tab to it } }
+        Tab.entries.forEach { tab ->
+            val found = pendings.firstOrNull { it.first == tab }?.second
+            tabs.setIconAt(tab.ordinal, found?.let { ColorIcon(8, it.tone.accent) })
+        }
+        val worst = pendings.firstOrNull { it.second.tone === Tone.RED } ?: pendings.firstOrNull()
+        pendingTarget = worst?.first
+        pendingLink.isVisible = worst != null
+        worst?.let { pendingLink.text = "Resolver: ${it.second.reason} (aba ${it.first.title})" }
+        if (!initialTabChosen) {
+            initialTabChosen = true
+            tabs.selectedIndex = (worst?.first ?: Tab.RUNS).ordinal
+        }
     }
 
     private fun updateHeader() {
@@ -681,6 +773,62 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         }
     }
 
+    /** As skills extras do Ataque: as achadas no projeto e na máquina, quais viram botão no Lançador e as pastas indicadas. */
+    private fun skillsCard(): JComponent = card {
+        val home = runCatching { Path.of(System.getProperty("user.home")) }.getOrNull()
+        val skills = ExtraSkills.discover(service.root(), home)
+        val chosen = ExtraSkills.selected
+        add(subtitle("Skills extras", AllIcons.Nodes.Plugin, IronHawkSystem.ATTACK))
+        add(small("As skills marcadas viram botões avulsos no Lançador, ao lado das etapas do Spec Kit. A escolha vale só para você, nesta IDE."))
+        if (skills.isEmpty()) {
+            add(small("Nenhuma skill achada em ${ExtraSkills.FOLDERS.joinToString(", ")}, no projeto nem na sua pasta pessoal. Se elas estão em outro lugar, indique a pasta abaixo."))
+        }
+        skills.forEach { skill ->
+            add(JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
+                isOpaque = false
+                add(JBCheckBox(skill.name, skill.name in chosen).apply {
+                    isOpaque = false
+                    addActionListener { toggleSkill(skill.name, isSelected) }
+                }, BorderLayout.WEST)
+                add(small(skill.description.ifEmpty { "Sem descrição." }.take(SKILL_DESCRIPTION_MAX)), BorderLayout.CENTER)
+                add(Pill(skill.scope.label, Tone.GRAY), BorderLayout.EAST)
+            })
+        }
+        chosen.filter { name -> skills.none { it.name == name } }.sorted().forEach { name ->
+            add(JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
+                isOpaque = false
+                add(JBCheckBox(name, true).apply {
+                    isOpaque = false
+                    addActionListener { toggleSkill(name, isSelected) }
+                }, BorderLayout.WEST)
+                add(small("Não encontrada neste projeto nem nesta máquina: o botão fica desligado no Lançador.").apply { foreground = JBColor.RED }, BorderLayout.CENTER)
+            })
+        }
+        ExtraSkills.customFolders.forEach { folder ->
+            add(row(small("Pasta: $folder"), ActionLink("Remover") {
+                ExtraSkills.customFolders = ExtraSkills.customFolders - folder
+                ExtraSkills.notifyChanged()
+            }))
+        }
+        add(row(JButton("Adicionar Pasta de Skills…", AllIcons.General.Add).apply {
+            toolTipText = "Uma pasta com várias skills dentro, ou a pasta de uma skill só (com o SKILL.md)"
+            addActionListener { addSkillsFolder() }
+        }))
+    }
+
+    private fun toggleSkill(name: String, on: Boolean) {
+        ExtraSkills.selected = if (on) ExtraSkills.selected + name else ExtraSkills.selected - name
+        ExtraSkills.notifyChanged()
+    }
+
+    private fun addSkillsFolder() {
+        val descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor().withTitle("Pasta de skills")
+        FileChooser.chooseFile(descriptor, project, null) { folder ->
+            ExtraSkills.customFolders = ExtraSkills.customFolders + Path.of(folder.path).normalize().toString()
+            ExtraSkills.notifyChanged()
+        }
+    }
+
     private fun specKitCard(): JComponent = card {
         val s = service.snapshot
         val specify = TomahawkSettings.resolveSpecify()
@@ -826,6 +974,9 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
 
     internal companion object {
         const val MAX_RUNS = 30
+        const val SKILL_DESCRIPTION_MAX = 160
+        const val ADVANCED_CLOSED = "Opções avançadas ▸"
+        const val ADVANCED_OPEN = "Opções avançadas ▾"
         const val RUN_MODE_HINT = "No terminal, a IA roda à vista numa aba do terminal da IDE, onde dá para acompanhar e conversar com ela " +
             "(o Cursor abre interativo, com o login do agent login). Ela grava a resposta final em ironhawk/iron-dome/ia/respostas/, " +
             "e o plugin segue dali, como na aba. Testar no Terminal confere esse caminho com a configuração salva, no Windows ou no WSL."

@@ -3,6 +3,7 @@ package com.mio.irondome.interceptor
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.testFramework.PlatformTestUtil
 import com.mio.ironhawk.ArsenalPanel
+import com.mio.ironhawk.allTabsText
 import com.mio.ironhawk.panelText
 import com.mio.ironhawk.IronHawkSystem
 import java.nio.file.Files
@@ -69,10 +70,10 @@ class AgentSettingsPlatformTest : BasePlatformTestCase() {
         IronHawkSystem.ATTACK.enabled = false
         val tab = ArsenalPanel(project)
         try {
-            val html = panelText(tab)
+            val html = allTabsText(tab)
             AgentProvider.entries.forEach { assertTrue("${it.title} no seletor", it.title in html) }
             assertTrue("Configuração automática" in html)
-            assertTrue("Argumentos extras" in html)
+            assertTrue("tempo máximo e argumentos ficam recolhidos", "Opções avançadas" in html && "Argumentos extras" !in html)
             assertTrue("O que a IA libera" in html)
             assertTrue("sem o Ataque, nada de permissão total", "acceptEdits" in html && "bypassPermissions" !in html)
             assertTrue("pergunta antes de cada uma" in html)
@@ -80,7 +81,7 @@ class AgentSettingsPlatformTest : BasePlatformTestCase() {
 
             AgentSettings.confirmWrites = false
             PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-            val off = panelText(tab)
+            val off = allTabsText(tab)
             assertTrue("dá para voltar a perguntar", "Voltar a perguntar antes de alterar arquivos" in off)
         } finally {
             AgentSettings.confirmWrites = true

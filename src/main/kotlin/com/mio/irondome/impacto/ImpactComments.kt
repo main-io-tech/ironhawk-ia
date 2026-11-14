@@ -33,6 +33,7 @@ data class ImpactComment(
             CommentTarget.LINES -> if (startLine == endLine) "linha $startLine" else "linhas $startLine–$endLine"
             CommentTarget.FILE -> "arquivo inteiro"
             CommentTarget.PACKAGE -> "pacote inteiro"
+            CommentTarget.PROJECT -> "projeto inteiro"
         }
 
     /** O comentário vale para o arquivo de [filePath]: no próprio arquivo ou no pacote que o contém. */

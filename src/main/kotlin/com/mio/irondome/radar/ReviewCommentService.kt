@@ -333,6 +333,26 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
         return comment
     }
 
+    /**
+     * Comentário sobre o projeto todo, sem arquivo nem linha. Vale para a IA, nunca para um PR em revisão: o
+     * PR comenta o código dele, e um comentário geral não aponta lugar nenhum.
+     */
+    fun addProjectComment(text: String, discuss: Boolean): ReviewComment? {
+        if (state.activePullRequest != 0) return null
+        val (id, reviewId) = nextIdentity(0)
+        val comment = ReviewComment(
+            id = id,
+            reviewId = reviewId,
+            filePath = PROJECT_PATH,
+            text = text,
+            discuss = discuss,
+            target = CommentTarget.PROJECT,
+        )
+        state.comments += comment
+        notifyChanged()
+        return comment
+    }
+
     /** Alvo ainda não interceptado de [origin] em [path] que cita [mention], na revisão aberta ou em rascunho. */
     fun hasOpenComment(path: String, origin: CommentOrigin, mention: String): Boolean =
         state.comments.any {
@@ -592,7 +612,7 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
     }
 
     private fun scopeOf(file: VirtualFile?): Scope? =
-        if (file == null) Scope.ALL else relativePath(file)?.let { Scope(setOf(it)) }
+        if (file == null) Scope.ALL else relativePath(file)?.let { Scope(setOf(it, PROJECT_PATH)) }
 
     /** Chamado quando um `.md` de `ironhawk/iron-dome/` muda no disco (por exemplo, a IA marcou `[x]`). */
     fun importStatus(changedPaths: Collection<String>) {
@@ -747,12 +767,13 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
     }
 
     private fun countOpen(): Map<String, Int> =
-        activeComments().filterNot { it.resolved }.groupingBy { it.filePath }.eachCount()
+        activeComments().filterNot { it.resolved || it.target == CommentTarget.PROJECT }.groupingBy { it.filePath }.eachCount()
 
     private fun pathOf(document: Document): String? =
         FileDocumentManager.getInstance().getFile(document)?.let(::relativePath)
 
     private fun documentOf(path: String): Document? {
+        if (path == PROJECT_PATH) return null
         val file = findFile(path) ?: return null
         return FileDocumentManager.getInstance().getCachedDocument(file)
     }
@@ -773,6 +794,9 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
 
     companion object {
         const val REVIEW_DIR = IronHawkFolder.DEFENSE
+
+        /** O "arquivo" do comentário sobre o projeto todo: nenhum. */
+        const val PROJECT_PATH = ""
 
         /** Arquivo gerado pelo plugin, dentro de `ironhawk/`, como as revisões; [path] relativo à raiz do projeto. */
         fun isReviewOutput(path: String): Boolean = path == IronHawkFolder.ROOT || path.startsWith("${IronHawkFolder.ROOT}/")

@@ -73,6 +73,7 @@ class ReviewCommentRenderer(
         else if (card != null) card.subtitle
         else if (comment.pullRequest != 0) "Pedido para o PR #${comment.pullRequest}${if (comment.target == CommentTarget.FILE) " · arquivo inteiro" else ""}"
         else if (comment.origin == CommentOrigin.ESCUDO) "Alvo marcado pelo Escudo · ${ReviewCommentService.reviewName(comment.reviewId)}"
+        else if (comment.origin == CommentOrigin.REGRAS) "Alvo marcado pela verificação das regras de IA · ${ReviewCommentService.reviewName(comment.reviewId)}"
         else if (comment.target == CommentTarget.FILE) "Alvo: arquivo inteiro · ${ReviewCommentService.reviewName(comment.reviewId)}"
         else "Alvo para a IA · ${ReviewCommentService.reviewName(comment.reviewId)}"
     /** Quem marcou, quando não foi o usuário. */
