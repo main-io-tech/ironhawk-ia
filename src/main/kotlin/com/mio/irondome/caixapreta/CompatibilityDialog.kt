@@ -23,7 +23,6 @@ import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import com.mio.irondome.base.IdeSupport
 import com.mio.irondome.base.IronDomeIcons
 import com.mio.irondome.base.Pill
 import com.mio.irondome.base.Tone
@@ -55,20 +54,14 @@ class CheckCompatibilityAction : DumbAwareAction() {
 }
 
 /**
- * Confere ao abrir o projeto e só informa: o que esta versão do IntelliJ não comporta fica desligado (avisado
- * uma vez por versão da IDE), e os demais problemas viram um aviso, até o usuário pedir para não avisar mais.
+ * Confere ao abrir o projeto e só informa: os problemas viram um aviso, até o usuário pedir para não avisar mais.
  */
 class CompatibilityStartup : ProjectActivity {
 
     override suspend fun execute(project: Project) {
         if (!IronHawkSystem.DEFENSE.enabled) return
         val env = Compatibility.environment(project)
-        val limited = Compatibility.limited(env)
-        if (limited.isNotEmpty() && !IdeSupport.limitedNotified) {
-            IdeSupport.limitedNotified = true
-            notify(project, "Iron Dome IA: ${limited.joinToString { it.title }} desligado nesta versão", escapeHtml(Compatibility.limitedMessage(env)))
-        }
-        val problems = Compatibility.problems(Compatibility.evaluate(env)).filter { it.mechanism !in limited }
+        val problems = Compatibility.problems(Compatibility.evaluate(env))
         if (problems.isEmpty()) return
         val signature = problems.joinToString("|") { "${it.mechanism.name}:${it.detail}" }
         if (PropertiesComponent.getInstance().getValue(DISMISSED_KEY) == signature) return
@@ -137,12 +130,6 @@ internal class CompatibilityDialog private constructor(
         checks.forEach { list.add(row(it)) }
         return FormBuilder.createFormBuilder()
             .addComponent(comment("Plugin ${env.pluginVersion} · ${env.ide} · ${env.system}"))
-            .addComponent(
-                comment(
-                    "Testado com o IntelliJ ${IdeSupport.TESTED_VERSION} (build ${IdeSupport.TESTED_BUILD})" +
-                        if (env.olderThanTested) ": esta IDE é mais antiga que a testada." else ".",
-                ),
-            )
             .addComponent(TitledSeparator("Mecanismos"))
             .addComponent(list)
             .addComponent(TitledSeparator("Erros recentes do plugin no log da IDE"))

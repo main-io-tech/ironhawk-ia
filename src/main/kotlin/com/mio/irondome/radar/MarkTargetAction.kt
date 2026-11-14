@@ -1,7 +1,6 @@
 package com.mio.irondome.radar
 
 import com.intellij.openapi.actionSystem.ActionUpdateThread
-import com.mio.irondome.base.IdeSupport
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.components.service
@@ -17,8 +16,7 @@ class MarkTargetAction : DumbAwareAction() {
         if (!IronHawkSystem.DEFENSE.showIn(e)) return
         val project = e.project
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE)
-        e.presentation.isEnabledAndVisible = !IdeSupport.isLimited(RADAR) &&
-            project != null && file != null && project.service<ReviewCommentService>().targetPath(file) != null
+        e.presentation.isEnabledAndVisible = project != null && file != null && project.service<ReviewCommentService>().targetPath(file) != null
         val pullRequest = project?.service<ReviewCommentService>()?.activePullRequest ?: 0
         if (file != null) {
             e.presentation.text = when {

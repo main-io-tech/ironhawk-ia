@@ -7,7 +7,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.ui.jcef.JBCefApp
-import com.mio.irondome.base.IdeSupport
 import com.mio.irondome.base.ReviewToolWindowTab
 import com.mio.irondome.base.TabFailures
 import com.mio.irondome.interceptor.AgentSettings
@@ -39,18 +38,10 @@ data class Environment(
     /** Abas que não abriram nesta sessão, pelo título, com a mensagem do erro. */
     val tabFailures: Map<String, String>,
     val linearConfigured: Boolean,
-    /** Build da IDE sem o código do produto, como `252.28539.97`. */
-    val ideBuild: String = IdeSupport.TESTED_BUILD,
-    /** Por título do mecanismo, o que esta IDE não tem e ele usa: são os desligados no modo limitado. */
-    val missingApis: Map<String, List<String>> = emptyMap(),
-    /** Abas que não abriram por faltar na IDE uma classe ou método que elas usam. */
-    val ideVersionFailures: Set<String> = emptySet(),
     /** O CLI de IA escolhido e onde ele foi encontrado; nulo se não foi. */
     val agentProvider: String = "Cursor",
     val agentCli: String? = null,
-) {
-    val olderThanTested: Boolean get() = IdeSupport.isOlder(ideBuild, IdeSupport.TESTED_BUILD)
-}
+)
 
 object Compatibility {
 
@@ -75,9 +66,6 @@ object Compatibility {
             extraTabs = ReviewToolWindowTab.EP_NAME.extensionList.mapTo(mutableSetOf()) { it.title },
             tabFailures = TabFailures.all,
             linearConfigured = runCatching { LinearSettings.configured }.getOrDefault(false),
-            ideBuild = app.build.asStringWithoutProductCode(),
-            missingApis = IdeSupport.missing,
-            ideVersionFailures = TabFailures.fromIdeVersion,
             agentProvider = AgentSettings.provider.title,
             agentCli = runCatching { AgentSettings.launch()?.description }.getOrNull(),
         )
@@ -97,7 +85,7 @@ object Compatibility {
         patrulha(env),
         interceptor(env),
         caixaPreta(env),
-    ).map { check -> ideVersion(env, check.mechanism) ?: check }
+    )
 
     /** Opcional: sem o CLI, as ações de IA caem no fluxo manual de copiar o pedido. */
     private fun interceptor(env: Environment): CompatibilityCheck = when (val cli = env.agentCli) {
@@ -111,34 +99,6 @@ object Compatibility {
 
     /** Os que merecem aviso ao abrir o projeto. */
     fun problems(checks: List<CompatibilityCheck>) = checks.filter { it.status == CheckStatus.WARNING || it.status == CheckStatus.ERROR }
-
-    /** Mecanismos que esta versão do IntelliJ não comporta: ficam desligados, e o restante funciona. */
-    fun limited(env: Environment): List<Mechanism> = Mechanism.entries.filter { it.title in env.missingApis }
-
-    /** Só informa o que ficou desligado nesta versão do IntelliJ, sem pedir para atualizar. */
-    fun limitedMessage(env: Environment): String = buildString {
-        append("Nesta versão do IntelliJ (build ${env.ideBuild}) ficam desligados: ")
-        append(limited(env).joinToString("; ") { "${it.title}, que usa ${env.missingApis.getValue(it.title).joinToString()}" })
-        append(". O restante funciona normalmente. Testado com o IntelliJ ${IdeSupport.TESTED_VERSION} (build ${IdeSupport.TESTED_BUILD}).")
-    }
-
-    private fun ideVersion(env: Environment, mechanism: Mechanism): CompatibilityCheck? {
-        val missing = env.missingApis[mechanism.title]
-        val fix = "Testado com o IntelliJ ${IdeSupport.TESTED_VERSION} (build ${IdeSupport.TESTED_BUILD}). Use Copiar Diagnóstico ou Reportar Bug para avisar."
-        return when {
-            missing != null -> CompatibilityCheck(
-                mechanism, CheckStatus.ERROR,
-                "Desligado nesta versão do IntelliJ (build ${env.ideBuild}), que não tem ${missing.joinToString()}.",
-                fix,
-            )
-            mechanism.title in env.ideVersionFailures -> CompatibilityCheck(
-                mechanism, CheckStatus.ERROR,
-                "A aba ${mechanism.title} não abriu porque esta versão do IntelliJ não tem algo que ela usa: ${env.tabFailures[mechanism.title].orEmpty()}",
-                fix,
-            )
-            else -> null
-        }
-    }
 
     private fun radar(env: Environment): CompatibilityCheck {
         val failure = env.tabFailures[Mechanism.RADAR.title]
@@ -240,7 +200,6 @@ object Compatibility {
         appendLine()
         appendLine("- **Plugin:** ${env.pluginVersion}")
         appendLine("- **IDE:** ${env.ide}")
-        appendLine("- **Testado com:** IntelliJ ${IdeSupport.TESTED_VERSION} (build ${IdeSupport.TESTED_BUILD})${if (env.olderThanTested) "; esta IDE é mais antiga" else ""}")
         appendLine("- **Sistema:** ${env.system}")
         appendLine()
         appendLine("| Mecanismo | Situação | Detalhe |")

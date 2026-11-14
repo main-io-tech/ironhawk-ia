@@ -53,10 +53,7 @@ object DefenseTabs {
 
     /** Uma aba que não abre não pode levar as outras junto: o erro vai para o log e para o lugar dela. */
     fun content(toolWindow: ToolWindow, title: String, icon: Icon?, description: String?, create: () -> JComponent): Content {
-        val missing = IdeSupport.missing[title]
-        val component = if (missing != null) {
-            UnavailableTabPanel(title, missing)
-        } else try {
+        val component = try {
             create().also { TabFailures.clear(title) }
         } catch (error: Throwable) {
             if (error is ControlFlowException || error is VirtualMachineError) throw error

@@ -1,7 +1,6 @@
 package com.mio.irondome.radar
 
 import com.intellij.openapi.actionSystem.AnAction
-import com.mio.irondome.base.IdeSupport
 import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorKind
@@ -24,7 +23,7 @@ object ReviewGutter {
     fun isCommentable(editor: Editor): Boolean {
         val mainEditor = editor.getUserData(commentable) ?: run {
             val project = editor.project
-            (!IdeSupport.isLimited(RADAR) && editor.editorKind == EditorKind.MAIN_EDITOR && project != null && !project.isDisposed)
+            (editor.editorKind == EditorKind.MAIN_EDITOR && project != null && !project.isDisposed)
                 .also { editor.putUserData(commentable, it) }
         }
         return mainEditor && IronHawkSystem.DEFENSE.enabled && service(editor)?.accepts(editor.document) == true
