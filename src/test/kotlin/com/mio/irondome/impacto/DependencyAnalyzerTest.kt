@@ -64,75 +64,31 @@ class DependencyAnalyzerTest : LightJavaCodeInsightFixtureTestCase() {
         assertEquals("Aferentes: Helper e Controller, sem contar ServiceTest", 2, service.afferent)
     }
 
-    fun testCycleBetweenServiceAndHelper() {
-        val graph = analyze("app.core.Service", depth = 1)
-
-        assertEquals(1, graph.cycleCount)
-        assertEquals(setOf("app.core.Service", "app.core.Helper"), graph.cycles.single())
-        assertTrue(graph.edges.single { it.from == "app.core.Helper" && it.to == "app.core.Service" }.inCycle)
-        assertFalse(graph.edges.single { it.from == "app.web.Controller" }.inCycle)
-    }
-
-    fun testTestsFoundSeparatelyFromProduction() {
-        val graph = analyze("app.core.Service", depth = 1)
-        val byName = graph.nodes.associateBy { it.name }
-
-        assertFalse(graph.nodes.any { it.name.endsWith("Test") })
-        assertEquals(listOf("app.core.ServiceTest"), byName.getValue("Service").tests.testClasses)
-        assertEquals("ServiceTest é um teste dedicado", TestCoverage.GOOD, byName.getValue("Service").tests.coverage)
-        assertEquals(TestCoverage.PARTIAL, byName.getValue("Helper").tests.coverage)
-        assertEquals(TestCoverage.NONE, byName.getValue("Repository").tests.coverage)
-    }
-
-    fun testTestClassIsNotReportedWithoutTests() {
-        val graph = analyze("app.core.ServiceTest", depth = 1)
-        val focus = graph.nodes.single { it.qualifiedName == "app.core.ServiceTest" }
-
-        assertEquals(TestCoverage.TEST_CLASS, focus.tests.coverage)
-        assertFalse(focus.needsAttention)
-        assertEquals(TestCoverage.GOOD, graph.nodes.single { it.name == "Service" }.tests.coverage)
-    }
-
-    fun testChangeRisk() {
-        val byName = analyze("app.core.Service", depth = 1).nodes.associateBy { it.name }
-
-        assertEquals("2 dependentes ficaria baixo, mas o ciclo sobe um nível", ChangeRisk.MEDIUM, byName.getValue("Service").risk)
-        assertFalse(byName.getValue("Service").needsAttention)
-        assertEquals(ChangeRisk.LOW, byName.getValue("Controller").risk)
-
-        assertEquals(ChangeRisk.LOW, ChangeRisk.of(ChangeRisk.MEDIUM_FROM - 1, inCycle = false))
-        assertEquals(ChangeRisk.MEDIUM, ChangeRisk.of(ChangeRisk.MEDIUM_FROM, inCycle = false))
-        assertEquals(ChangeRisk.HIGH, ChangeRisk.of(ChangeRisk.HIGH_FROM, inCycle = false))
-        assertEquals(ChangeRisk.HIGH, ChangeRisk.of(ChangeRisk.HIGH_FROM, inCycle = true))
-    }
-
-    fun testInheritanceEdgeAndKinds() {
+    fun testImplementsEdgeAndKinds() {
         val graph = analyze("app.data.SqlRepository", depth = 1)
 
         val edge = graph.edges.single { it.from == "app.data.SqlRepository" && it.to == "app.data.Repository" }
-        assertEquals(EdgeKind.INHERITANCE, edge.kind)
+        assertEquals(EdgeKind.IMPLEMENTS, edge.kind)
         assertEquals(ClassKind.INTERFACE, graph.nodes.single { it.name == "Repository" }.kind)
     }
 
-    fun testEfferentDirectionOnly() {
-        val graph = analyze("app.core.Service", depth = 1, direction = Direction.EFFERENT)
+    fun testAttributeBecomesAssociationAndOtherUseStaysUsage() {
+        val graph = analyze("app.core.Service", depth = 1)
 
-        assertFalse(graph.nodes.any { it.qualifiedName == "app.web.Controller" })
+        assertEquals(EdgeKind.ASSOCIATION, graph.edges.single { it.from == "app.core.Service" && it.to == "app.data.Repository" }.kind)
+        assertEquals(EdgeKind.USAGE, graph.edges.single { it.from == "app.core.Service" && it.to == "app.core.Formatter" }.kind)
     }
 
-    fun testProjectClassesListsTopLevelClasses() {
-        val classes = inBackground { ProjectClassesPanel.collect(project, EmptyProgressIndicator()) }
-        val names = classes.map { it.qualifiedName }
+    fun testMembersAreListedLikeAClassDiagram() {
+        val service = analyze("app.core.Service", depth = 1).nodes.single { it.name == "Service" }
 
-        assertContainsElements(names, "app.core.Service", "app.web.Controller", "app.data.Repository", "app.core.ServiceTest")
-        assertDoesntContain(names, "app.core.Service.Nested")
-        assertTrue(classes.single { it.name == "ServiceTest" }.test)
-        assertFalse(classes.single { it.name == "Service" }.test)
-        assertEquals(ClassKind.INTERFACE, classes.single { it.name == "Repository" }.kind)
+        assertTrue(service.attributes.contains("- repository: Repository"))
+        assertTrue(service.operations.contains("+ create(): Service"))
+        assertTrue(service.operations.contains("+ Service(Repository)"))
     }
 
-    private fun analyze(focus: String, depth: Int, direction: Direction = Direction.BOTH): DependencyGraph =
-        inBackground { DependencyAnalyzer(project, EmptyProgressIndicator()).analyze(focus, depth, direction) }
+    private fun analyze(focus: String, depth: Int): DependencyGraph =
+        inBackground { DependencyAnalyzer(project, EmptyProgressIndicator()).analyze(focus, depth) }
 
     /** A análise usa read actions não bloqueantes, que não podem rodar na EDT do teste. */
     private fun <T> inBackground(action: () -> T): T {

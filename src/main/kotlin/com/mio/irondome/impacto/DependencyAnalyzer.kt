@@ -5,6 +5,8 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VfsUtilCore
+import com.intellij.psi.PsiClassType
+import com.intellij.psi.PsiType
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
@@ -18,6 +20,7 @@ import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.util.Processor
 import com.mio.irondome.base.rootDir
 import org.jetbrains.uast.UClass
+import org.jetbrains.uast.UField
 import org.jetbrains.uast.UFile
 import org.jetbrains.uast.UMethod
 import org.jetbrains.uast.getParentOfType
@@ -29,7 +32,7 @@ import java.util.concurrent.Callable
  * Dependências entre classes Java e Kotlin do projeto, via UAST. Uma classe depende de outra quando
  * cita o tipo dela, herda dela, chama o construtor ou usa membros estáticos, de `object` ou de nível de
  * arquivo. Classes aninhadas contam como a classe de topo que as contém. Bibliotecas ficam de fora.
- * O diagrama e as contagens usam só o código de produção; os testes entram à parte, em [ClassNode.tests].
+ * O diagrama e as contagens usam só o código de produção.
  *
  * Cada passo roda numa read action própria, para não segurar a IDE durante a análise inteira.
  */
@@ -38,12 +41,13 @@ class DependencyAnalyzer(
     private val indicator: ProgressIndicator,
 ) {
     private val scope: GlobalSearchScope = GlobalSearchScopesCore.projectProductionScope(project)
-    private val testScope: GlobalSearchScope = GlobalSearchScopesCore.projectTestScope(project)
     private val efferent = mutableMapOf<String, Set<String>>()
-    private val supers = mutableMapOf<String, Set<String>>()
+    private val extended = mutableMapOf<String, Set<String>>()
+    private val implemented = mutableMapOf<String, Set<String>>()
+    private val associated = mutableMapOf<String, Set<String>>()
     private val afferent = mutableMapOf<String, Set<String>>()
 
-    fun analyze(focus: String, depth: Int, direction: Direction): DependencyGraph {
+    fun analyze(focus: String, depth: Int = DEFAULT_DEPTH): DependencyGraph {
         val levels = linkedMapOf(focus to 0)
         var frontier = listOf(focus)
         var truncated = false
@@ -51,12 +55,7 @@ class DependencyAnalyzer(
             val next = mutableListOf<String>()
             for (name in frontier) {
                 step("Buscando vizinhos de ${simpleName(name)}", levels.size)
-                val neighbors = when (direction) {
-                    Direction.EFFERENT -> efferentOf(name)
-                    Direction.AFFERENT -> afferentOf(name)
-                    Direction.BOTH -> efferentOf(name) + afferentOf(name)
-                }
-                for (neighbor in neighbors.sorted()) {
+                for (neighbor in (efferentOf(name) + afferentOf(name)).sorted()) {
                     if (neighbor in levels) continue
                     if (levels.size >= MAX_NODES) {
                         truncated = true
@@ -76,11 +75,11 @@ class DependencyAnalyzer(
             afferentOf(name)
         }
         val nodes = names.mapIndexedNotNull { index, name ->
-            step("Procurando testes de ${simpleName(name)}", index, names.size)
+            step("Lendo os membros de ${simpleName(name)}", index, names.size)
             describe(name, levels.getValue(name))
         }
         val edges = edgesBetween(nodes.map { it.qualifiedName }.toSet())
-        return DependencyGraph(focus, direction, depth, nodes, edges, truncated)
+        return DependencyGraph(focus, depth, nodes, edges, truncated)
     }
 
     private fun edgesBetween(names: Set<String>): List<Edge> {
@@ -88,14 +87,20 @@ class DependencyAnalyzer(
         for (from in names) efferent[from].orEmpty().filter { it in names }.forEach { pairs += from to it }
         for (to in names) afferent[to].orEmpty().filter { it in names }.forEach { pairs += it to to }
         return pairs.map { (from, to) ->
-            Edge(from, to, if (to in supers[from].orEmpty()) EdgeKind.INHERITANCE else EdgeKind.USAGE)
+            val kind = when {
+                to in extended[from].orEmpty() -> EdgeKind.EXTENDS
+                to in implemented[from].orEmpty() -> EdgeKind.IMPLEMENTS
+                to in associated[from].orEmpty() -> EdgeKind.ASSOCIATION
+                else -> EdgeKind.USAGE
+            }
+            Edge(from, to, kind)
         }
     }
 
     private fun describe(name: String, level: Int): ClassNode? {
-        val tests = testsOf(name)
         return read {
             val psiClass = findClass(name) ?: return@read null
+            val members = membersOf(psiClass)
             ClassNode(
                 qualifiedName = name,
                 name = psiClass.name ?: simpleName(name),
@@ -106,33 +111,56 @@ class DependencyAnalyzer(
                 level = level,
                 afferent = afferent[name].orEmpty().size,
                 efferent = efferent[name].orEmpty().size,
-                tests = tests,
+                attributes = members.attributes.take(MAX_MEMBERS),
+                operations = members.operations.take(MAX_MEMBERS),
+                hiddenAttributes = (members.attributes.size - MAX_MEMBERS).coerceAtLeast(0),
+                hiddenOperations = (members.operations.size - MAX_MEMBERS).coerceAtLeast(0),
             )
         }
     }
 
-    private fun testsOf(name: String): TestUsage = read {
-        val psiClass = findClass(name) ?: return@read null
-        val file = psiClass.navigationElement.containingFile?.virtualFile
-        if (file != null && testScope.contains(file)) return@read TestUsage.TEST_CLASS
-        val uClass = psiClass.toUElement() as? UClass ?: return@read null
-        val found = sortedSetOf<String>()
-        for (target in rootsOf(uClass, psiClass)) {
-            ReferencesSearch.search(target, testScope).forEach(Processor { reference ->
-                ProgressManager.checkCanceled()
-                topLevelClass(reference.element)?.qualifiedName?.takeIf { it != name }?.let(found::add)
-                true
-            })
+    private class Members(val attributes: List<String>, val operations: List<String>)
+
+    /** Atributos e operações declarados na classe, no formato do diagrama de classes. Os gerados pelo compilador ficam de fora. */
+    private fun membersOf(psiClass: PsiClass): Members {
+        val uClass = psiClass.toUElement() as? UClass ?: return Members(emptyList(), emptyList())
+        val attributes = uClass.fields
+            .filter { it.sourcePsi != null && '$' !in it.name }
+            .map { field -> "${visibility(field.javaPsi)} ${field.name}: ${typeText(field.type)}" }
+        val operations = uClass.methods
+            .filter { it.sourcePsi != null && !isAccessor(it) }
+            .map { method ->
+                val parameters = method.uastParameters.joinToString(", ") { typeText(it.type) }
+                val result = if (method.isConstructor) "" else ": ${method.returnType?.let(::typeText) ?: "void"}"
+                "${visibility(method.javaPsi)} ${if (method.isConstructor) uClass.name else method.name}($parameters)$result"
+            }
+        return Members(attributes, operations)
+    }
+
+    /** Os métodos que o Kotlin gera para uma propriedade já aparecem como atributo. */
+    private fun isAccessor(method: UMethod): Boolean =
+        method.sourcePsi?.javaClass?.simpleName in setOf("KtProperty", "KtPropertyAccessor", "KtParameter")
+
+    private fun typeText(type: PsiType): String = type.presentableText
+
+    private fun visibility(element: PsiElement?): String {
+        val owner = element as? PsiModifierListOwner ?: return "+"
+        return when {
+            owner.hasModifierProperty(PsiModifier.PRIVATE) -> "-"
+            owner.hasModifierProperty(PsiModifier.PROTECTED) -> "#"
+            owner.hasModifierProperty(PsiModifier.PUBLIC) -> "+"
+            else -> "~"
         }
-        val dedicated = TestUsage.dedicatedNames(psiClass.name ?: simpleName(name))
-        TestUsage(found.toList(), found.any { simpleName(it) in dedicated })
-    } ?: TestUsage.NONE
+    }
 
     private fun efferentOf(name: String): Set<String> = efferent.getOrPut(name) {
         read {
             val psiClass = findClass(name) ?: return@read emptySet()
             val uClass = psiClass.toUElement() as? UClass ?: return@read emptySet()
-            supers[name] = psiClass.supers.mapNotNull { topLevelName(it) }.toSet()
+            val direct = psiClass.supers.filter { it.qualifiedName != "java.lang.Object" }
+            implemented[name] = if (psiClass.isInterface) emptySet() else direct.filter { it.isInterface }.mapNotNull { topLevelName(it) }.toSet()
+            extended[name] = direct.filterNot { !psiClass.isInterface && it.isInterface }.mapNotNull { topLevelName(it) }.toSet()
+            associated[name] = uClass.fields.filter { it.sourcePsi != null }.flatMap { typeClasses(it) }.toSet()
             val result = mutableSetOf<String>()
             for (root in rootsOf(uClass, psiClass)) {
                 for (element in SyntaxTraverser.psiTraverser(root)) {
@@ -162,6 +190,18 @@ class DependencyAnalyzer(
             }
             result
         }.orEmpty()
+    }
+
+    /** Classes do projeto citadas no tipo de um atributo, inclusive nos genéricos: `List<Item>` cita `Item`. */
+    private fun typeClasses(field: UField): List<String> {
+        val result = mutableListOf<String>()
+        fun visit(type: PsiType) {
+            val classType = type as? PsiClassType ?: return
+            classType.resolve()?.let { topLevelName(it) }?.let(result::add)
+            classType.parameters.forEach(::visit)
+        }
+        visit(field.type)
+        return result
     }
 
     /** Fachadas de arquivo do Kotlin (funções de topo) não têm corpo de classe: valem os membros. */
@@ -220,6 +260,8 @@ class DependencyAnalyzer(
 
     companion object {
         const val MAX_NODES = 60
+        const val DEFAULT_DEPTH = 1
+        const val MAX_MEMBERS = 8
 
         fun kindOf(psiClass: PsiClass): ClassKind = when {
             psiClass.isAnnotationType -> ClassKind.ANNOTATION

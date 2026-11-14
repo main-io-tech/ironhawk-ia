@@ -1,10 +1,8 @@
 package com.mio.irondome.impacto
 
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.vcs.FileStatus
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBPanelWithEmptyText
 import com.intellij.ui.jcef.JBCefApp
@@ -18,7 +16,7 @@ import java.awt.Color
 import javax.swing.JComponent
 
 /**
- * Diagrama desenhado com AntV G6 no navegador embutido. Mensagens da página chegam em
+ * Diagrama de classes (UML) desenhado em SVG no navegador embutido. Mensagens da página chegam em
  * [onMessage] na EDT, no formato `acao:nomeQualificado`.
  */
 class DiagramBrowser(parent: Disposable, private val onMessage: (String) -> Unit) {
@@ -34,8 +32,7 @@ class DiagramBrowser(parent: Disposable, private val onMessage: (String) -> Unit
             val query = JBCefJSQuery.create(browser as JBCefBrowserBase)
             Disposer.register(parent, query)
             query.addHandler { message ->
-                if (message.startsWith(PREF_PREFIX)) savePref(message.removePrefix(PREF_PREFIX))
-                else ApplicationManager.getApplication().invokeLater { onMessage(message) }
+                ApplicationManager.getApplication().invokeLater { onMessage(message) }
                 null
             }
             this.browser = browser
@@ -48,31 +45,18 @@ class DiagramBrowser(parent: Disposable, private val onMessage: (String) -> Unit
         }
     }
 
-    /**
-     * [changes]: tipo de alteração não commitada por classe; [vcs] diz se o projeto usa controle de versão;
-     * [comments]: comentários pendentes por classe; [impact]: o que a IA apontou, se já analisou.
-     */
-    fun show(
-        graph: DependencyGraph,
-        changes: Map<String, FileChange>,
-        vcs: Boolean,
-        comments: Map<String, List<ImpactComment>> = emptyMap(),
-        impact: ImpactReport? = null,
-    ) {
+    fun show(graph: DependencyGraph) {
         val browser = browser ?: return
-        // O tema e as preferências são lidos na EDT; a montagem da página, com a biblioteca de 1,4 MB
-        // embutida, acontece fora dela, e só a carga volta para a EDT.
+        // O tema é lido na EDT; a montagem da página acontece fora dela, e só a carga volta para a EDT.
         val theme = theme()
         val bridge = query!!.inject("message")
-        val data = toJson(graph, changes, vcs, comments, impact)
+        val data = toJson(graph)
         val generation = ++loads
         ApplicationManager.getApplication().executeOnPooledThread {
             val html = template
                 .replace("/*IRON_DOME_THEME_CSS*/", theme.entries.joinToString(" ") { (key, value) -> "--$key: $value;" })
-                .replace("/*IRON_DOME_THEME_JSON*/", Json.obj(theme))
                 .replace("/*IRON_DOME_BRIDGE*/", bridge)
                 .replace("/*IRON_DOME_DATA*/", Json.safeForScript(data))
-                .replace("/*IRON_DOME_G6*/", g6)
             ApplicationManager.getApplication().invokeLater {
                 if (generation == loads && !browser.isDisposed) browser.loadHTML(html)
             }
@@ -81,70 +65,6 @@ class DiagramBrowser(parent: Disposable, private val onMessage: (String) -> Unit
 
     /** Só a última página pedida é carregada, quando duas análises terminam em sequência. */
     private var loads = 0
-
-    fun updateComments(comments: Map<String, List<ImpactComment>>) {
-        val cef = browser?.cefBrowser ?: return
-        cef.executeJavaScript("window.ironDome && window.ironDome.setComments(${Json.safeForScript(commentsJson(comments))})", cef.url, 0)
-    }
-
-    /** Nulo apaga as marcas da análise anterior. */
-    fun updateImpact(impact: ImpactReport?) {
-        val cef = browser?.cefBrowser ?: return
-        cef.executeJavaScript("window.ironDome && window.ironDome.setImpact(${Json.safeForScript(impactJson(impact))})", cef.url, 0)
-    }
-
-    /** `analyzing` mostra na página que a IA está analisando o impacto. */
-    fun updateAnalyzing(analyzing: Boolean) {
-        val cef = browser?.cefBrowser ?: return
-        cef.executeJavaScript("window.ironDome && window.ironDome.setAnalyzing($analyzing)", cef.url, 0)
-    }
-
-    private fun commentsJson(comments: Map<String, List<ImpactComment>>): String =
-        Json.obj(
-            comments.mapValues { (_, list) ->
-                list.map { comment ->
-                    Json.raw(
-                        Json.obj(
-                            "id" to comment.id,
-                            "source" to comment.source.name,
-                            "sourceLabel" to comment.source.label,
-                            "where" to "${comment.path.substringAfterLast('/')}, ${comment.location}",
-                            "text" to comment.text,
-                            "sent" to comment.sent,
-                        ),
-                    )
-                }
-            },
-        )
-
-    private fun impactJson(impact: ImpactReport?): String = if (impact == null) "null" else Json.obj(
-        "summary" to impact.summary,
-        "items" to Json.raw(
-            Json.obj(
-                impact.impacts.associate { item ->
-                    item.qualifiedName to Json.raw(
-                        Json.obj(
-                            "level" to item.level.name,
-                            "levelLabel" to item.level.label,
-                            "reason" to item.reason,
-                            "sources" to item.sources,
-                        ),
-                    )
-                },
-            ),
-        ),
-        "order" to impact.impacts.map { it.qualifiedName },
-    )
-
-    /** Atualiza só as marcas de alteração, sem refazer o layout. */
-    fun updateChanges(changes: Map<String, FileChange>, vcs: Boolean) {
-        val cef = browser?.cefBrowser ?: return
-        val json = Json.safeForScript(changesJson(changes))
-        cef.executeJavaScript("window.ironDome && window.ironDome.setChanges($json, $vcs)", cef.url, 0)
-    }
-
-    private fun changesJson(changes: Map<String, FileChange>): String =
-        Json.obj(changes.mapValues { (_, change) -> Json.raw(Json.obj("change" to change.name, "label" to change.label)) })
 
     fun showMessage(text: String) {
         val theme = theme()
@@ -189,50 +109,28 @@ class DiagramBrowser(parent: Disposable, private val onMessage: (String) -> Unit
         cef.executeJavaScript("window.ironDome && window.ironDome.select(${Json.string(qualifiedName)})", cef.url, 0)
     }
 
-    private fun toJson(
-        graph: DependencyGraph,
-        changes: Map<String, FileChange>,
-        vcs: Boolean,
-        comments: Map<String, List<ImpactComment>>,
-        impact: ImpactReport?,
-    ): String = Json.obj(
+    private fun toJson(graph: DependencyGraph): String = Json.obj(
         "focus" to graph.focus,
         "truncated" to graph.truncated,
-        "cycles" to graph.cycleCount,
-        "vcs" to vcs,
-        "scale" to Json.raw(Json.obj("medium" to ChangeRisk.MEDIUM_FROM, "high" to ChangeRisk.HIGH_FROM)),
-        "changes" to Json.raw(changesJson(changes)),
-        "comments" to Json.raw(commentsJson(comments)),
-        "impact" to Json.raw(impactJson(impact)),
-        "prefs" to Json.raw(Json.obj(PANELS.associateWith { PropertiesComponent.getInstance().getBoolean(prefKey(it)) })),
         "nodes" to graph.nodes.map { node ->
             Json.raw(
                 Json.obj(
                     "id" to node.qualifiedName,
                     "name" to node.name,
                     "pkg" to node.packageName,
-                    "kind" to node.kind.label,
+                    "kind" to node.kind.name,
                     "afferent" to node.afferent,
                     "efferent" to node.efferent,
                     "level" to node.level,
-                    "cycle" to node.inCycle,
-                    "risk" to node.risk.name,
-                    "riskLabel" to node.risk.label,
-                    "riskReason" to MetricGuide.riskReason(node),
-                    "coverage" to node.tests.coverage.name,
-                    "coverageLabel" to node.tests.coverage.label,
-                    "tests" to node.tests.testClasses,
-                    "attention" to node.needsAttention,
-                    "advice" to MetricGuide.advice(node),
-                    "changeAdvice" to MetricGuide.changeAdvice(node),
+                    "attributes" to node.attributes,
+                    "operations" to node.operations,
+                    "hiddenAttributes" to node.hiddenAttributes,
+                    "hiddenOperations" to node.hiddenOperations,
                 ),
             )
         },
         "edges" to graph.edges.map { edge ->
-            Json.raw(Json.obj("source" to edge.from, "target" to edge.to, "kind" to edge.kind.name, "cycle" to edge.inCycle))
-        },
-        "help" to MetricGuide.topics.map { topic ->
-            Json.raw(Json.obj("id" to topic.id, "title" to topic.title, "text" to topic.text))
+            Json.raw(Json.obj("source" to edge.from, "target" to edge.to, "kind" to edge.kind.name))
         },
     )
 
@@ -245,48 +143,26 @@ class DiagramBrowser(parent: Disposable, private val onMessage: (String) -> Unit
             "muted" to hex(NamedColorUtil.getInactiveTextColor()),
             "border" to hex(JBColor.border()),
             "accent" to hex(JBUI.CurrentTheme.Focus.focusColor()),
-            "edge" to if (dark) "#8b949e" else "#6e7781",
-            "cycle" to if (dark) "#f85149" else "#cf222e",
-            "cycleBg" to if (dark) "#4a1a1e" else "#ffebe9",
+            "edge" to if (dark) "#8b949e" else "#57606a",
             "match" to if (dark) "#d2a8ff" else "#8250df",
-            "low" to if (dark) "#2e6b3f" else "#a7e3b5",
-            "medium" to if (dark) "#7a6420" else "#f5db8b",
-            "high" to if (dark) "#7d2e2e" else "#f4a7a3",
-            "lowEnd" to if (dark) "#1c4529" else "#7fd194",
-            "mediumEnd" to if (dark) "#52420f" else "#efc75a",
-            "highEnd" to if (dark) "#561d1d" else "#ee8a83",
+            "box" to if (dark) "#22272e" else "#ffffff",
+            "kindClass" to if (dark) "#1f3a5f" else "#ddf4ff",
+            "kindAbstract" to if (dark) "#3b2a5c" else "#fbefff",
+            "kindInterface" to if (dark) "#1c4529" else "#dafbe1",
+            "kindEnum" to if (dark) "#5a3a12" else "#fff1e5",
+            "kindAnnotation" to if (dark) "#3a3f47" else "#eaeef2",
             "lowSolid" to if (dark) "#3fb950" else "#1a7f37",
             "mediumSolid" to if (dark) "#d29922" else "#9a6700",
             "highSolid" to if (dark) "#f85149" else "#cf222e",
-            "nodeText" to if (dark) "#e6edf3" else "#1f2328",
-            "changed" to hex(FileStatus.MODIFIED.color ?: JBColor.BLUE),
-            "comment" to if (dark) "#58a6ff" else "#0969da",
-            "patrulha" to if (dark) "#a371f7" else "#8250df",
-            "impact" to if (dark) "#f778ba" else "#bf3989",
-            "impactBg" to if (dark) "#3d1d33" else "#ffeff7",
         )
     }
 
     private fun hex(color: Color) = "#%02x%02x%02x".format(color.red, color.green, color.blue)
 
-    /** `painel:1` minimiza o painel da página, `painel:0` mostra. */
-    private fun savePref(pref: String) {
-        val panel = pref.substringBefore(':').takeIf { it in PANELS } ?: return
-        PropertiesComponent.getInstance().setValue(prefKey(panel), pref.substringAfter(':') == "1")
-    }
-
     private companion object {
-        const val PREF_PREFIX = "pref:"
-        /** Painéis da página que o usuário pode minimizar: a legenda e os detalhes da classe. */
-        val PANELS = listOf("legend", "info")
-
-        fun prefKey(panel: String) = "irondome.diagram.collapsed.$panel"
-
-        val template: String by lazy { resource("/diagram/diagram.html") }
-        val g6: String by lazy { resource("/diagram/g6.min.js") }
-
-        fun resource(path: String): String =
-            DiagramBrowser::class.java.getResourceAsStream(path)!!.use { it.readBytes().toString(Charsets.UTF_8) }
+        val template: String by lazy {
+            DiagramBrowser::class.java.getResourceAsStream("/diagram/diagram.html")!!.use { it.readBytes().toString(Charsets.UTF_8) }
+        }
     }
 }
 
