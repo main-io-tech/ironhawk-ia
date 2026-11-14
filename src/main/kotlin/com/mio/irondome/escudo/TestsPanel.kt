@@ -27,10 +27,13 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.DumbAwareToggleAction
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.pom.Navigatable
@@ -80,7 +83,7 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
 
     private val model = DefaultTreeModel(DefaultMutableTreeNode())
     private val tree = MechanismTree(model, IronDomeIcons.escudo, Tone.GREEN).apply {
-        cellRenderer = Renderer { grouping != TestGrouping.TAG }
+        cellRenderer = Renderer { mode == EscudoView.EXECUTION && grouping != TestGrouping.TAG }
         emptyText.text = IDLE
     }
     private val header = SummaryHeader(IronDomeIcons.escudo, Tone.GREEN)
@@ -102,6 +105,12 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
     private var notStarted = false
     private var results: List<TestNode> = emptyList()
     private var onlyFailures = false
+    /** O catálogo de critérios e as tags que o código cita, lidos em segundo plano. */
+    @Volatile
+    private var catalog: CriteriaCatalog = CriteriaCatalog.EMPTY
+    @Volatile
+    private var sourceReferences: Set<String> = emptySet()
+    private var report: CriteriaReport? = null
     /** Nós com falha já abertos sozinhos uma vez: se o usuário os recolher, ficam recolhidos. */
     private val autoExpanded = mutableSetOf<String>()
 
@@ -144,12 +153,59 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
             override fun getActionUpdateThread() = ActionUpdateThread.EDT
             override fun update(e: AnActionEvent) {
                 val outside = outsideConvention()
+                e.presentation.isVisible = catalog.isEmpty
                 e.presentation.isEnabled = outside.isNotEmpty() && !running
                 e.presentation.text = if (outside.size > 1) "Deixar no Padrão (${outside.size})" else "Deixar no Padrão"
             }
             override fun actionPerformed(e: AnActionEvent) {
                 ConventionTargets.mark(project, outsideConvention(), results.mapNotNull { it.classKey }.distinct().sorted())
             }
+        }
+        val alignAction = object : DumbAwareAction(
+            "Ligar Testes aos Critérios",
+            "A IA acrescenta @Tag(\"criterio:…\") e nivel:, e deixa o @DisplayName em Dado/Quando/Então, sem mexer na lógica dos testes",
+            AllIcons.Actions.QuickfixBulb,
+        ) {
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
+            override fun update(e: AnActionEvent) {
+                e.presentation.isVisible = !catalog.isEmpty
+                val runner = AgentRunner.getInstance(project)
+                e.presentation.isEnabled = runner.running == null && runner.available() && !running
+            }
+            override fun actionPerformed(e: AnActionEvent) {
+                CriteriaActions.align(project, catalog)
+            }
+        }
+        val generateAction = object : DumbAwareAction(
+            "Gerar Critérios com IA",
+            "A IA converte uma fonte (texto, spec.md ou issue do Linear ou do Jira) no catálogo de critérios em ${CriteriaActions.FOLDER}/",
+            IronDomeIcons.ia,
+        ) {
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
+            override fun update(e: AnActionEvent) {
+                val runner = AgentRunner.getInstance(project)
+                e.presentation.isEnabled = runner.running == null && runner.available()
+            }
+            override fun actionPerformed(e: AnActionEvent) {
+                val source = Messages.showMultilineInputDialog(
+                    project,
+                    "Cole a fonte dos critérios: um texto, o caminho de um arquivo do projeto (como specs/001/spec.md) " +
+                        "ou o identificador de uma issue (Linear, Jira).",
+                    "Gerar Critérios com IA",
+                    "",
+                    IronDomeIcons.escudo,
+                    null,
+                )?.takeIf { it.isNotBlank() } ?: return
+                CriteriaActions.generate(project, source, catalog.criteria.map { it.id })
+            }
+        }
+        val reloadAction = object : DumbAwareAction(
+            "Recarregar Critérios",
+            "Lê de novo o catálogo em ${CriteriaActions.FOLDER}/ e as tags do código",
+            AllIcons.Actions.Refresh,
+        ) {
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
+            override fun actionPerformed(e: AnActionEvent) = loadCriteria()
         }
         toolbar = ActionManager.getInstance().createActionToolbar(
             "IronDome.TestsToolbar",
@@ -176,6 +232,9 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
                 },
                 explainAction,
                 conventionAction,
+                alignAction,
+                generateAction,
+                reloadAction,
                 Separator.getInstance(),
                 object : DumbAwareToggleAction("Mostrar Só as Falhas", "Esconde as classes e os testes que passaram", AllIcons.General.Filter) {
                     override fun getActionUpdateThread() = ActionUpdateThread.EDT
@@ -185,6 +244,7 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
                         rebuildTree()
                     }
                 },
+                viewActions(),
                 groupingActions(),
                 CommonActionsManager.getInstance().createExpandAllAction(expander, tree),
                 CommonActionsManager.getInstance().createCollapseAllAction(expander, tree),
@@ -239,6 +299,7 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
             }
         })
         refresh()
+        loadCriteria()
     }
 
     override fun dispose() = Unit
@@ -265,6 +326,7 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
         displayNames.clear()
         autoExpanded.clear()
         refresh()
+        loadCriteria()
         ProgramRunnerUtil.executeConfiguration(env, false, true)
     }
 
@@ -287,8 +349,47 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
 
     private fun refresh() {
         results = testsRoot?.let { TestResults.build(it, displayNames::of, displayNames::tagsOf) }.orEmpty()
+        report = catalog.takeUnless { it.isEmpty }?.let { Criteria.report(it, results.flatMap { group -> group.tests }, sourceReferences) }
         updateHeader()
         rebuildTree()
+    }
+
+    /** Lê o catálogo e as tags do código fora da EDT e refaz a tela quando termina. */
+    private fun loadCriteria() {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val loaded = runCatching { CriteriaFiles.load(CriteriaFiles.roots(project)) }.getOrDefault(CriteriaCatalog.EMPTY)
+            val references = if (loaded.isEmpty) emptySet() else runCatching { CriteriaFiles.sourceReferences(project) }.getOrDefault(emptySet())
+            ApplicationManager.getApplication().invokeLater({
+                catalog = loaded
+                sourceReferences = references
+                refresh()
+            }, ModalityState.any(), project.disposed)
+        }
+    }
+
+    /** A visão escolhida; sem catálogo, só a por execução existe. */
+    private val mode: EscudoView
+        get() {
+            if (catalog.isEmpty) return EscudoView.EXECUTION
+            return EscudoView.entries.firstOrNull { it.name == PropertiesComponent.getInstance().getValue(VIEW_KEY) } ?: EscudoView.CRITERIA
+        }
+
+    private fun viewActions() = DefaultActionGroup("Visão", true).apply {
+        templatePresentation.icon = AllIcons.Actions.Show
+        EscudoView.entries.forEach { option ->
+            add(object : DumbAwareToggleAction(option.label) {
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
+                override fun update(e: AnActionEvent) {
+                    super.update(e)
+                    e.presentation.isEnabled = !catalog.isEmpty || option == EscudoView.EXECUTION
+                }
+                override fun isSelected(e: AnActionEvent) = mode == option
+                override fun setSelected(e: AnActionEvent, state: Boolean) {
+                    PropertiesComponent.getInstance().setValue(VIEW_KEY, option.name)
+                    rebuildTree()
+                }
+            })
+        }
     }
 
     /** O escolhido; sem escolha, por tag quando os testes têm `@Tag`. */
@@ -297,7 +398,11 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
             ?: if (results.any { group -> group.tests.any { it.tags.isNotEmpty() } }) TestGrouping.TAG else TestGrouping.KEY
 
     /** A árvore no agrupamento escolhido; [results] continua por chave, para o cabeçalho e as contas. */
-    private fun view(): List<TestNode> = if (grouping == TestGrouping.TAG) TestResults.byTag(results) else results
+    private fun view(): List<TestNode> = when {
+        mode == EscudoView.CRITERIA -> report?.let { CriteriaView.build(it, results) }.orEmpty()
+        grouping == TestGrouping.TAG -> TestResults.byTag(results)
+        else -> results
+    }
 
     private fun groupingActions() = DefaultActionGroup("Agrupar Por", true).apply {
         templatePresentation.icon = AllIcons.Actions.GroupBy
@@ -318,20 +423,27 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
         val classes = results.flatMap { it.classes }
         val failed = tests.count { it.outcome == TestOutcome.FAILED }
         val keys = results.count { it.classKey != null }
+        val criteria = report
+        val scoreboard = criteria?.let(::scoreboardOf)
         val context = listOfNotNull(
             plural(classes.size, "classe", "classes"),
-            plural(keys, "chave", "chaves").takeIf { keys > 0 },
+            plural(keys, "chave", "chaves").takeIf { keys > 0 && catalog.isEmpty },
+            scoreboard,
             testsRoot?.duration?.let(TestResults::formatDuration),
         ).joinToString(" · ")
         val outside = classes.count { it.convention != Convention.OK }
-        val warning = if (outside == 0) null else
-            "${plural(outside, "classe de teste fora", "classes de teste fora")} da convenção: coloque " +
+        // Com catálogo, a chave do @DisplayName deixa de ser cobrada: o agrupamento vem do grupo do critério.
+        val warning = when {
+            !catalog.isEmpty || catalog.errors.isNotEmpty() -> criteriaWarning(criteria)
+            outside == 0 -> null
+            else -> "${plural(outside, "classe de teste fora", "classes de teste fora")} da convenção: coloque " +
                 "${TestResults.CONVENTION_EXAMPLE} na classe. A chave agrupa os testes. " +
                 "Deixar no Padrão marca as classes no Radar para a IA corrigir."
+        }
         val stats = statsOf(tests)
         val bar = barOf(tests)
         when {
-            environment == null -> header.update("Escudo pronto", subtitle = IDLE)
+            environment == null -> header.update("Escudo pronto", subtitle = listOfNotNull(scoreboard, IDLE).joinToString(" · "), warning = warning)
             notStarted -> header.update(
                 "Os testes não chegaram a rodar",
                 Tone.RED.accent,
@@ -360,6 +472,32 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
         }
     }
 
+    /** Quantos critérios estão atendidos e o que pede atenção, como "18 de 24 critérios atendidos · 3 sem teste". */
+    private fun scoreboardOf(report: CriteriaReport): String {
+        val total = report.coverages.size
+        return listOfNotNull(
+            "${report.count(CriterionStatus.MET)} de $total ${if (total == 1) "critério atendido" else "critérios atendidos"}",
+            report.count(CriterionStatus.FAILING).takeIf { it > 0 }?.let { "$it falhando" },
+            report.count(CriterionStatus.PARTIAL).takeIf { it > 0 }?.let { if (it == 1) "1 parcial" else "$it parciais" },
+            report.count(CriterionStatus.UNTESTED).takeIf { it > 0 }?.let { "$it sem teste" },
+        ).joinToString(" · ")
+    }
+
+    /** Os erros do catálogo e as tags órfãs, que o contrato pede para corrigir. */
+    private fun criteriaWarning(report: CriteriaReport?): String? {
+        val parts = buildList {
+            val errors = catalog.errors
+            if (errors.isNotEmpty()) {
+                add("${plural(errors.size, "erro", "erros")} no catálogo de critérios: " +
+                    errors.take(3).joinToString("; ") + if (errors.size > 3) "; …" else "")
+            }
+            report?.orphans?.takeIf { it.isNotEmpty() }?.let { orphans ->
+                add("${plural(orphans.size, "tag aponta", "tags apontam")} para critério que o catálogo não tem: ${orphans.joinToString(", ") { it.id }}")
+            }
+        }
+        return parts.takeIf { it.isNotEmpty() }?.joinToString(". ")
+    }
+
     private fun rebuildTree() {
         val expanded = tree.getExpandedDescendants(TreePath(model.root))?.toList().orEmpty()
             .mapNotNull { itemOf(it.lastPathComponent)?.key }
@@ -382,7 +520,7 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
             val path = TreePath(node.path)
             if (item.key == selected) selection = path
             if (item.kind == TestKind.TEST) continue
-            val opensAlone = item.kind == TestKind.TAG || item.kind == TestKind.KEY || item.outcome == TestOutcome.FAILED
+            val opensAlone = item.kind == TestKind.TAG || item.kind == TestKind.KEY || item.kind == TestKind.SUBJECT || item.outcome == TestOutcome.FAILED
             if (item.key in expanded || (opensAlone && autoExpanded.add(item.key))) tree.expandPath(path)
         }
         selection?.let { tree.selectionPath = it }
@@ -411,6 +549,10 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
     }
 
     private fun detailsOf(item: TestNode): String = buildString {
+        if (item.kind == TestKind.SUBJECT || item.kind == TestKind.CRITERION) {
+            append(criteriaDetails(item))
+            return@buildString
+        }
         val group = item.kind == TestKind.KEY || item.kind == TestKind.TAG
         val name = if (group) null else DisplayNameFormat.parse(item.label)
         val title = name?.let(::nameHtml) ?: when (item.kind) {
@@ -442,6 +584,61 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
             failures.forEach { failure ->
                 append("<li>${color(Tone.RED.accent, "<b>${escape(failure.label)}</b>")}")
                 failure.errorMessage?.lineSequence()?.firstOrNull()?.let { append("<br>${gray(escape(it))}") }
+                append("</li>")
+            }
+            append("</ul>")
+        }
+    }
+
+    private fun criteriaDetails(item: TestNode): String = buildString {
+        val coverage = item.coverage
+        if (item.kind == TestKind.SUBJECT) {
+            append("<h2 style='margin: 0 0 6px 0'>${escape(item.label)}</h2>")
+            val criteria = item.children.mapNotNull { it.coverage }
+            if (criteria.isEmpty()) {
+                append("<p>${gray(plural(item.tests.size, "teste", "testes"))}</p>")
+                when (item.label) {
+                    CriteriaView.WITHOUT -> append("<p>Estes testes não têm <code>@Tag(\"criterio:…\")</code>. Eles rodam normalmente. " +
+                        "<b>Ligar Testes aos Critérios</b>, na barra, pede para a IA ligar cada um ao critério que ele prova.</p>")
+                    CriteriaView.NOT_APPLICABLE -> append("<p>Testes marcados com <code>criterio:nenhum</code>: nenhum critério de aceite se aplica a eles.</p>")
+                    else -> append("<p>Estas tags <code>criterio:</code> apontam para um ID que o catálogo não tem. Corrija a tag ou acrescente o critério.</p>")
+                }
+            } else {
+                append("<p>${CriterionStatus.entries.mapNotNull { status ->
+                    criteria.count { it.status == status }.takeIf { it > 0 }?.let { pill("$it ${status.label.lowercase()}", statusTone(status)) }
+                }.joinToString("&nbsp;&nbsp;")}</p>")
+            }
+            return@buildString
+        }
+        append("<h2 style='margin: 0 0 6px 0'>${escape(item.classKey.orEmpty())}${if (coverage != null) " · ${escape(item.label)}" else ""}</h2>")
+        if (coverage == null) {
+            append("<p>${pill("órfã", Tone.YELLOW)}&nbsp;&nbsp;${gray("Nenhum critério ${escape(item.classKey.orEmpty())} no catálogo")}</p>")
+            append("<p>Corrija a tag do teste ou acrescente o critério em <code>${escape(CriteriaActions.FOLDER)}/</code>.</p>")
+        } else {
+            val criterion = coverage.criterion
+            append("<p>${pill("${coverage.status.symbol} ${coverage.status.label}", statusTone(coverage.status))}")
+            Level.entries.forEach { level ->
+                when {
+                    level in coverage.levels -> append("&nbsp;&nbsp;${pill(level.label, Tone.GREEN)}")
+                    level in criterion.requires -> append("&nbsp;&nbsp;${pill("falta ${level.label.lowercase()}", Tone.YELLOW)}")
+                }
+            }
+            append("</p>")
+            criterion.origin?.let { append("<p>${gray("Origem: ${escape(it)}")}</p>") }
+            append("<p>${gray("<code>${escape(criterion.file)}:${criterion.line}</code>")}</p>")
+            if (criterion.requires.isNotEmpty()) {
+                append("<p>${gray("Exige prova em: ${criterion.requires.joinToString(", ") { it.label.lowercase() }}")}</p>")
+            }
+            if (coverage.status == CriterionStatus.UNTESTED) {
+                append("<p>Nenhum teste nem cenário aponta para este critério. Acrescente <code>@Tag(\"criterio:${escape(criterion.id)}\")</code> ao teste que o prova.</p>")
+            }
+        }
+        if (item.tests.isNotEmpty()) {
+            append(section("Testes (${item.tests.size})")).append("<ul>")
+            item.tests.forEach { test ->
+                val level = CriterionTags.of(test.tags).level?.let { "&nbsp;${pill(it.label, Tone.GRAY)}" }.orEmpty()
+                append("<li>${color(toneOf(test.outcome).accent, symbolOf(test.outcome))} ${escape(test.label)}$level")
+                if (test.outcome == TestOutcome.FAILED) test.errorMessage?.lineSequence()?.firstOrNull()?.let { append("<br>${gray(escape(it))}") }
                 append("</li>")
             }
             append("</ul>")
@@ -572,6 +769,41 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
                     row.text(plural(item.classes.size, "classe", "classes"), SimpleTextAttributes.GRAYED_ATTRIBUTES)
                     progress(row, item)
                 }
+                TestKind.SUBJECT -> {
+                    val criteria = item.children.mapNotNull { it.coverage }
+                    if (criteria.isEmpty()) {
+                        row.icon(if (item.label == CriteriaView.WITHOUT || item.label == CriteriaView.ORPHANS) AllIcons.General.Warning else AllIcons.General.Information)
+                        row.pill(item.label, if (item.label == CriteriaView.NOT_APPLICABLE) Tone.GRAY else Tone.YELLOW, bold = true)
+                        row.text(plural(item.tests.size, "teste", "testes"), SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    } else {
+                        row.icon(subjectIcon(criteria))
+                        row.pill(item.label, Tone.forKey(item.label), bold = true)
+                        val met = criteria.count { it.status == CriterionStatus.MET }
+                        row.text("$met/${criteria.size} atendidos", if (criteria.any { it.status == CriterionStatus.FAILING }) FAILED_PLAIN else SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                        criteria.count { it.status == CriterionStatus.FAILING }.takeIf { it > 0 }?.let { row.pill("✖ $it", Tone.RED, bold = true) }
+                        criteria.count { it.status == CriterionStatus.UNTESTED }.takeIf { it > 0 }?.let { row.pill("∅ $it", Tone.ORANGE) }
+                    }
+                }
+                TestKind.CRITERION -> {
+                    val coverage = item.coverage
+                    if (coverage == null) {
+                        row.icon(AllIcons.General.Warning)
+                        row.pill(item.classKey.orEmpty(), Tone.YELLOW, bold = true)
+                        row.text("tag órfã: o catálogo não tem este critério", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    } else {
+                        row.icon(statusIcon(coverage.status))
+                        row.pill(coverage.criterion.id, Tone.forKey(coverage.criterion.id), bold = true)
+                        name(row, coverage.criterion.title, if (coverage.status == CriterionStatus.FAILING) FAILED_PLAIN else SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                        row.pill("${coverage.status.symbol} ${coverage.status.label}", statusTone(coverage.status), bold = true)
+                        Level.entries.forEach { level ->
+                            when {
+                                level in coverage.levels -> row.pill(level.initial, Tone.GREEN)
+                                level in coverage.criterion.requires -> row.pill("falta ${level.initial}", Tone.YELLOW)
+                            }
+                        }
+                        if (item.tests.isNotEmpty()) row.text(plural(item.tests.size, "teste", "testes"), SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+                    }
+                }
                 TestKind.CLASS -> {
                     row.icon(iconOf(item.outcome))
                     name(row, item.label, if (failed) FAILED_BOLD else SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
@@ -589,6 +821,7 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
                     name(row, item.label, if (failed) FAILED_PLAIN else SimpleTextAttributes.REGULAR_ATTRIBUTES)
                     item.codeName?.let { row.text(it, SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES) }
                     if (showTags()) item.tags.forEach { row.pill("@$it", tagTone(it)) }
+                    else CriterionTags.of(item.tags).level?.let { row.pill(it.label, Tone.GRAY) }
                     if (item.outcome == TestOutcome.IGNORED) row.pill("ignorado", Tone.YELLOW)
                     TestResults.formatDuration(item.durationMillis)?.let { row.text(it, SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES) }
                     item.errorMessage?.lineSequence()?.firstOrNull { it.isNotBlank() }?.let { row.detail(it.trim().take(ERROR_PREVIEW)) }
@@ -647,7 +880,33 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
         const val STACKTRACE_LINES = 40
         const val IDLE = "Clique em Executar Todos os Testes para pôr o escudo à prova."
         const val GROUPING_KEY = "IronDome.Escudo.Grouping"
+        const val VIEW_KEY = "IronDome.Escudo.View"
         const val DETAILS_HINT = "Selecione uma chave, uma classe ou um teste para ver os detalhes. Duplo clique num teste abre o código."
+
+        fun statusTone(status: CriterionStatus): Tone = when (status) {
+            CriterionStatus.MET -> Tone.GREEN
+            CriterionStatus.PARTIAL -> Tone.YELLOW
+            CriterionStatus.FAILING -> Tone.RED
+            CriterionStatus.NOT_RUN -> Tone.GRAY
+            CriterionStatus.UNTESTED -> Tone.ORANGE
+        }
+
+        fun statusIcon(status: CriterionStatus): Icon = when (status) {
+            CriterionStatus.MET -> AllIcons.RunConfigurations.TestPassed
+            CriterionStatus.PARTIAL -> AllIcons.RunConfigurations.TestIgnored
+            CriterionStatus.FAILING -> AllIcons.RunConfigurations.TestFailed
+            CriterionStatus.NOT_RUN -> AllIcons.RunConfigurations.TestNotRan
+            CriterionStatus.UNTESTED -> AllIcons.General.Warning
+        }
+
+        /** O pior status do grupo manda no ícone. */
+        fun subjectIcon(criteria: List<CriterionCoverage>): Icon {
+            val statuses = criteria.map { it.status }.toSet()
+            return statusIcon(
+                listOf(CriterionStatus.FAILING, CriterionStatus.UNTESTED, CriterionStatus.PARTIAL, CriterionStatus.NOT_RUN)
+                    .firstOrNull { it in statuses } ?: CriterionStatus.MET,
+            )
+        }
 
         fun statsOf(tests: List<TestNode>): List<Stat> {
             fun count(outcome: TestOutcome) = tests.count { it.outcome == outcome }

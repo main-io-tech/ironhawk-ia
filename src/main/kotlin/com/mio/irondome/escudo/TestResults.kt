@@ -13,12 +13,19 @@ enum class TestOutcome(val label: String) {
     NOT_RUN("Não executado"),
 }
 
-enum class TestKind { TAG, KEY, CLASS, GROUP, TEST }
+/** [SUBJECT] e [CRITERION] são da visão por critério: o grupo do catálogo e um critério com os testes que o cobrem. */
+enum class TestKind { TAG, KEY, CLASS, GROUP, TEST, SUBJECT, CRITERION }
 
 /** Como a árvore do Escudo agrupa as classes de teste. */
 enum class TestGrouping(val label: String) {
     KEY("Chave do @DisplayName"),
     TAG("@Tag do JUnit"),
+}
+
+/** As duas visões do Escudo: pelos critérios de aceite do catálogo ou pela execução dos testes. */
+enum class EscudoView(val label: String) {
+    CRITERIA("Por critério"),
+    EXECUTION("Por execução"),
 }
 
 /** A convenção do Escudo para as classes de teste: `@DisplayName("[Chave] Descrição")`. */
@@ -52,6 +59,8 @@ class TestNode(
     val convention: Convention? = null,
     /** Nos testes, as `@Tag` que valem para eles; nas classes, as da própria classe; nos grupos de tag, a tag. */
     val tags: List<String> = emptyList(),
+    /** Só nos critérios: o status deles; nulo na tag que aponta para um critério que o catálogo não tem. */
+    val coverage: CriterionCoverage? = null,
 ) {
     private val ownOutcome = leafOutcome
 
@@ -88,7 +97,7 @@ class TestNode(
 
     private fun copy(prefix: String, children: List<TestNode>, duration: Long? = durationMillis) = TestNode(
         kind, prefix + key, label, codeName, locationUrl, duration, errorMessage, stacktrace, children,
-        if (kind == TestKind.TEST) outcome else ownOutcome, classKey, convention, tags,
+        if (kind == TestKind.TEST) outcome else ownOutcome, classKey, convention, tags, coverage,
     )
 
     private companion object {
