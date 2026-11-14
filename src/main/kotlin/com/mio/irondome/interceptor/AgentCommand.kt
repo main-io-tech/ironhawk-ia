@@ -18,6 +18,11 @@ enum class AgentProvider(val title: String, val executables: List<String>, val i
         listOf("claude"),
         "Instale o Claude Code (npm install -g @anthropic-ai/claude-code ou o instalador nativo) e entre uma vez com claude.",
     ),
+    CODEX(
+        "Codex",
+        listOf("codex"),
+        "Instale o Codex CLI (npm install -g @openai/codex) e rode codex login, ou defina OPENAI_API_KEY. No Windows, o Codex funciona melhor no WSL.",
+    ),
     ANTIGRAVITY(
         "Antigravity",
         listOf("agy"),
@@ -106,6 +111,15 @@ object AgentCommand {
                 addAll(extraArgs)
                 add(prompt)
             }
+            // O `exec` nunca pede aprovação. Ler: sandbox só leitura. Escrever: roda no devcontainer (o isolamento), onde o
+            // sandbox do próprio Codex costuma não subir, então o bypass vale só aqui, como o --force do Cursor.
+            AgentProvider.CODEX -> buildList {
+                addAll(listOf(executable, "exec", "--json", "--skip-git-repo-check", "--cd", workspace))
+                if (task.write) add("--dangerously-bypass-approvals-and-sandbox") else addAll(listOf("--sandbox", "read-only"))
+                chosenModel?.let { addAll(listOf("--model", it)) }
+                addAll(extraArgs)
+                add(prompt)
+            }
             AgentProvider.ANTIGRAVITY -> buildList {
                 add(executable)
                 add("-p")
@@ -157,6 +171,12 @@ object AgentCommand {
                 addAll(extraArgs)
                 add(oneLine(prompt))
             }
+            AgentProvider.CODEX -> buildList {
+                if (!interactive) addAll(listOf("exec", "--skip-git-repo-check", "--sandbox", "read-only"))
+                chosenModel?.let { addAll(listOf("--model", it)) }
+                addAll(extraArgs)
+                add(oneLine(prompt))
+            }
             AgentProvider.ANTIGRAVITY -> buildList {
                 add("-p")
                 add(oneLine(prompt))
@@ -204,6 +224,8 @@ object AgentCommand {
         AgentProvider.CLAUDE ->
             "o Claude Code roda com --permission-mode acceptEdits: edita arquivos sem pedir aprovação, e os comandos de terminal " +
                 "que não estão liberados nas configurações dele são recusados"
+        AgentProvider.CODEX ->
+            "o Codex roda com --dangerously-bypass-approvals-and-sandbox: edita arquivos e roda comandos de terminal sem pedir aprovação"
         AgentProvider.ANTIGRAVITY ->
             "o Antigravity roda com --dangerously-skip-permissions: edita arquivos e roda comandos de terminal sem pedir aprovação"
     }
@@ -247,6 +269,7 @@ object AgentEvents {
         val json = runCatching { JsonParser.parseString(text) }.getOrNull()?.takeIf { it.isJsonObject }?.asJsonObject
             ?: return AgentEvent.Other(text)
         if (json.has("event")) return antigravity(json, text)
+        if (isCodex(json)) return codex(json, text).firstOrNull()
         return when (json.str("type")) {
             "system" -> json.str("subtype").takeIf { it == null || it == "init" }?.let { AgentEvent.Init(json.str("model")) }
             "assistant" -> messageText(json)?.let(AgentEvent::Text) ?: claudeTools(json).firstOrNull()
@@ -263,8 +286,40 @@ object AgentEvents {
     /** Como [parse], com todos os eventos da linha: no Claude Code, uma mensagem traz o texto e as ferramentas juntos. */
     fun parseAll(line: String): List<AgentEvent> {
         val json = runCatching { JsonParser.parseString(line.trim()) }.getOrNull()?.takeIf { it.isJsonObject }?.asJsonObject
+        if (json != null && isCodex(json)) return codex(json, line.trim())
         if (json == null || json.str("type") != "assistant") return listOfNotNull(parse(line))
         return listOfNotNull(messageText(json)?.let(AgentEvent::Text)) + claudeTools(json)
+    }
+
+    private fun isCodex(json: JsonObject): Boolean {
+        val type = json.str("type") ?: return false
+        return type.startsWith("thread.") || type.startsWith("turn.") || type.startsWith("item.")
+    }
+
+    /**
+     * O `--json` do `codex exec`: `thread.started`, `item.started` e `item.completed` (com `agent_message`,
+     * `command_execution`, `file_change`...) e `turn.completed` ou `turn.failed`. O Codex não manda um evento de
+     * resultado: cada mensagem do agente vale como o resultado até a seguinte, e a última é a resposta final.
+     */
+    private fun codex(json: JsonObject, line: String): List<AgentEvent> {
+        val item = json.getAsJsonObject("item")
+        return when (json.str("type")) {
+            "thread.started" -> listOf(AgentEvent.Init(null))
+            "turn.failed" -> listOf(AgentEvent.Result(json.getAsJsonObject("error")?.str("message") ?: "A IA informou um erro.", true))
+            "item.started" -> if (item?.str("type") == "command_execution") listOf(AgentEvent.Tool(true, "shell", null, item.str("command"))) else emptyList()
+            "item.completed" -> when (item?.str("type")) {
+                "agent_message" -> item.str("text")?.takeIf { it.isNotBlank() }?.let { listOf(AgentEvent.Text(it), AgentEvent.Result(it, false)) }.orEmpty()
+                "file_change" -> (item.get("changes") as? JsonArray)?.mapNotNull { change ->
+                    val obj = change as? JsonObject ?: return@mapNotNull null
+                    val kind = when (obj.str("kind")) { "add" -> "write"; "delete" -> "delete"; else -> "edit" }
+                    AgentEvent.Tool(true, kind, obj.str("path"))
+                }.orEmpty()
+                "mcp_tool_call" -> listOf(AgentEvent.Tool(true, "mcp", null, item.str("tool")))
+                else -> emptyList()
+            }
+            "turn.started", "turn.completed", "item.updated" -> emptyList()
+            else -> listOf(AgentEvent.Other(line))
+        }
     }
 
     /** Os blocos `tool_use` de uma mensagem do Claude Code, nos tipos do registro e do Arsenal. */

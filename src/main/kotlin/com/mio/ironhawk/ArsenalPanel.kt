@@ -488,7 +488,7 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
                 text = "Defesa na aba: só no devcontainer do projeto. Nas tarefas que alteram arquivos, como Disparar com IA, não há janela para aprovar " +
                     "cada passo: o Cursor roda com --force (edita e roda comandos sem perguntar), o Claude Code com --permission-mode acceptEdits " +
                     "(edita sem perguntar; comandos de terminal só os liberados nas configurações dele ou com --allowedTools nos argumentos extras) e o " +
-                    "Antigravity com --dangerously-skip-permissions. " +
+                    "Antigravity e o Codex com --dangerously-skip-permissions e --dangerously-bypass-approvals-and-sandbox. " +
                     (if (AgentSettings.confirmWrites) "Por isso o plugin pergunta antes de cada uma. " else "Você desligou a pergunta antes de cada uma. ") +
                     "No terminal, a IA pede aprovação a cada passo. Nas de leitura, como revisões e explicações, nenhum deles recebe permissão para escrever."
             })
@@ -497,7 +497,8 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         if (attack) {
             add(NoticeBox(AllIcons.General.Warning, Tone.YELLOW).apply {
                 text = "Missões do Ataque na aba: só no devcontainer do projeto, a única forma de a IA rodar sem perguntar. Lá o Cursor roda com " +
-                    "--force --trust e o Claude Code com --permission-mode bypassPermissions, mas o container só enxerga a pasta do projeto.\n" +
+                    "--force --trust, o Claude Code com --permission-mode bypassPermissions e o Codex com --dangerously-bypass-approvals-and-sandbox, " +
+                    "mas o container só enxerga a pasta do projeto.\n" +
                     "No terminal da IDE: modo agente sem permissão total, nesta máquina: a IA edita o projeto e pede a sua aprovação antes de rodar comandos.\n" +
                     "Textos (commit, PR, respostas do Rádio): só leitura, para um comentário malicioso num PR não dar à IA permissão para alterar arquivos."
             })
@@ -538,6 +539,9 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             add(small("No container, o Cursor CLI entra pela chave de API do cartão CLI de IA.").apply {
                 if (!AgentSettings.hasCursorApiKey) foreground = JBColor.RED
             })
+        } else if (AgentSettings.provider == AgentProvider.CODEX) {
+            add(small("No container, o Codex usa o login feito lá dentro (guardado num volume) ou o OPENAI_API_KEY desta máquina. Para entrar uma vez: " +
+                "devcontainer exec --workspace-folder . --config ${DevContainer.CONFIG} codex login"))
         } else {
             add(small("No container, o Claude Code usa o login feito lá dentro (guardado num volume) ou o ANTHROPIC_API_KEY desta máquina. Para entrar uma vez: " +
                 "devcontainer exec --workspace-folder . --config ${DevContainer.CONFIG} claude"))

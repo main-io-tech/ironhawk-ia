@@ -223,6 +223,11 @@ object TomahawkSettings {
                 File(home, ".claude/local"),
                 appData?.let { File(it, "npm") },
             )
+            AgentProvider.CODEX -> listOfNotNull(
+                File(home, ".local/bin"),
+                File(home, ".codex/bin"),
+                appData?.let { File(it, "npm") },
+            )
         }
     }
 }

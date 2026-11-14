@@ -144,6 +144,7 @@ object AgentGuard {
                 ("CLAUDE_CODE_USE_BEDROCK" in parent && name.startsWith("AWS_")) ||
                 ("CLAUDE_CODE_USE_VERTEX" in parent && (name.startsWith("GOOGLE_") || name.startsWith("CLOUD_ML_")))
         }
+        AgentProvider.CODEX -> { name -> name.startsWith("OPENAI_") || name.startsWith("CODEX_") }
         AgentProvider.ANTIGRAVITY -> { name -> name.startsWith("GEMINI_") || name.startsWith("GOOGLE_") || name.startsWith("ANTIGRAVITY_") }
     }
 

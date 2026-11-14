@@ -84,10 +84,12 @@ object DevContainer {
         return null
     }
 
-    /** As credenciais do CLI que entram no container: a chave do Cursor, ou as do Claude Code definidas nesta máquina. */
+    /** As credenciais do CLI que entram no container: a chave do Cursor, ou as do Claude Code e do Codex definidas nesta máquina. */
     fun credentials(provider: AgentProvider): Map<String, String> = when (provider) {
         AgentProvider.CURSOR -> AgentVerifier.apiKeyEnv(provider)
         AgentProvider.CLAUDE -> listOf("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
+            .mapNotNull { key -> System.getenv(key)?.takeIf { it.isNotBlank() }?.let { key to it } }.toMap()
+        AgentProvider.CODEX -> listOf("OPENAI_API_KEY", "CODEX_API_KEY")
             .mapNotNull { key -> System.getenv(key)?.takeIf { it.isNotBlank() }?.let { key to it } }.toMap()
     }
 
@@ -101,7 +103,7 @@ object DevContainer {
         return file
     }
 
-    /** Ubuntu com Node (para o Claude Code), PowerShell (para os scripts do Spec Kit) e os dois CLIs de IA. */
+    /** Ubuntu com Node (para o Claude Code e o Codex), PowerShell (para os scripts do Spec Kit) e os três CLIs de IA. */
     fun template(git: Boolean): String {
         val mounts = buildList {
             if (git) {
@@ -109,12 +111,13 @@ object DevContainer {
                 add("source=$WORKSPACE/.git/hooks,target=\${containerWorkspaceFolder}/.git/hooks,type=bind,readonly")
             }
             add("source=tomahawk-claude-\${devcontainerId},target=$HOME/.claude,type=volume")
+            add("source=tomahawk-codex-\${devcontainerId},target=$HOME/.codex,type=volume")
         }.joinToString(",\n") { "    \"$it\"" }
         val setup = listOf(
-            "sudo chown -R vscode:vscode $HOME/.claude",
+            "sudo chown -R vscode:vscode $HOME/.claude $HOME/.codex",
             "git config --global --add safe.directory '*'",
             "curl -fsSL https://cursor.com/install | bash",
-            "npm install -g @anthropic-ai/claude-code",
+            "npm install -g @anthropic-ai/claude-code @openai/codex",
         ).joinToString(" && ")
         return """
             |// O devcontainer da IA do IronHawk, na aba, no Iron Dome e no Tomahawk: só aqui a IA roda sem perguntar.

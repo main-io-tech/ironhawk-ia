@@ -92,6 +92,7 @@ object AgentVerifier {
         AUTH_REQUIRED.containsMatchIn(message) -> when (provider) {
             AgentProvider.CURSOR -> "$message. Falta entrar no Cursor: rode agent login no terminal ou informe uma chave de API, depois teste de novo."
             AgentProvider.CLAUDE -> "$message. Falta entrar no Claude Code: rode claude uma vez no terminal e faça o login, depois teste de novo."
+            AgentProvider.CODEX -> "$message. Falta entrar no Codex: rode codex login no terminal ou defina OPENAI_API_KEY, depois teste de novo."
         }
         else -> message
     }

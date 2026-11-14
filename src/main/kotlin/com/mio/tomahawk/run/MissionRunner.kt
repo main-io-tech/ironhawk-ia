@@ -146,6 +146,8 @@ class MissionRunner(private val project: Project) {
                 .onSuccess { log("Proteções: comandos perigosos e escrita fora do projeto barrados no Claude Code") }
                 .onFailure { LOG.warn("Não deu para gravar as regras do Claude Code", it) }
                 .getOrNull()
+            // O Codex não tem um arquivo de regras por comando como os outros: a barreira é o devcontainer e o ponto de restauração.
+            AgentProvider.CODEX -> log("Proteções: o Codex roda isolado no devcontainer, sem regras por comando; o ponto de restauração vale")
         }
         val label = mission.step.codename + mission.feature?.let { " em ${it.substringAfterLast('/')}" }.orEmpty()
         val point = runCatching { Checkpoints.create(root, runName, label) }.getOrNull()

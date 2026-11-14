@@ -67,6 +67,31 @@ class RunTest {
     }
 
     @Test
+    fun `o Codex roda o exec com json, so leitura ou sem o sandbox dele, e nunca com permissao total no terminal`() {
+        val write = AgentCommand.headless(AgentProvider.CODEX, "codex", "x", "C:/p", "gpt-5", emptyList())
+        val read = AgentCommand.headless(AgentProvider.CODEX, "codex", "x", "C:/p", null, listOf("--dangerously-bypass-approvals-and-sandbox", "--sandbox", "danger-full-access"), readOnly = true)
+
+        assertEquals(listOf("codex", "exec", "--json", "--skip-git-repo-check", "--cd", "C:/p", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5", "x"), write)
+        assertEquals(listOf("codex", "exec", "--json", "--skip-git-repo-check", "--cd", "C:/p", "--sandbox", "read-only", "x"), read)
+        assertEquals(
+            "codex '--sandbox' 'workspace-write' '--ask-for-approval' 'on-request' 'go'".replace("codex", "'codex'"),
+            AgentCommand.terminal(AgentProvider.CODEX, "codex", "go", null, listOf("--full-auto", "--sandbox", "danger-full-access"), ShellKind.POSIX),
+        )
+    }
+
+    @Test
+    fun `lê o json do Codex`() {
+        val events = listOf(
+            """{"type":"thread.started","thread_id":"t"}""",
+            """{"type":"item.started","item":{"type":"command_execution","command":"ls"}}""",
+            """{"type":"item.completed","item":{"type":"agent_message","text":"feito"}}""",
+            """{"type":"turn.completed"}""",
+        ).flatMap(AgentEvents::parse)
+
+        assertEquals(listOf(AgentEvent.Init(null), AgentEvent.Tool("shell", "ls"), AgentEvent.Text("feito"), AgentEvent.Result("feito", false, null)), events)
+    }
+
+    @Test
     fun `monta o comando do terminal com as variáveis da feature na sintaxe do shell`() {
         val env = mapOf("SPECIFY_FEATURE" to "001-x")
         assertEquals("\$env:SPECIFY_FEATURE='001-x'; & 'agent' 'go'", AgentCommand.terminal(AgentProvider.CURSOR, "agent", "go", null, emptyList(), ShellKind.POWERSHELL, env))

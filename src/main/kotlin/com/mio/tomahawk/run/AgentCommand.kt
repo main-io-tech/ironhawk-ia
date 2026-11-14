@@ -30,6 +30,13 @@ enum class AgentProvider(
         ".claude",
         "Instale o Claude Code (npm install -g @anthropic-ai/claude-code ou o instalador nativo) e entre uma vez com claude.",
     ),
+    CODEX(
+        "Codex",
+        listOf("codex"),
+        "codex",
+        ".codex",
+        "Instale o Codex CLI (npm install -g @openai/codex) e rode codex login, ou defina OPENAI_API_KEY. No Windows, o Codex funciona melhor no WSL.",
+    ),
 }
 
 /** Onde a missão roda: na aba, com o andamento monitorado, ou no terminal da IDE, onde dá para conversar com a IA. */
@@ -98,14 +105,26 @@ object AgentCommand {
                 addAll(extra)
                 add(text)
             }
+            // O `exec` nunca pede aprovação: só leitura, ou sem o sandbox do Codex, que costuma não subir no container,
+            // já que a missão só roda no devcontainer ([DevContainer]).
+            AgentProvider.CODEX -> buildList {
+                addAll(listOf(executable, "exec", "--json", "--skip-git-repo-check", "--cd", workspace))
+                addAll(if (readOnly) listOf("--sandbox", "read-only") else listOf("--dangerously-bypass-approvals-and-sandbox"))
+                chosenModel?.let { addAll(listOf("--model", it)) }
+                addAll(extra)
+                add(text)
+            }
         }
     }
 
     /** As ferramentas do Claude Code no modo só leitura; `dontAsk` nega as outras sem perguntar. */
     const val READ_TOOLS = "Read,Grep,Glob"
 
-    private val BYPASS_FLAGS = setOf("-f", "--force", "--yolo", "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions")
-    private val VALUED_FLAGS = setOf("--permission-mode", "--mode", "--sandbox", "--allowedTools", "--allowed-tools")
+    private val BYPASS_FLAGS = setOf(
+        "-f", "--force", "--yolo", "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
+        "--dangerously-bypass-approvals-and-sandbox", "--full-auto",
+    )
+    private val VALUED_FLAGS = setOf("--permission-mode", "--mode", "--sandbox", "--allowedTools", "--allowed-tools", "--ask-for-approval")
 
     /** [args] sem as opções que mudam as permissões, que o modo só leitura define. */
     fun withoutBypass(args: List<String>): List<String> = buildList {
@@ -128,8 +147,8 @@ object AgentCommand {
             when {
                 skipValue -> skipValue = false
                 arg in BYPASS_FLAGS -> Unit
-                arg == "--permission-mode" -> skipValue = true
-                arg.startsWith("--permission-mode=") -> Unit
+                arg == "--permission-mode" || arg == "--sandbox" || arg == "--ask-for-approval" -> skipValue = true
+                arg.startsWith("--permission-mode=") || arg.startsWith("--sandbox=") || arg.startsWith("--ask-for-approval=") -> Unit
                 else -> add(arg)
             }
         }
@@ -156,8 +175,13 @@ object AgentCommand {
     ): String {
         val args = buildList {
             when {
-                interactive -> if (provider == AgentProvider.CLAUDE) addAll(listOf("--permission-mode", "acceptEdits"))
+                interactive -> when (provider) {
+                    AgentProvider.CLAUDE -> addAll(listOf("--permission-mode", "acceptEdits"))
+                    AgentProvider.CODEX -> addAll(listOf("--sandbox", "workspace-write", "--ask-for-approval", "on-request"))
+                    else -> Unit
+                }
                 provider == AgentProvider.CURSOR -> addAll(listOf("-p", "--trust", "--mode", "ask", "--output-format", "text"))
+                provider == AgentProvider.CODEX -> addAll(listOf("exec", "--skip-git-repo-check", "--sandbox", "read-only"))
                 else -> addAll(listOf("-p", "--allowedTools", READ_TOOLS, "--permission-mode", "dontAsk"))
             }
             if (provider == AgentProvider.CLAUDE) settings?.let { addAll(listOf("--settings", it)) }
@@ -244,7 +268,31 @@ object AgentEvents {
                 ),
             )
             "user", "thinking", "stream_event", "rate_limit_event" -> emptyList()
+            "thread.started" -> listOf(AgentEvent.Init(null))
+            "turn.failed" -> listOf(AgentEvent.Result(json.getAsJsonObject("error")?.str("message") ?: "A IA informou um erro.", true, null))
+            "item.started", "item.completed" -> codexItem(json, started = json.str("type") == "item.started")
+            "turn.started", "turn.completed", "item.updated" -> emptyList()
             else -> listOf(AgentEvent.Other(text))
+        }
+    }
+
+    /**
+     * O `--json` do `codex exec`. Ele não manda um evento de resultado: cada mensagem do agente vale como o resultado
+     * até a seguinte, e a última é a resposta final.
+     */
+    private fun codexItem(json: JsonObject, started: Boolean): List<AgentEvent> {
+        val item = json.getAsJsonObject("item") ?: return emptyList()
+        return when (item.str("type")) {
+            "command_execution" -> if (started) listOf(AgentEvent.Tool("shell", item.str("command"))) else emptyList()
+            "agent_message" -> if (started) emptyList() else item.str("text")?.takeIf { it.isNotBlank() }
+                ?.let { listOf(AgentEvent.Text(it), AgentEvent.Result(it, false, null)) }.orEmpty()
+            "file_change" -> if (started) emptyList() else (item.get("changes") as? JsonArray)?.mapNotNull { change ->
+                val obj = change as? JsonObject ?: return@mapNotNull null
+                val kind = when (obj.str("kind")) { "add" -> "write"; "delete" -> "delete"; else -> "edit" }
+                AgentEvent.Tool(kind, obj.str("path"))
+            }.orEmpty()
+            "mcp_tool_call" -> if (started) listOf(AgentEvent.Tool("mcp", item.str("tool"))) else emptyList()
+            else -> emptyList()
         }
     }
 

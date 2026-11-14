@@ -210,6 +210,11 @@ object AgentSettings {
                 File(home, ".claude/local"),
                 System.getenv("APPDATA")?.let { File(it, "npm") },
             )
+            AgentProvider.CODEX -> listOfNotNull(
+                File(home, ".local/bin"),
+                File(home, ".codex/bin"),
+                System.getenv("APPDATA")?.let { File(it, "npm") },
+            )
             AgentProvider.ANTIGRAVITY -> listOfNotNull(
                 File(home, ".local/bin"),
                 localAppData?.let { File(it, "agy/bin") },

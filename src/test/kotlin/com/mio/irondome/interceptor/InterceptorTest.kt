@@ -72,6 +72,63 @@ class InterceptorTest {
     }
 
     @Test
+    fun codexRunsExecWithJsonAndOnlyWritesInTasksThatChangeFiles() {
+        val read = AgentCommand.build(AgentProvider.CODEX, "codex", readOnly, "C:/proj", "gpt-5", 20, listOf("--oss"))
+        val write = AgentCommand.build(AgentProvider.CODEX, "codex", readOnly.copy(write = true), "C:/proj", null, 20)
+
+        assertEquals(listOf("codex", "exec", "--json", "--skip-git-repo-check", "--cd", "C:/proj"), read.take(6))
+        assertEquals(listOf("--sandbox", "read-only"), read.slice(6..7))
+        assertEquals(listOf("--model", "gpt-5", "--oss", "Revise o PR seguindo as instrucoes responda"), read.takeLast(4))
+        assertTrue("só nas tarefas que alteram arquivos", "--dangerously-bypass-approvals-and-sandbox" in write)
+        assertFalse("--sandbox" in write)
+        assertFalse("--dangerously-bypass-approvals-and-sandbox" in read)
+        assertEquals(
+            "no terminal, interativo, o Codex pergunta sozinho",
+            "& 'codex' 'Teste'",
+            AgentCommand.terminal(AgentProvider.CODEX, "codex", "Teste", null, 20, ShellKind.POWERSHELL),
+        )
+        assertEquals(
+            "& 'codex' 'exec' '--skip-git-repo-check' '--sandbox' 'read-only' 'Teste'",
+            AgentCommand.terminal(AgentProvider.CODEX, "codex", "Teste", null, 20, ShellKind.POWERSHELL, interactive = false),
+        )
+    }
+
+    @Test
+    fun codexJsonEventsBecomeTextToolsAndTheFinalAnswer() {
+        val events = listOf(
+            """{"type":"thread.started","thread_id":"abc"}""",
+            """{"type":"turn.started"}""",
+            """{"type":"item.started","item":{"id":"1","type":"command_execution","command":"ls -la","status":"in_progress"}}""",
+            """{"type":"item.completed","item":{"id":"1","type":"command_execution","command":"ls -la","exit_code":0,"status":"completed"}}""",
+            """{"type":"item.completed","item":{"id":"2","type":"file_change","changes":[{"path":"src/A.kt","kind":"update"},{"path":"src/B.kt","kind":"add"}],"status":"completed"}}""",
+            """{"type":"item.completed","item":{"id":"3","type":"agent_message","text":"Pronto."}}""",
+            """{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}""",
+        ).flatMap(AgentEvents::parseAll)
+
+        assertTrue(events.first() is AgentEvent.Init)
+        assertEquals(
+            listOf(AgentEvent.Tool(true, "shell", null, "ls -la"), AgentEvent.Tool(true, "edit", "src/A.kt"), AgentEvent.Tool(true, "write", "src/B.kt")),
+            events.filterIsInstance<AgentEvent.Tool>(),
+        )
+        assertEquals(listOf(AgentEvent.Text("Pronto.")), events.filterIsInstance<AgentEvent.Text>())
+        assertEquals(AgentEvent.Result("Pronto.", false), events.filterIsInstance<AgentEvent.Result>().last())
+        assertEquals(
+            AgentEvent.Result("rate limit", true),
+            AgentEvents.parseAll("""{"type":"turn.failed","error":{"message":"rate limit"}}""").single(),
+        )
+    }
+
+    @Test
+    fun codexKeepsItsLoginVariablesInTheEnvironment() {
+        val parent = mapOf("OPENAI_API_KEY" to "k", "GITHUB_TOKEN" to "t", "PATH" to "/bin")
+        val env = AgentGuard.environment(parent, AgentProvider.CODEX)
+
+        assertEquals("k", env["OPENAI_API_KEY"])
+        assertFalse("GITHUB_TOKEN" in env)
+        assertFalse("OPENAI_API_KEY" in AgentGuard.environment(parent, AgentProvider.CLAUDE))
+    }
+
+    @Test
     fun extraArgsSplitOnSpacesAndKeepQuotedGroups() {
         assertEquals(listOf("--approve-mcps", "--allowedTools", "Read Grep"), AgentCommand.splitArgs("--approve-mcps --allowedTools \"Read Grep\""))
         assertEquals(emptyList<String>(), AgentCommand.splitArgs("  "))
