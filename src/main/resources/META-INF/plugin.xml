@@ -37,6 +37,13 @@
     ]]></description>
 
     <change-notes><![CDATA[
+    <h3>0.2.0</h3>
+    <ul>
+      <li>Escudo lê o Cucumber rodado pelo CLI (XML do <code>junit:</code>): os cenários aparecem no grupo Cucumber, com as
+        tags <code>@criterio:</code> e <code>@nivel:</code> dos <code>.feature</code>.</li>
+      <li>A chave <code>[Chave]</code> do <code>@DisplayName</code> deixou de ser cobrada; Deixar no Padrão pede
+        Dado/Quando/Então e tags de critério.</li>
+    </ul>
     <h3>0.1.0</h3>
     <ul>
       <li>Primeira versão do IronHawk IA: o Iron Dome IA (defesa) e o Tomahawk IA (ataque) num plugin só, cada sistema
