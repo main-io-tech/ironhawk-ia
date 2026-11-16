@@ -78,7 +78,7 @@ class TestResultsTest : LightJavaCodeInsightFixtureTestCase() {
 
         val withoutKey = groups[2].children
         assertEquals(listOf("AbcTest", "Nota fiscal"), withoutKey.map { it.label })
-        assertEquals(listOf(Convention.MISSING_DISPLAY_NAME, Convention.MISSING_KEY), withoutKey.map { it.convention })
+        assertEquals(listOf(Convention.MISSING_DISPLAY_NAME, Convention.OK), withoutKey.map { it.convention })
         assertNull(withoutKey[0].codeName)
     }
 

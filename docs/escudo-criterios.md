@@ -2,8 +2,8 @@
 
 > **Estado: implementado, ainda não visto na IDE.** O Escudo lê o catálogo, mostra a visão "Por critério" e tem as duas
 > ações de IA. A lógica (leitura do catálogo, tags e status) tem testes; o desenho da aba e as ações de IA não foram
-> conferidos na IDE. Um teste de Cucumber só entra no Escudo se a tag dele chegar pelo runner do JUnit (veja
-> [Cucumber](#cucumber-opcional)).
+> conferidos na IDE. O Cucumber entra pelo runner do JUnit ou pelo XML do `junit:` do CLI (veja
+> [Cucumber](#cucumber-opcional)); a leitura do XML ainda não foi vista na IDE.
 
 O objetivo é responder, olhando o Escudo, **se os critérios de aceite estão sendo atendidos**, em qualquer projeto JUnit 5
 e de qualquer empresa. Por isso o contrato é neutro: não depende de Linear, Jira, Spec Kit nem de Cucumber. Quem tiver
@@ -77,9 +77,9 @@ como cobertura. O Escudo **não infere** o nível pelo nome, pela pasta nem pelo
 | `@Tag("nivel:…")` | Opcional | "Nível não informado" |
 
 Fora do padrão, o teste **roda normalmente e aparece nos executados**. O padrão completo só melhora a visão. A chave
-`[Chave]` no início do `@DisplayName` deixa de ser usada: o agrupamento vem do `grupo` do critério. Com um catálogo no
-projeto, o Escudo para de cobrar a chave (some o aviso e o botão Deixar no Padrão). Sem catálogo, a convenção da chave
-continua como era.
+`[Chave]` no início do `@DisplayName` deixa de ser usada, com ou sem catálogo: o Escudo não a cobra mais, e o
+**Deixar no Padrão** pede à IA só o `@DisplayName` (sem chave), Dado/Quando/Então e as tags `criterio:`. O agrupamento
+vem do `grupo` do critério.
 
 ## Cucumber (opcional)
 
@@ -99,13 +99,23 @@ Funcionalidade: Mover atividade para outro dia do roteiro
     E o roteiro permanece como estava antes da tentativa
 ```
 
-O Cucumber rodando por CLI fora do runner (como `io.cucumber.core.cli.Main`) não aparece no Escudo, que não lê o XML dele.
+**Cucumber fora do runner (CLI).** Quando o Cucumber roda por `io.cucumber.core.cli.Main` (por exemplo, no
+`exec-maven-plugin`) com `--plugin junit:target/.../TEST-cucumber.xml`, o Escudo lê esse XML (qualquer `*cucumber*.xml`
+em `target`, `build` ou `out`) e mostra os cenários no grupo **Cucumber**, agrupados por funcionalidade. As tags vêm dos
+`.feature` dos fontes, casando funcionalidade e nome do cenário; as da funcionalidade valem para todos os cenários dela.
+Assim `@criterio:ROT-03 @nivel:aceitacao` conta como cobertura, com o resultado do último XML.
+
+- O XML é relido ao abrir a aba e em **Recarregar Critérios**. Rode o Cucumber (`mvn verify`) e recarregue; o botão
+  Executar Todos os Testes só roda o JUnit.
+- É o resultado da última execução do Cucumber, não da atual: o cabeçalho diz isso.
+- Cenários de Esquema do Cenário casam pelo nome; as tags de `Exemplos:` não são lidas.
+
 Quando existem `.feature` nos fontes de teste, o Escudo lê também as tags deles para saber a **cobertura** sem precisar
 rodar: um critério citado ali, mas sem execução, fica "não executado" em vez de "sem teste".
 
-**Limite atual:** o Escudo resolve as tags de um teste pelo código Java do JUnit. Para um cenário do Cucumber que chegue
-pelo engine, ele ainda **não** lê as tags do `.feature` na execução: o cenário aparece na visão por execução e na lista
-"Sem critério", e o critério dele fica "não executado". Falta ligar o resultado do cenário ao arquivo `.feature`.
+**Pelo engine do JUnit Platform:** o Escudo resolve as tags de um teste pelo código Java do JUnit e ainda **não** lê as
+tags do `.feature` nessa execução ao vivo: o cenário aparece na visão por execução e em "Sem critério". Para ter as tags
+hoje, use o modo CLI com o XML acima.
 
 ## Status de um critério
 

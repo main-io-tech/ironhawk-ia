@@ -111,6 +111,9 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
     @Volatile
     private var sourceReferences: Set<String> = emptySet()
     private var report: CriteriaReport? = null
+    /** Os cenários do último resultado do Cucumber fora do runner do JUnit, lidos do XML dele. */
+    @Volatile
+    private var cucumber: TestNode? = null
     /** Nós com falha já abertos sozinhos uma vez: se o usuário os recolher, ficam recolhidos. */
     private val autoExpanded = mutableSetOf<String>()
 
@@ -158,7 +161,7 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
                 e.presentation.text = if (outside.size > 1) "Deixar no Padrão (${outside.size})" else "Deixar no Padrão"
             }
             override fun actionPerformed(e: AnActionEvent) {
-                ConventionTargets.mark(project, outsideConvention(), results.mapNotNull { it.classKey }.distinct().sorted())
+                ConventionTargets.mark(project, outsideConvention())
             }
         }
         val alignAction = object : DumbAwareAction(
@@ -348,7 +351,7 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
     }
 
     private fun refresh() {
-        results = testsRoot?.let { TestResults.build(it, displayNames::of, displayNames::tagsOf) }.orEmpty()
+        results = testsRoot?.let { TestResults.build(it, displayNames::of, displayNames::tagsOf) }.orEmpty() + listOfNotNull(cucumber)
         report = catalog.takeUnless { it.isEmpty }?.let { Criteria.report(it, results.flatMap { group -> group.tests }, sourceReferences) }
         updateHeader()
         rebuildTree()
@@ -359,9 +362,11 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
         ApplicationManager.getApplication().executeOnPooledThread {
             val loaded = runCatching { CriteriaFiles.load(CriteriaFiles.roots(project)) }.getOrDefault(CriteriaCatalog.EMPTY)
             val references = if (loaded.isEmpty) emptySet() else runCatching { CriteriaFiles.sourceReferences(project) }.getOrDefault(emptySet())
+            val scenarios = runCatching { CucumberResults.load(CriteriaFiles.roots(project)) }.getOrNull()
             ApplicationManager.getApplication().invokeLater({
                 catalog = loaded
                 sourceReferences = references
+                cucumber = scenarios
                 refresh()
             }, ModalityState.any(), project.disposed)
         }
@@ -437,13 +442,21 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
             !catalog.isEmpty || catalog.errors.isNotEmpty() -> criteriaWarning(criteria)
             outside == 0 -> null
             else -> "${plural(outside, "classe de teste fora", "classes de teste fora")} da convenção: coloque " +
-                "${TestResults.CONVENTION_EXAMPLE} na classe. A chave agrupa os testes. " +
+                "${TestResults.CONVENTION_EXAMPLE} na classe, sem chave entre colchetes. " +
                 "Deixar no Padrão marca as classes no Radar para a IA corrigir."
         }
         val stats = statsOf(tests)
         val bar = barOf(tests)
         when {
-            environment == null -> header.update("Escudo pronto", subtitle = listOfNotNull(scoreboard, IDLE).joinToString(" · "), warning = warning)
+            environment == null -> header.update(
+                "Escudo pronto",
+                subtitle = listOfNotNull(
+                    scoreboard,
+                    cucumber?.let { "${plural(it.tests.size, "cenário", "cenários")} do Cucumber (último resultado, ${it.tests.count { t -> t.outcome == TestOutcome.FAILED }} falhando)" },
+                    IDLE,
+                ).joinToString(" · "),
+                warning = warning,
+            )
             notStarted -> header.update(
                 "Os testes não chegaram a rodar",
                 Tone.RED.accent,
@@ -677,16 +690,15 @@ class TestsPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
         if (outside.isEmpty()) return
         append(section("⚠ Fora da convenção"))
         append(
-            "<p>Coloque na classe de teste um <code>@DisplayName</code> com a chave entre colchetes no início. " +
-                "O Escudo agrupa as classes pela chave, e as do mesmo assunto ficam juntas:</p>",
+            "<p>Coloque na classe de teste um <code>@DisplayName</code> que diga o que ela testa, sem chave entre colchetes. " +
+                "Os testes ficam em Dado/Quando/Então, com <code>@Tag(\"criterio:ID\")</code>:</p>",
         )
-        append(code("@DisplayName(\"[Frete] Cálculo do frete\")\nclass FreteServiceTest { … }"))
+        append(code("@DisplayName(\"Cálculo do frete\")\nclass FreteServiceTest { … }"))
         append("<ul>")
         for (testClass in outside) {
             val name = testClass.codeReference?.substringAfterLast('.')?.substringAfterLast('$') ?: testClass.label
-            val description = if (testClass.convention == Convention.MISSING_KEY) testClass.label else "Descrição"
             append("<li><b>${escape(name)}</b>&nbsp;&nbsp;${pill(testClass.convention?.problem.orEmpty(), Tone.YELLOW)}<br>")
-            append("<code>${escape("@DisplayName(\"[Chave] $description\")")}</code></li>")
+            append("<code>${escape("@DisplayName(\"Descrição\")")}</code></li>")
         }
         append("</ul>")
         append(

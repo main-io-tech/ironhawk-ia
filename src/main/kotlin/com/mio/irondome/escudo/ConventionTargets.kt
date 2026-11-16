@@ -30,31 +30,19 @@ object ConventionTargets {
 
     private const val DISPLAY_NAME = "org.junit.jupiter.api.DisplayName"
 
-    /** O pedido para a IA; [keys] são as chaves que o projeto já usa, para ela reaproveitar. */
-    fun text(className: String, convention: Convention, label: String, keys: List<String>): String = buildString {
-        when (convention) {
-            Convention.MISSING_KEY -> {
-                append("O @DisplayName(\"$label\") da classe de teste `$className` está sem a chave. ")
-                append("Deixe no padrão do Escudo: @DisplayName(\"[Chave] $label\").")
-            }
-            else -> {
-                append("A classe de teste `$className` está sem @DisplayName. ")
-                append("Coloque na classe @DisplayName(\"[Chave] Descrição\"), com a descrição dizendo em português o que ela testa.")
-            }
-        }
-        append("\n\nA chave entre colchetes agrupa no Escudo as classes do mesmo assunto. ")
-        if (keys.isEmpty()) {
-            append("Crie uma chave curta para o assunto da classe.")
-        } else {
-            append("Reaproveite uma das chaves que o projeto já usa, se o assunto for o mesmo: ")
-            append(keys.joinToString(", ") { "[$it]" })
-            append("; senão, crie uma curta.")
-        }
-        append(" Altere só o @DisplayName da classe, sem mexer nos testes, e adicione o import de org.junit.jupiter.api.DisplayName se faltar.")
+    /** O pedido para a IA: o padrão do Escudo, sem chave entre colchetes. */
+    fun text(className: String, label: String): String = buildString {
+        append("A classe de teste `$className` está sem @DisplayName. ")
+        append("Coloque na classe @DisplayName(\"Descrição\"), com a descrição dizendo em português o que ela testa ")
+        append("(hoje: \"$label\"). Não use chave entre colchetes como `[Frete]`.")
+        append("\n\nNos testes da classe, deixe cada @DisplayName em Dado/Quando/Então, com `->` ou ENTÃO para o resultado esperado. ")
+        append("Se o projeto tem catálogo em ${CriteriaActions.FOLDER}/, acrescente @Tag(\"criterio:ID\") e, quando evidente, @Tag(\"nivel:...\"). ")
+        append("Cenários de Cucumber ficam nos arquivos .feature, com `@criterio:ID` acima do Cenário.")
+        append(" Altere só anotações e @DisplayName, sem mexer na lógica dos testes, e adicione os imports de org.junit.jupiter.api se faltarem.")
     }
 
     /** Só pela EDT. */
-    fun mark(project: Project, classes: List<TestNode>, keys: List<String>) {
+    fun mark(project: Project, classes: List<TestNode>) {
         if (DumbService.isDumb(project)) {
             notify(project, "Aguarde a indexação do projeto terminar para deixar os testes no padrão.", NotificationType.WARNING)
             return
@@ -64,8 +52,7 @@ object ConventionTargets {
         var existing = 0
         val missing = mutableListOf<String>()
         for (testClass in classes) {
-            val convention = testClass.convention ?: continue
-            if (convention == Convention.OK) continue
+            if (testClass.convention == null || testClass.convention == Convention.OK) continue
             val className = testClass.codeReference?.substringAfterLast('.')?.substringAfterLast('$') ?: testClass.label
             val place = testClass.locationUrl?.let { url -> ReadAction.compute<Place?, RuntimeException> { placeOf(project, url) } }
             if (place == null) {
@@ -85,7 +72,7 @@ object ConventionTargets {
                 place.file,
                 place.document,
                 place.line..place.line,
-                text(className, convention, testClass.label, keys),
+                text(className, testClass.label),
                 discuss = false,
                 origin = CommentOrigin.ESCUDO,
             )

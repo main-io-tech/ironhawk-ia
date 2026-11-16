@@ -28,10 +28,9 @@ enum class EscudoView(val label: String) {
     EXECUTION("Por execução"),
 }
 
-/** A convenção do Escudo para as classes de teste: `@DisplayName("[Chave] Descrição")`. */
+/** A convenção do Escudo para as classes de teste: um `@DisplayName` que diga o que a classe testa, sem chave. */
 enum class Convention(val problem: String?) {
     OK(null),
-    MISSING_KEY("sem chave"),
     MISSING_DISPLAY_NAME("sem @DisplayName"),
 }
 
@@ -119,7 +118,7 @@ object TestResults {
 
     const val NO_KEY = "Sem chave"
     const val NO_TAG = "Sem tag"
-    const val CONVENTION_EXAMPLE = "@DisplayName(\"[Chave] Descrição\")"
+    const val CONVENTION_EXAMPLE = "@DisplayName(\"Descrição do que a classe testa\")"
 
     private const val SUITE_PROTOCOL = "java:suite://"
     private val keyed = Regex("""^\s*\[\s*([^\]]*?)\s*]\s*(.*)$""", RegexOption.DOT_MATCHES_ALL)
@@ -233,11 +232,7 @@ object TestResults {
             val (key, description) = displayName?.let(::parseKey) ?: (null to reported)
             classKey = key
             label = description
-            convention = when {
-                displayName == null -> Convention.MISSING_DISPLAY_NAME
-                key == null -> Convention.MISSING_KEY
-                else -> Convention.OK
-            }
+            convention = if (displayName == null) Convention.MISSING_DISPLAY_NAME else Convention.OK
         }
         val key = "$parentKey/${url.orEmpty()}|$label"
         return TestNode(
