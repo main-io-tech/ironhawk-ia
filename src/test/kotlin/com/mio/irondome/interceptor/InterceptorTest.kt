@@ -38,10 +38,7 @@ class InterceptorTest {
         assertEquals(listOf("--model", "gpt-5"), read.subList(read.indexOf("--model"), read.indexOf("--model") + 2))
         assertTrue("--force" in write)
         assertFalse("--model" in write)
-        assertFalse("o sandbox só existe no macOS e no Linux", "--sandbox" in write)
-        val sandboxed = AgentCommand.build(AgentProvider.CURSOR, "agent", readOnly.copy(write = true), "/mnt/c/proj", null, 20, sandbox = true)
-        assertEquals("enabled", sandboxed[sandboxed.indexOf("--sandbox") + 1])
-        assertFalse("só leitura já roda no modo ask", "--sandbox" in AgentCommand.build(AgentProvider.CURSOR, "agent", readOnly, "/mnt/c/proj", null, 20, sandbox = true))
+        assertFalse("o isolamento é o devcontainer, não o sandbox do Cursor", "--sandbox" in write || "--sandbox" in read)
         assertEquals("o prompt vai em uma linha, sem acentos nem os caracteres do cmd.exe", "Revise o PR seguindo as instrucoes responda", read.last())
     }
 
@@ -133,6 +130,22 @@ class InterceptorTest {
         assertEquals(listOf("--approve-mcps", "--allowedTools", "Read Grep"), AgentCommand.splitArgs("--approve-mcps --allowedTools \"Read Grep\""))
         assertEquals(emptyList<String>(), AgentCommand.splitArgs("  "))
         assertTrue("--x" in AgentCommand.build(AgentProvider.CURSOR, "agent", readOnly, "C:/proj", null, 20, listOf("--x")))
+    }
+
+    @Test
+    fun extraArgsNeverTurnReadOnlyTasksOrTheTerminalIntoFullAccess() {
+        val bypass = listOf("--dangerously-skip-permissions", "--force", "--permission-mode", "bypassPermissions", "--keep")
+        for (provider in AgentProvider.entries) {
+            val read = AgentCommand.build(provider, "cli", readOnly, "C:/proj", null, 20, bypass)
+            assertFalse("$provider só leitura", "--dangerously-skip-permissions" in read || "bypassPermissions" in read)
+            assertTrue("$provider mantém os outros extras", "--keep" in read)
+            for (interactive in listOf(true, false)) {
+                val terminal = AgentCommand.terminal(provider, "cli", "Teste", null, 20, ShellKind.POSIX, interactive, bypass)
+                assertFalse("$provider no terminal", "dangerously-skip-permissions" in terminal || "bypassPermissions" in terminal)
+            }
+        }
+        val write = AgentCommand.build(AgentProvider.CURSOR, "agent", readOnly.copy(write = true), "C:/proj", null, 20, listOf("--x"))
+        assertTrue("no devcontainer os extras seguem como estão", "--x" in write)
     }
 
     @Test

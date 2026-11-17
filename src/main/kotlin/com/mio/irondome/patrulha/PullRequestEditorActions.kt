@@ -42,7 +42,7 @@ class MinimizePullRequestCommentsAction : PullRequestEditorAction() {
         val minimize = patrulha.hasExpandedInEditor(number)
         e.presentation.text = if (minimize) "Minimizar Comentários do PR" else "Expandir Comentários do PR"
         e.presentation.description = if (minimize) {
-            "Recolhe cada comentário do PR #$number no editor numa barra de uma linha; clique no cabeçalho de um para abrir só ele"
+            "Recolhe os comentários do PR #$number no editor; o cabeçalho de cada um abre só ele"
         } else {
             "Abre todos os comentários do PR #$number no editor"
         }
@@ -53,7 +53,10 @@ class MinimizePullRequestCommentsAction : PullRequestEditorAction() {
         patrulha.setAllExpandedInEditor(number, !patrulha.hasExpandedInEditor(number))
 }
 
-/** Tira do editor todos os comentários do PR, ou traz de volta; pressionado enquanto eles aparecem. */
+/**
+ * Tira do editor todos os comentários do PR, ou traz de volta, inclusive os ocultados um a um pelo Ocultar do
+ * cartão; pressionado enquanto eles aparecem.
+ */
 class TogglePullRequestCommentsAction : PullRequestEditorAction(), Toggleable {
 
     override fun update(e: AnActionEvent, patrulha: PatrulhaService, number: Int) {
@@ -61,27 +64,13 @@ class TogglePullRequestCommentsAction : PullRequestEditorAction(), Toggleable {
         Toggleable.setSelected(e.presentation, shown)
         e.presentation.text = if (shown) "Ocultar Comentários do PR" else "Mostrar Comentários do PR"
         e.presentation.description = if (shown) {
-            "Tira do editor os comentários do PR #$number (os não enviados, os pedidos enviados e as conversas), sem apagar nenhum"
+            "Tira do editor os comentários do PR #$number, sem apagar nenhum"
         } else {
-            "Volta a mostrar no editor os comentários do PR #$number"
+            "Mostra no editor os comentários do PR #$number, inclusive os ocultados um a um"
         }
         e.presentation.icon = if (shown) ExecutionUtil.getLiveIndicator(AllIcons.Actions.Show) else AllIcons.Actions.Show
     }
 
     override fun perform(patrulha: PatrulhaService, number: Int) =
         patrulha.setAllShownInEditor(number, !patrulha.isAnyShownInEditor(number))
-}
-
-/** Traz de volta ao editor os pedidos e as conversas do PR ocultados um a um pelo Ocultar do cartão. */
-class ShowHiddenPullRequestCommentsAction : PullRequestEditorAction() {
-
-    override fun update(e: AnActionEvent, patrulha: PatrulhaService, number: Int) {
-        val hidden = patrulha.hiddenInEditor(number)
-        e.presentation.isEnabledAndVisible = hidden > 0
-        e.presentation.text = "Mostrar Comentários Ocultados do PR ($hidden)"
-        e.presentation.description = "Volta a mostrar no editor os comentários do PR #$number que você ocultou um a um pelo Ocultar do cartão"
-        e.presentation.icon = AllIcons.Actions.ToggleVisibility
-    }
-
-    override fun perform(patrulha: PatrulhaService, number: Int) = patrulha.showHiddenInEditor(number)
 }

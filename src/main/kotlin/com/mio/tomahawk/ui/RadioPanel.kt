@@ -41,12 +41,14 @@ import com.mio.irondome.base.Stat
 import com.mio.irondome.base.SummaryHeader
 import com.mio.irondome.base.Tone
 import com.mio.irondome.base.WrapText
+import com.mio.irondome.base.moreActions
 import com.mio.irondome.base.wrapping
+import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.base.TomahawkIcons
-import com.mio.tomahawk.delivery.PrRadarService
+import com.mio.tomahawk.delivery.PrRadioService
 import com.mio.tomahawk.delivery.PrThread
 import com.mio.tomahawk.delivery.PullRequestService
-import com.mio.tomahawk.delivery.RadarSnapshot
+import com.mio.tomahawk.delivery.RadioSnapshot
 import com.mio.tomahawk.delivery.ThreadKind
 import com.mio.tomahawk.delivery.WatchedPr
 import com.mio.tomahawk.run.TomahawkSettings
@@ -70,7 +72,8 @@ import javax.swing.tree.TreePath
 /**
  * A aba Rádio: os PRs abertos pelo usuário e as conversas de cada um, com o que é novo e o que espera resposta.
  * Escolhida uma conversa, embaixo aparecem o trecho do diff, os comentários e a caixa de resposta, que a IA pode
- * escrever a partir da conversa e do código.
+ * escrever a partir da conversa e do código. O [PrRadioService] relê os PRs a cada 3 minutos; a barra mostra o fluxo
+ * principal e o resto fica atrás do ⋮.
  */
 class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, true), Disposable {
 
@@ -84,7 +87,7 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
 
     private class ThreadNode(val pr: WatchedPr, val thread: PrThread)
 
-    private val radar = PrRadarService.getInstance(project)
+    private val radio = PrRadioService.getInstance(project)
     private val header = SummaryHeader(TomahawkIcons.radio, Tone.PURPLE)
     private val root = DefaultMutableTreeNode()
     private val model = DefaultTreeModel(root)
@@ -113,11 +116,11 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
         lineWrap = true
         wrapStyleWord = true
         font = JBFont.label()
-        emptyText.text = "Escreva a resposta, ou anotações para a IA (por exemplo: concordo, vou corrigir no próximo commit)"
+        emptyText.text = "Escreva a resposta, ou orientações para a IA"
     }
     private val aiButton = JButton("Responder com IA", AllIcons.Actions.Lightning).apply { addActionListener { draftWithAi() } }
     private val seenButton = JButton("Marcar como Lida", AllIcons.Actions.Checked).apply {
-        addActionListener { selectedThread()?.let { (_, thread) -> radar.markSeen(listOf(thread)) } }
+        addActionListener { selectedThread()?.let { (_, thread) -> radio.markSeen(listOf(thread)) } }
     }
     private val sendButton = JButton("Enviar Resposta", AllIcons.Actions.Execute).apply {
         putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true)
@@ -140,7 +143,7 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
         })
     }
     private val empty = WrapText(
-        "Escolha uma conversa acima para ver o trecho do código, os comentários e responder.",
+        "Escolha uma conversa acima para ver o código, os comentários e responder.",
         JBFont.label(),
         UIUtil.getContextHelpForeground(),
     ).apply { border = JBUI.Borders.empty(12, 14) }
@@ -171,36 +174,35 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
                 },
                 object : DumbAwareAction("Marcar Tudo como Lido", "Marca como lidos os comentários de todos os PRs", AllIcons.Actions.Checked) {
                     override fun actionPerformed(e: AnActionEvent) {
-                        radar.snapshot?.let { snap -> radar.markSeen(snap.prs.flatMap { it.threads }) }
+                        radio.snapshot?.let { snap -> radio.markSeen(snap.prs.flatMap { it.threads }) }
                     }
                     override fun update(e: AnActionEvent) {
-                        val snap = radar.snapshot
-                        e.presentation.isEnabled = snap != null && snap.prs.any { pr -> pr.threads.any { radar.unread(it, snap.me) > 0 } }
+                        val snap = radio.snapshot
+                        e.presentation.isEnabled = snap != null && snap.prs.any { pr -> pr.threads.any { radio.unread(it, snap.me) > 0 } }
                     }
                     override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 },
                 Separator.getInstance(),
                 filterActions(),
-                actions.createExpandAllAction(expander, tree),
-                actions.createCollapseAllAction(expander, tree),
-                Separator.getInstance(),
                 object : DumbAwareAction("Entrar no GitHub", "Entra na conta do GitHub da IDE", AllIcons.General.User) {
-                    override fun actionPerformed(e: AnActionEvent) {
-                        PullRequestService.getInstance(project).login()
-                        radar.refresh()
-                    }
+                    override fun actionPerformed(e: AnActionEvent) = login()
                     override fun update(e: AnActionEvent) {
-                        e.presentation.isVisible = radar.gateway != null && radar.snapshot == null && !radar.loading
+                        e.presentation.isVisible = radio.gateway != null && radio.snapshot == null && !radio.loading
                     }
                     override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 },
-                object : DumbAwareAction("Atualizar", "Lê de novo os PRs e os comentários no GitHub", AllIcons.Actions.Refresh) {
-                    override fun actionPerformed(e: AnActionEvent) = radar.refresh()
-                    override fun update(e: AnActionEvent) {
-                        e.presentation.isEnabled = radar.gateway != null && !radar.loading
-                    }
-                    override fun getActionUpdateThread() = ActionUpdateThread.EDT
-                },
+                moreActions(
+                    object : DumbAwareAction("Ler os PRs de Novo", "Lê de novo os PRs e os comentários no GitHub, sem esperar os 3 minutos", AllIcons.Vcs.Fetch) {
+                        override fun actionPerformed(e: AnActionEvent) = radio.refresh()
+                        override fun update(e: AnActionEvent) {
+                            e.presentation.isEnabled = radio.gateway != null && !radio.loading
+                        }
+                        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+                    },
+                    null,
+                    actions.createExpandAllAction(expander, tree),
+                    actions.createCollapseAllAction(expander, tree),
+                ),
             ),
             true,
         ).apply { targetComponent = this@RadioPanel }.wrapping().component
@@ -210,18 +212,23 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
             }
         })
         project.messageBus.connect(this).subscribe(
-            PrRadarService.CHANGED,
-            PrRadarService.Listener { ApplicationManager.getApplication().invokeLater({ reload() }, project.disposed) },
+            PrRadioService.CHANGED,
+            PrRadioService.Listener { ApplicationManager.getApplication().invokeLater({ reload() }, project.disposed) },
         )
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             TomahawkSettings.Listener.TOPIC,
             TomahawkSettings.Listener { ApplicationManager.getApplication().invokeLater({ updateButtons() }, project.disposed) },
         )
-        if (radar.snapshot == null && !radar.loading) radar.refresh()
+        if (radio.snapshot == null && !radio.loading) radio.refresh()
         reload()
     }
 
     override fun dispose() = Unit
+
+    private fun login() {
+        PullRequestService.getInstance(project).login()
+        radio.refresh()
+    }
 
     private fun filterActions() = DefaultActionGroup("Filtrar", true).apply {
         templatePresentation.icon = AllIcons.General.Filter
@@ -253,17 +260,27 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
             .filter { !tree.isExpanded(TreePath(it.path)) }
             .mapNotNull { (it.userObject as? PrNode)?.pr?.ref?.number }.toSet()
         root.removeAllChildren()
-        val snap = radar.snapshot
+        val snap = radio.snapshot
         snap?.prs?.forEach { pr ->
             val node = DefaultMutableTreeNode(PrNode(pr))
             pr.threads.filter { shown(it, snap.me) }.forEach { node.add(DefaultMutableTreeNode(ThreadNode(pr, it))) }
             root.add(node)
         }
-        tree.emptyText.text = when {
-            radar.gateway == null -> "O Rádio usa os plugins Git e GitHub da IDE, que estão desligados"
-            snap == null && radar.loading -> "Sintonizando os PRs no GitHub…"
-            snap == null -> "O Rádio precisa de um repositório com remote do GitHub e da conta do GitHub da IDE"
-            else -> "Nenhum PR aberto por você: abra um pela Extração, no Lançador"
+        tree.emptyText.clear()
+        when {
+            radio.gateway == null -> tree.emptyText.text = "Os plugins Git e GitHub da IDE estão desligados."
+            snap == null && radio.loading -> tree.emptyText.text = "Sintonizando os PRs no GitHub…"
+            snap == null -> {
+                tree.emptyText.text = "Sem PRs: o projeto precisa de remote do GitHub e da conta da IDE."
+                tree.emptyText.appendLine("Entrar no GitHub", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { login() }
+            }
+            snap.prs.isEmpty() -> {
+                tree.emptyText.text = "Nenhum PR aberto por você."
+                tree.emptyText.appendLine("Abrir a Entrega no Lançador", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) {
+                    AttackTabs.showTab(project, AttackTabs.LAUNCHER)
+                }
+            }
+            else -> tree.emptyText.text = "Nenhuma conversa com esse filtro."
         }
         model.reload()
         (0 until root.childCount).map { root.getChildAt(it) as DefaultMutableTreeNode }.forEach { node ->
@@ -281,29 +298,29 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
         updateHeader(snap)
     }
 
-    private fun updateHeader(snap: RadarSnapshot?) {
-        if (radar.gateway == null) {
-            header.update("Comentários dos seus PRs", Tone.GRAY.accent, "O Rádio usa os plugins Git e GitHub da IDE, que estão desligados.")
+    private fun updateHeader(snap: RadioSnapshot?) {
+        if (radio.gateway == null) {
+            header.update("Comentários dos seus PRs", Tone.GRAY.accent, "Ligue os plugins Git e GitHub da IDE para usar o Rádio.")
             return
         }
         if (snap == null) {
             header.update(
                 "Comentários dos seus PRs",
                 Tone.GRAY.accent,
-                if (radar.loading) "Sintonizando os PRs no GitHub…" else "Entre na conta do GitHub da IDE para o Rádio vigiar os seus PRs.",
-                warning = radar.problem?.let { "O GitHub não respondeu: $it" },
+                if (radio.loading) "Sintonizando os PRs no GitHub…" else "Entre na conta do GitHub da IDE para vigiar os seus PRs.",
+                warning = radio.problem?.let { "O GitHub não respondeu: $it" },
             )
             return
         }
         val pending = snap.prs.sumOf { pr -> pr.threads.count { it.awaitsReply(snap.me) } }
-        val unread = snap.prs.sumOf { pr -> pr.threads.sumOf { radar.unread(it, snap.me) } }
+        val unread = snap.prs.sumOf { pr -> pr.threads.sumOf { radio.unread(it, snap.me) } }
         val resolved = snap.prs.sumOf { pr -> pr.threads.count { it.resolved } }
         val total = snap.prs.sumOf { it.threads.size }
-        val checked = if (radar.checkedAt > 0) " · checado às ${TIME.format(Instant.ofEpochMilli(radar.checkedAt).atZone(ZoneId.systemDefault()))}" else ""
+        val checked = if (radio.checkedAt > 0) " · checado às ${TIME.format(Instant.ofEpochMilli(radio.checkedAt).atZone(ZoneId.systemDefault()))}" else ""
         header.update(
             if (pending > 0) "$pending conversa(s) aguardando sua resposta" else "Nenhuma conversa aguardando resposta",
             (if (pending > 0) Tone.YELLOW else Tone.GREEN).accent,
-            "@${snap.me} · ${snap.prs.size} PR(s) abertos em ${snap.repo}$checked · a cada 3 min" + if (radar.loading) " · atualizando…" else "",
+            "@${snap.me} · ${snap.prs.size} PR(s) abertos em ${snap.repo}$checked" + if (radio.loading) " · atualizando…" else "",
             stats = listOf(
                 Stat(unread, "novos", Tone.PURPLE),
                 Stat(pending, "aguardando", Tone.YELLOW),
@@ -314,8 +331,8 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
                 Segment(resolved, Tone.GREEN.accent),
                 Segment(total - pending - resolved, Tone.GRAY.accent),
             ),
-            warning = radar.problem?.let { "A última leitura falhou: $it" }
-                ?: if (!TomahawkSettings.ready) "Teste a integração com a IA no Arsenal para responder com a IA." else null,
+            warning = radio.problem?.let { "A última leitura falhou: $it" }
+                ?: if (!TomahawkSettings.ready) "Teste a integração com a IA no Arsenal para responder com IA." else null,
         )
     }
 
@@ -334,7 +351,7 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
     private fun showSelected() {
         shownKey?.let { replies[it] = reply.text }
         val selected = selectedThread()
-        val snap = radar.snapshot
+        val snap = radio.snapshot
         bottom.removeAll()
         if (selected == null || snap == null) {
             shownKey = null
@@ -348,7 +365,7 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
         shownKey = thread.key
         threadTitle.text = thread.kind.label + (thread.reviewLabel?.let { ": $it" }.orEmpty()) + " · @${thread.last.author}"
         threadPills.removeAll()
-        val unread = radar.unread(thread, snap.me)
+        val unread = radio.unread(thread, snap.me)
         if (unread > 0) threadPills.add(Pill("$unread novo(s)", Tone.PURPLE, bold = true))
         if (thread.awaitsReply(snap.me)) threadPills.add(Pill("Aguardando resposta", Tone.YELLOW))
         if (thread.resolved) threadPills.add(Pill("Resolvida", Tone.GREEN))
@@ -370,19 +387,19 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
 
     private fun updateButtons() {
         val (_, thread) = selectedThread() ?: return
-        val me = radar.snapshot?.me ?: return
-        val drafting = thread.key in radar.drafting
-        val sending = thread.key in radar.sending
-        val error = radar.errors[thread.key]
+        val me = radio.snapshot?.me ?: return
+        val drafting = thread.key in radio.drafting
+        val sending = thread.key in radio.sending
+        val error = radio.errors[thread.key]
         status.isVisible = drafting || error != null
         status.text = error ?: "A IA está lendo a conversa e o código para escrever a resposta…"
         aiButton.text = if (drafting) "Escrevendo…" else "Responder com IA"
         aiButton.isEnabled = !drafting && !sending && TomahawkSettings.ready
         aiButton.toolTipText = when {
             !TomahawkSettings.ready -> "Teste a integração com a IA no Arsenal"
-            else -> "A IA do Arsenal escreve a resposta a partir da conversa e do código; o que estiver na caixa vira a orientação dela"
+            else -> "A IA escreve a resposta; o texto da caixa vira a orientação dela"
         }
-        seenButton.isEnabled = radar.unread(thread, me) > 0
+        seenButton.isEnabled = radio.unread(thread, me) > 0
         sendButton.text = if (sending) "Enviando…" else "Enviar Resposta"
         sendButton.isEnabled = !sending && !drafting
         sendButton.toolTipText = if (thread.kind == ThreadKind.CODE) "Responde na conversa da linha" else "Responde na conversa do PR, citando @${thread.last.author}"
@@ -393,7 +410,7 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
         val (pr, thread) = selectedThread() ?: return
         val notes = reply.text
         replies[thread.key] = notes
-        radar.draftReply(pr.ref.number, thread.key, notes) { answer ->
+        radio.draftReply(pr.ref.number, thread.key, notes) { answer ->
             replies[thread.key] = answer
             if (shownKey == thread.key) reply.text = answer
         }
@@ -409,7 +426,7 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
             return
         }
         replies[thread.key] = text
-        radar.send(pr.ref.number, thread.key, text) {
+        radio.send(pr.ref.number, thread.key, text) {
             replies.remove(thread.key)
             if (shownKey == thread.key) reply.text = ""
         }
@@ -434,7 +451,7 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
             if (index > 0) append("<div style=\"border-top:1px solid $line;margin:8px 0 0 0;padding-top:8px\"></div>")
             append("<div><b>@").append(ArtifactHtml.esc(comment.author)).append("</b>")
             if (own) append(" <span style=\"color:$mine\">· você</span>")
-            if (radar.isNew(comment, me)) append(" <span style=\"color:$fresh\"><b>· novo</b></span>")
+            if (radio.isNew(comment, me)) append(" <span style=\"color:$fresh\"><b>· novo</b></span>")
             append(" <span style=\"color:$muted\">· ").append(ArtifactHtml.esc(date(comment.createdAt))).append("</span>")
             comment.url.takeIf { it.isNotBlank() }?.let { append(" <a href=\"").append(ArtifactHtml.esc(it)).append("\">↗ GitHub</a>") }
             append("</div><div>")
@@ -458,11 +475,11 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
 
     private inner class Renderer : RichTreeCellRenderer() {
         override fun describe(row: Row, value: Any?) {
-            val me = radar.snapshot?.me.orEmpty()
+            val me = radio.snapshot?.me.orEmpty()
             when (val node = (value as? DefaultMutableTreeNode)?.userObject) {
                 is PrNode -> {
                     val pr = node.pr
-                    val unread = pr.threads.sumOf { radar.unread(it, me) }
+                    val unread = pr.threads.sumOf { radio.unread(it, me) }
                     val pending = pr.threads.count { it.awaitsReply(me) }
                     row.icon(AllIcons.Vcs.Vendors.Github)
                     row.text("#${pr.ref.number}", SimpleTextAttributes.GRAYED_BOLD_ATTRIBUTES)
@@ -483,12 +500,12 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
                     )
                     row.text(thread.kind.label + (thread.reviewLabel?.let { ": $it" }.orEmpty()), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                     thread.path?.let { row.text(it.substringAfterLast('/') + thread.line?.let { line -> ":$line" }.orEmpty(), SimpleTextAttributes.GRAYED_ATTRIBUTES) }
-                    val unread = radar.unread(thread, me)
+                    val unread = radio.unread(thread, me)
                     if (unread > 0) row.pill("$unread novo(s)", Tone.PURPLE, bold = true)
                     if (thread.awaitsReply(me)) row.pill("Aguardando", Tone.YELLOW)
                     if (thread.resolved) row.pill("Resolvida", Tone.GREEN)
                     if (thread.outdated) row.pill("Desatualizada", Tone.GRAY)
-                    if (thread.key in radar.drafting) row.pill("IA escrevendo", Tone.BLUE)
+                    if (thread.key in radio.drafting) row.pill("IA escrevendo", Tone.BLUE)
                     row.detail("@${thread.last.author}: ${peek(thread.last.body)} · ${date(thread.last.createdAt)}")
                     row.tooltip(thread.path)
                 }

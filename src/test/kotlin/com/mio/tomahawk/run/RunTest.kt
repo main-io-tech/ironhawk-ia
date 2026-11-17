@@ -10,6 +10,20 @@ import java.nio.file.Path
 class RunTest {
 
     @Test
+    fun `o log ao vivo continua depois de encher o limite de linhas`() {
+        val progress = MissionProgress(Mission(SddStep.PLAN, "", null), "/speckit.plan", AgentProvider.CLAUDE)
+        repeat(MissionProgress.MAX_LOG) { progress.log(LogKind.TEXT, "linha $it") }
+        val (first, seen) = progress.logAfter(0)
+        assertEquals(MissionProgress.MAX_LOG, first.size)
+        progress.log(LogKind.TEXT, "nova 1")
+        progress.log(LogKind.TEXT, "nova 2")
+        val (fresh, total) = progress.logAfter(seen)
+        assertEquals(listOf("nova 1", "nova 2"), fresh.map { it.text })
+        assertEquals(seen + 2, total)
+        assertEquals("nada novo, nada impresso", emptyList<LogLine>(), progress.logAfter(total).first)
+    }
+
+    @Test
     fun `lê o stream-json do Cursor`() {
         assertEquals(listOf(AgentEvent.Init("gpt-5")), AgentEvents.parse("""{"type":"system","subtype":"init","model":"gpt-5"}"""))
         assertEquals(

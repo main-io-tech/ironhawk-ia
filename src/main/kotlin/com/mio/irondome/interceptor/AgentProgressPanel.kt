@@ -235,7 +235,7 @@ class PulseBar(private val tone: Tone) : JComponent() {
 }
 
 /**
- * Enquanto a IA trabalha, o ícone do painel do Iron Dome IA e o da aba que pediu viram o ícone de IA, para o
+ * Enquanto a IA trabalha, o ícone do painel do IronHawk IA e o da aba que pediu viram o ícone de IA, para o
  * andamento ser visto mesmo com o painel fechado ou noutra aba. A barra lateral só aceita ícones que escalam,
  * então nada de ícone animado ali; o indicador girando fica na barra de progresso da aba.
  */

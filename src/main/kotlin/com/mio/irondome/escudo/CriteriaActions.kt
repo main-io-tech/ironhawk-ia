@@ -94,6 +94,7 @@ object CriteriaActions {
         appendLine("2. Acrescente `@Tag(\"nivel:...\")` quando o nível for evidente: `unidade` para uma classe isolada, `integracao`")
         appendLine("   com banco, fila ou outro componente real, `aceitacao` para o fluxo de negócio de ponta a ponta.")
         appendLine("3. Deixe o `@DisplayName` em Dado/Quando/Então, mantendo o sentido. Retire a chave `[Chave]` do início, se houver.")
+        appendLine("   Classe de teste sem `@DisplayName` ganha um que diga, em português, o que ela testa.")
         appendLine("4. Nos arquivos `.feature`, ponha `@criterio:ID` e `@nivel:aceitacao` acima do `Cenário`.")
         appendLine("5. Se não houver como saber a que critério um teste se liga, use `@Tag(\"criterio:nenhum\")` quando for um")
         appendLine("   teste técnico, ou deixe sem tag e liste-o na resposta. **Não chute** um critério.")

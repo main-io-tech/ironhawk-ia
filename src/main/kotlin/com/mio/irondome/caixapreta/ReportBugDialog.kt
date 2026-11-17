@@ -40,6 +40,7 @@ internal class ReportBugDialog(
     private val mechanism: Mechanism,
     private val errors: List<PluginError>,
     private val context: List<Pair<String, String>>,
+    private val onPublished: ((BugIssue) -> Unit)? = null,
 ) : DialogWrapper(project, true) {
 
     private val titleField = JBTextField().apply { emptyText.text = "Resumo curto do problema" }
@@ -72,7 +73,7 @@ internal class ReportBugDialog(
     private var submitted = false
 
     init {
-        title = "Reportar Bug do Iron Dome IA"
+        title = "Reportar Bug do IronHawk IA"
         isModal = false
         setOKButtonText("Continuar")
         init()
@@ -115,7 +116,7 @@ internal class ReportBugDialog(
         )
         submitted = true
         super.doOKAction()
-        BugFlow.start(project, draft)
+        BugFlow.start(project, draft, onPublished)
     }
 
     override fun dispose() {

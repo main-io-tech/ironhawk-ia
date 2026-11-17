@@ -10,13 +10,12 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import com.mio.tomahawk.run.DevContainer
 import com.mio.tomahawk.run.TomahawkSettings
 import javax.swing.JComponent
 import javax.swing.JPanel
 
 /**
- * Settings > Tools > IronHawk IA > Tomahawk IA: o que é só do Ataque. As proteções das missões e o `specify` do Spec
+ * Settings > Tools > IronHawk IA > Ataque: Spec Kit e Proteções: o que é só do Ataque. As proteções das missões e o `specify` do Spec
  * Kit; a IA (CLI, modelo, chave, onde rodar e o teste) fica no Arsenal, comum aos dois sistemas.
  */
 class TomahawkConfigurable : Configurable {
@@ -27,15 +26,12 @@ class TomahawkConfigurable : Configurable {
     }
     private val specifyFound = small()
 
-    override fun getDisplayName() = "Tomahawk IA"
+    override fun getDisplayName() = DISPLAY_NAME
 
     override fun createComponent(): JComponent {
         reset()
         return FormBuilder.createFormBuilder()
-            .addComponent(small(
-                "A IA das missões (CLI, modelo, chave, onde rodar e o teste) é a do Arsenal, em IronHawk IA > Arsenal (IA). " +
-                    "Na aba, as missões rodam só no devcontainer do projeto (${DevContainer.CONFIG}).",
-            ))
+            .addComponent(small("A IA das missões é a do Arsenal (IA); na aba, elas rodam só no devcontainer do projeto."))
             .addComponent(TitledSeparator("Missões"))
             .addComponent(guardrails)
             .addComponent(TitledSeparator("Spec Kit"))
@@ -69,8 +65,10 @@ class TomahawkConfigurable : Configurable {
         specifyFound.foreground = if (specifyPath != null) UIUtil.getContextHelpForeground() else JBColor.RED
     }
 
-    private companion object {
-        fun small(text: String = "") = JBLabel("<html>$text</html>").apply {
+    companion object {
+        const val DISPLAY_NAME = "Ataque: Spec Kit e Proteções"
+
+        private fun small(text: String = "") = JBLabel("<html>$text</html>").apply {
             componentStyle = UIUtil.ComponentStyle.SMALL
             foreground = UIUtil.getContextHelpForeground()
         }

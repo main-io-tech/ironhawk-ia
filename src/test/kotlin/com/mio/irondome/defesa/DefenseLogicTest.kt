@@ -1,12 +1,11 @@
 package com.mio.irondome.defesa
 
-import com.mio.irondome.impacto.ChangeRisk
 import com.mio.irondome.impacto.CommentSource
 import com.mio.irondome.impacto.ImpactComment
-import com.mio.irondome.impacto.TestCoverage
 import com.mio.irondome.radar.CommentTarget
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,8 +22,9 @@ class DefenseLogicTest {
             commit("e1b2c3d4", "Bia", "docs", "README.md"),
     )
 
-    private fun comment(id: String, start: Int, end: Int, path: String = "src/Frete.kt", source: CommentSource = CommentSource.RADAR) =
-        ImpactComment(id, source, path, CommentTarget.LINES, start, end, "texto de $id")
+    private fun comment(
+        id: String, start: Int, end: Int, path: String = "src/Frete.kt", source: CommentSource = CommentSource.RADAR, text: String = "texto de $id",
+    ) = ImpactComment(id, source, path, CommentTarget.LINES, start, end, text)
 
     @Test
     fun `historico conta mudancas, correcoes, autores e co-mudancas`() {
@@ -39,25 +39,6 @@ class DefenseLogicTest {
     }
 
     @Test
-    fun `co-mudanca quebrada aparece quando o parceiro fica de fora`() {
-        val missing = history.missingPartners(listOf("src/Frete.kt"))
-        assertEquals("src/FreteTest.kt", missing.single().second.path)
-        assertTrue(history.missingPartners(listOf("src/Frete.kt", "src/FreteTest.kt")).isEmpty())
-    }
-
-    @Test
-    fun `risco com memoria soma estrutura e historico e explica`() {
-        val calm = RiskScore.of(afferent = 1, inCycle = false, coverage = TestCoverage.GOOD, history = null)
-        assertEquals(ChangeRisk.LOW, calm.level)
-        val hot = RiskScore.of(afferent = 14, inCycle = false, coverage = TestCoverage.NONE, history = history.of("src/Frete.kt"))
-        assertEquals(ChangeRisk.HIGH, hot.level)
-        val text = hot.explain()
-        assertTrue(text, "14 classes dependem dela" in text)
-        assertTrue(text, "nenhum teste" in text)
-        assertTrue(text, "correções" in text)
-    }
-
-    @Test
     fun `sobreposicao de comentarios por intervalo no mesmo arquivo`() {
         val overlaps = CommentConflicts.overlaps(
             listOf(
@@ -68,9 +49,11 @@ class DefenseLogicTest {
             ),
         )
         val pair = overlaps.single()
-        assertEquals("C1+P1", pair.key)
+        assertEquals("a ordem dos dois não muda o par", pair.key, CommentOverlap(pair.second, pair.first).key)
+        val nextReview = CommentConflicts.overlaps(listOf(comment("C1", 10, 14, text = "outro pedido"), comment("P1", 12, 12, source = CommentSource.PATRULHA)))
+        assertNotEquals("C1 de outra revisão é outro par", pair.key, nextReview.single().key)
         assertEquals("linha 12", pair.location)
-        assertTrue(pair.crossSource)
+        assertNotEquals("as fontes dos dois são diferentes", pair.first.source, pair.second.source)
         val instructions = CommentConflicts.synthesisInstructions(overlaps)
         assertTrue("texto de C1" in instructions && "texto de P1" in instructions)
     }

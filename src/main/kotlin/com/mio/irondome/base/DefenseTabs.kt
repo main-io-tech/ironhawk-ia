@@ -57,7 +57,7 @@ object DefenseTabs {
             create().also { TabFailures.clear(title) }
         } catch (error: Throwable) {
             if (error is ControlFlowException || error is VirtualMachineError) throw error
-            LOG.warn("A aba $title do Iron Dome IA não pôde ser aberta", error)
+            LOG.warn("A aba $title da Defesa do IronHawk IA não pôde ser aberta", error)
             TabFailures.record(title, error)
             TabErrorPanel(title, error)
         }
@@ -108,7 +108,7 @@ object DefenseTabs {
 /** A aba está no painel ou numa divisão dele: tirada sem descartar, ela ainda lembra o gerenciador de onde saiu. */
 fun Content.onPanel(): Boolean = manager?.let { it.getIndexOfContent(this) >= 0 } == true
 
-/** No título do painel, com mais de um projeto na janela: qual deles o Iron Dome vigia. */
+/** No título do painel, com mais de um projeto na janela: qual deles a Defesa vigia. */
 internal class ProjectRootSelector : ComboBoxAction(), DumbAware {
 
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
@@ -121,7 +121,7 @@ internal class ProjectRootSelector : ComboBoxAction(), DumbAware {
         val current = project.rootPath()
         e.presentation.text = candidates.firstOrNull { it.path == current }?.name ?: current?.substringAfterLast('/') ?: "Projeto"
         e.presentation.icon = AllIcons.Nodes.Module
-        e.presentation.description = "O projeto que o Iron Dome vigia: os comentários, as alterações, o Git e a pasta ironhawk/iron-dome/ são dele"
+        e.presentation.description = "O projeto que a Defesa vigia: alvos, alterações, Git e a pasta ironhawk/iron-dome/ são dele"
     }
 
     override fun createPopupActionGroup(button: JComponent, context: DataContext): DefaultActionGroup {
@@ -134,7 +134,7 @@ internal class ProjectRootSelector : ComboBoxAction(), DumbAware {
                     override fun getActionUpdateThread() = ActionUpdateThread.EDT
                     override fun isSelected(e: AnActionEvent) = candidate.path == current
                     override fun setSelected(e: AnActionEvent, state: Boolean) {
-                        root.select(candidate.path)?.let { Messages.showWarningDialog(project, it, "Trocar o Projeto do Iron Dome") }
+                        root.select(candidate.path)?.let { Messages.showWarningDialog(project, it, "Trocar o Projeto da Defesa") }
                     }
                 }
             },

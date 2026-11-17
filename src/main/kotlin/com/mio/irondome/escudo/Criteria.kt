@@ -65,13 +65,15 @@ class CriteriaCatalog(val criteria: List<Criterion>, val errors: List<CatalogErr
 /**
  * Lê um arquivo do catálogo: uma lista YAML de critérios, cada um com `id`, `titulo` e, opcionalmente, `grupo`,
  * `origem` e `exige`. É o subconjunto do YAML que o contrato usa (valores numa linha, texto entre aspas e lista
- * `[a, b]`), então não depende de biblioteca.
+ * `[a, b]` ou em bloco, um `- item` por linha), então não depende de biblioteca.
  */
 object CriteriaCatalogParser {
 
     private val key = Regex("""^([\p{L}_][\p{L}\p{N}_]*)\s*:(?:\s+(.*))?$""")
     private val validId = Regex("""[^\s,()&|!"'#]+""")
     private val fields = setOf("id", "titulo", "grupo", "origem", "exige")
+    /** Os campos que aceitam lista, em linha (`[a, b]`) ou em bloco, um `- item` por linha. */
+    private val listFields = setOf("exige")
 
     private class Entry(val line: Int, val values: MutableMap<String, Pair<Int, String>> = mutableMapOf())
 
@@ -79,8 +81,13 @@ object CriteriaCatalogParser {
         val errors = mutableListOf<CatalogError>()
         val entries = mutableListOf<Entry>()
         var current: Entry? = null
+        /** O recuo do `-` que abriu o critério atual. */
+        var entryIndent = 0
+        /** O campo de lista que ficou sem valor na linha dele, à espera dos itens em lista de bloco (`- aceitacao`). */
+        var openList: String? = null
 
         fun field(number: Int, content: String) {
+            openList = null
             val match = key.matchEntire(content)
             if (match == null) {
                 errors += CatalogError(file, number, "linha inválida: esperava `campo: valor`")
@@ -91,21 +98,43 @@ object CriteriaCatalogParser {
                 errors += CatalogError(file, number, "campo desconhecido: ${match.groupValues[1]}")
                 return
             }
-            val value = match.groupValues[2].trim()
+            val value = match.groupValues[2].trim().takeUnless { it.startsWith("#") }.orEmpty()
             if (value.startsWith("|") || value.startsWith(">")) {
                 errors += CatalogError(file, number, "o valor de $name deve estar numa linha só")
                 return
             }
             val entry = current ?: return
-            if (name in entry.values) errors += CatalogError(file, number, "campo repetido: $name")
-            else entry.values[name] = number to value
+            if (name in entry.values) {
+                errors += CatalogError(file, number, "campo repetido: $name")
+            } else {
+                entry.values[name] = number to value
+                if (name in listFields && value.isEmpty()) openList = name
+            }
+        }
+
+        /** Um item de lista de bloco vira mais um elemento da lista `[a, b]` do campo. */
+        fun listItem(entry: Entry, name: String, item: String) {
+            val value = scalar(item.substringBefore(" #")).orEmpty().trim()
+            if (value.isEmpty()) return
+            val (line, previous) = entry.values.getValue(name)
+            entry.values[name] = line to if (previous.isEmpty()) "[$value]" else "${previous.removeSuffix("]")}, $value]"
         }
 
         text.removePrefix("﻿").lines().forEachIndexed { index, raw ->
             val number = index + 1
             val line = raw.trim()
             if (line.isEmpty() || line.startsWith("#") || line == "---") return@forEachIndexed
+            val indent = raw.length - raw.trimStart().length
             if (line == "-" || line.startsWith("- ")) {
+                val entry = current
+                val list = openList
+                // Mais recuado que o `-` do critério, logo depois de `exige:` sem valor: é um item da lista, não outro critério.
+                if (entry != null && list != null && indent > entryIndent) {
+                    listItem(entry, list, line.removePrefix("-").trim())
+                    return@forEachIndexed
+                }
+                openList = null
+                entryIndent = indent
                 current = Entry(number).also { entries += it }
                 line.removePrefix("-").trim().takeIf { it.isNotEmpty() }?.let { field(number, it) }
             } else if (current == null) {

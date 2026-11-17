@@ -17,7 +17,7 @@ object BugStructuring {
     fun instructions(title: String, text: String): String = buildString {
         appendLine("# Organizar um relatório de bug")
         appendLine()
-        appendLine("Uma pessoa escreveu o relato abaixo sobre um problema no plugin Iron Dome IA. Organize **só o texto dela** em três")
+        appendLine("Uma pessoa escreveu o relato abaixo sobre um problema no plugin IronHawk IA. Organize **só o texto dela** em três")
         appendLine("partes, em português do Brasil. **Não leia nem altere nenhum arquivo do projeto aberto**, porque o bug é do plugin, e")
         appendLine("não do projeto dela. Não invente nada: se uma parte não estiver no texto, deixe-a vazia.")
         appendLine()

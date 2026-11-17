@@ -127,15 +127,15 @@ object TargetComments {
         return FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, file, line, 0), true)
     }
 
-    private const val PROJECT_HINT = "Vale para o projeto como um todo: a IA decide onde mexer. Vai para o .md com Disparar Todos (Ctrl+S)."
+    private const val PROJECT_HINT = "Vale para o projeto todo: a IA decide onde mexer. Vai para o .md com Ctrl+S ou Disparar com IA."
 
     private fun hintFor(isPackage: Boolean, pullRequest: Int) = when {
         pullRequest != 0 && isPackage ->
             "Vai no texto geral da revisão do PR #$pullRequest, em Enviar ao GitHub, na aba Patrulha."
         pullRequest != 0 ->
             "Vai como comentário do arquivo no PR #$pullRequest (ou no texto geral, se o PR não altera o arquivo), em Enviar ao GitHub."
-        isPackage -> "Vale para todos os arquivos do pacote. Vai para o .md com Disparar Todos (Ctrl+S)."
-        else -> "Vale para o arquivo todo. Vai para o .md com Disparar Este Arquivo ou Disparar Todos (Ctrl+S)."
+        isPackage -> "Vale para todos os arquivos do pacote. Vai para o .md com Ctrl+S ou Disparar com IA."
+        else -> "Vale para o arquivo todo. Vai para o .md com Ctrl+S ou Disparar com IA."
     }
 }
 

@@ -1,5 +1,6 @@
 package com.mio.irondome.defesa
 
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -31,10 +32,14 @@ data class CommentOverlap(val first: ImpactComment, val second: ImpactComment) {
     val location: String
         get() = if (lines.first == lines.last) "linha ${lines.first}" else "linhas ${lines.first}–${lines.last}"
 
-    /** De mecanismos diferentes (Radar × Patrulha, humano × IA): mais chance de divergirem. */
-    val crossSource: Boolean get() = first.source != second.source
+    /**
+     * O par, pelo conteúdo: os ids do Radar recomeçam em C1 a cada revisão, então só o id calaria o aviso de um par
+     * novo que reaproveita os números.
+     */
+    val key: String get() = listOf(first, second).map(::identity).sorted().joinToString("+")
 
-    val key: String get() = listOf(first.id, second.id).sorted().joinToString("+")
+    private fun identity(comment: ImpactComment) =
+        "${comment.source.name}:${comment.id}:${comment.path}:${comment.startLine}-${comment.endLine}:${comment.text.trim().hashCode()}"
 }
 
 /**
@@ -94,15 +99,13 @@ object CommentConflicts {
 class CommentConflictWatcher(private val project: Project) : Disposable {
 
     private val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
-    private val notified = mutableSetOf<String>()
+    /** Os pares já avisados e ainda pendentes; guardados no projeto, para não repetir o aviso a cada abertura. */
+    private val notified = PropertiesComponent.getInstance(project).getList(NOTIFIED_KEY).orEmpty().toMutableSet()
 
     init {
         val connection = project.messageBus.connect(this)
         connection.subscribe(ReviewCommentsListener.TOPIC, ReviewCommentsListener { schedule() })
-        connection.subscribe(IronDomeRoot.Listener.TOPIC, IronDomeRoot.Listener {
-            notified.clear()
-            schedule()
-        })
+        connection.subscribe(IronDomeRoot.Listener.TOPIC, IronDomeRoot.Listener { schedule() })
         schedule()
     }
 
@@ -115,7 +118,14 @@ class CommentConflictWatcher(private val project: Project) : Disposable {
 
     private fun check() {
         if (project.isDisposed || !DefenseSettings.conflictDetection) return
-        val fresh = CommentConflicts.overlaps(pendingComments()).filter { notified.add(it.key) }
+        val current = CommentConflicts.overlaps(pendingComments())
+        val fresh = current.filter { it.key !in notified }
+        // Só os pares que ainda existem: um par resolvido e criado de novo volta a avisar.
+        val keep = current.map { it.key }.toSet()
+        if (notified.retainAll(keep) || fresh.isNotEmpty()) {
+            notified += fresh.map { it.key }
+            PropertiesComponent.getInstance(project).setList(NOTIFIED_KEY, notified.toList())
+        }
         if (fresh.isNotEmpty()) notify(fresh)
     }
 
@@ -165,6 +175,7 @@ class CommentConflictWatcher(private val project: Project) : Disposable {
 
     companion object {
         private const val DELAY_MS = 800
+        private const val NOTIFIED_KEY = "IronDome.Conflicts.Notified"
 
         fun getInstance(project: Project): CommentConflictWatcher = project.service()
     }

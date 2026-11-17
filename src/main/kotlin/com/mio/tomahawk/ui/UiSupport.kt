@@ -6,6 +6,8 @@ import com.mio.tomahawk.view.ArtifactEditorProvider
 import com.mio.tomahawk.view.ArtifactFileEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.ui.components.ActionLink
+import com.mio.tomahawk.base.AttackTabs
 import com.mio.irondome.base.Tone
 import com.mio.tomahawk.run.RunStatus
 import com.mio.tomahawk.run.Verdict
@@ -64,3 +66,13 @@ internal fun elapsed(seconds: Long): String = if (seconds >= 3600) "%d:%02d:%02d
 else "%d:%02d".format(seconds / 60, seconds % 60)
 
 internal fun escapeHtml(text: String) = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+/** Um link que leva à aba Telemetria, para os avisos de "missão em voo" não ficarem só no texto. */
+internal fun telemetryLink(project: Project, text: String = "Acompanhar na Telemetria"): ActionLink =
+    ActionLink(text) { AttackTabs.showTab(project, AttackTabs.TELEMETRY) }
+
+/** A primeira frase de [text]: o resto fica para os detalhes. */
+internal fun firstSentence(text: String): String {
+    val end = Regex("""[.!?](\s|$)""").find(text)?.range?.first ?: return text
+    return text.substring(0, end + 1)
+}

@@ -8,14 +8,12 @@ import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.DumbAwareToggleAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SimpleTextAttributes
-import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.util.ui.tree.TreeUtil
 import com.mio.irondome.base.MechanismTree
 import com.mio.irondome.base.RichTreeCellRenderer
@@ -26,11 +24,7 @@ import com.mio.irondome.base.Tone
 import com.mio.irondome.base.wrapping
 import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.base.TomahawkIcons
-import com.mio.tomahawk.base.refreshAction
-import com.mio.tomahawk.run.Mission
-import com.mio.tomahawk.run.MissionRunner
-import com.mio.tomahawk.run.RunMode
-import com.mio.tomahawk.run.TomahawkSettings
+import com.mio.tomahawk.run.Verdict
 import com.mio.tomahawk.speckit.CheckItem
 import com.mio.tomahawk.speckit.Checklist
 import com.mio.tomahawk.speckit.FeatureReport
@@ -70,33 +64,31 @@ private sealed class EvalNode(val file: Path?, val line: Int = 0) {
     class Checklists(val lists: List<Checklist>) : EvalNode(lists.firstOrNull()?.file)
     class ChecklistFile(val list: Checklist) : EvalNode(list.file)
     class Check(file: Path, val item: CheckItem) : EvalNode(file, item.line)
-    class Missing(val label: String, val step: SddStep) : EvalNode(null)
+    class Missing(val label: String, val step: SddStep, val feature: Path) : EvalNode(null)
 }
 
 /**
- * A aba Avaliação: o que o Spec Kit gerou em cada feature, para revisar antes de seguir. Mostra a spec (histórias,
- * requisitos, critérios), os pontos `[NEEDS CLARIFICATION]`, o contexto técnico do plano, as tarefas por fase e os
- * checklists; o duplo clique abre o artefato na Visualização, ou o trecho no texto.
+ * A aba Avaliação, só de leitura: o que o Spec Kit gerou em cada feature, para revisar antes de seguir. Mostra a spec
+ * (histórias, requisitos, critérios), os pontos `[NEEDS CLARIFICATION]`, o contexto técnico do plano, as tarefas por
+ * fase e os checklists; o duplo clique abre o artefato na Visualização, ou o trecho no texto, e o que ainda falta
+ * leva à etapa no Lançador, que é onde se lança e se escolhe a feature ativa.
  */
 class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true, true), Disposable {
 
     private val service = SpecKitService.getInstance(project)
-    private val runner = MissionRunner.getInstance(project)
     private val header = SummaryHeader(TomahawkIcons.avaliacao, Tone.PURPLE)
     private val root = DefaultMutableTreeNode()
     private val model = DefaultTreeModel(root)
     private val tree = MechanismTree(model, TomahawkIcons.avaliacao, Tone.PURPLE).apply {
         cellRenderer = Renderer()
-        emptyText.text = "Nada gerado ainda: lance Regras de Engajamento ou Designar Alvo no Lançador"
+        emptyText.text = "Nada gerado ainda nesta feature."
+        emptyText.appendLine("Abrir o Lançador", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { AttackTabs.showTab(project, AttackTabs.LAUNCHER) }
     }
     private var onlyActive = true
 
     init {
         setContent(JPanel(BorderLayout()).apply {
-            add(JPanel(VerticalLayout(0)).apply {
-                add(header)
-                add(MissionProgressPanel(project, this@EvaluationPanel))
-            }, BorderLayout.NORTH)
+            add(header, BorderLayout.NORTH)
             add(ScrollPaneFactory.createScrollPane(tree, true), BorderLayout.CENTER)
         })
         val expander = DefaultTreeExpander(tree)
@@ -104,26 +96,13 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
         toolbar = ActionManager.getInstance().createActionToolbar(
             "Tomahawk.EvaluationToolbar",
             DefaultActionGroup(
-                object : DumbAwareAction("Abrir", "Abre o artefato na Visualização, ou o trecho no texto; o que falta abre no Lançador", AllIcons.Actions.EditSource) {
+                object : DumbAwareAction("Abrir", "Abre o artefato ou o trecho; o que falta abre a etapa no Lançador", AllIcons.Actions.EditSource) {
                     override fun actionPerformed(e: AnActionEvent) = openSelected()
                     override fun update(e: AnActionEvent) {
                         e.presentation.isEnabled = selectedNode().let { it?.file != null || it is EvalNode.Missing }
                     }
                     override fun getActionUpdateThread() = ActionUpdateThread.EDT
                 },
-                object : DumbAwareAction("Tornar Ativa", "Torna a feature selecionada a ativa para os comandos do Spec Kit", AllIcons.Actions.SetDefault) {
-                    override fun actionPerformed(e: AnActionEvent) {
-                        (selectedNode() as? EvalNode.Feature)?.let { service.activate(it.report.dir) }
-                    }
-                    override fun update(e: AnActionEvent) {
-                        e.presentation.isEnabled = (selectedNode() as? EvalNode.Feature)?.active == false
-                    }
-                    override fun getActionUpdateThread() = ActionUpdateThread.EDT
-                },
-                Separator.getInstance(),
-                launchAction(SddStep.ANALYZE, AllIcons.Actions.Checked),
-                launchAction(SddStep.CONVERGE, TomahawkIcons.avaliacao),
-                Separator.getInstance(),
                 object : DumbAwareToggleAction("Só a Feature Ativa", "Mostra só a feature ativa ou todas as de specs/", AllIcons.General.Filter) {
                     override fun isSelected(e: AnActionEvent) = onlyActive
                     override fun setSelected(e: AnActionEvent, state: Boolean) {
@@ -134,8 +113,6 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
                 },
                 actions.createExpandAllAction(expander, tree),
                 actions.createCollapseAllAction(expander, tree),
-                Separator.getInstance(),
-                refreshAction { service.refresh(0) },
             ),
             true,
         ).apply { targetComponent = this@EvaluationPanel }.wrapping().component
@@ -155,31 +132,13 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
 
     override fun dispose() = Unit
 
-    /** Lança na aba, sem entrada, a etapa de avaliação [step] para a feature ativa. */
-    private fun launchAction(step: SddStep, icon: javax.swing.Icon) =
-        object : DumbAwareAction("${step.codename} (${step.invocation()})", step.purpose, icon) {
-            override fun actionPerformed(e: AnActionEvent) {
-                val active = service.snapshot.active ?: return
-                runner.launch(Mission(step, "", service.snapshot.relative(active.dir), RunMode.BACKGROUND))
-            }
-
-            override fun update(e: AnActionEvent) {
-                val snapshot = service.snapshot
-                e.presentation.text = "${step.codename} (${snapshot.invocation(step)})"
-                e.presentation.isEnabled = snapshot.active?.tasks != null && runner.progress == null && step in snapshot.commands && TomahawkSettings.ready
-                e.presentation.description = if (TomahawkSettings.ready) step.purpose else "Teste a integração com a IA no Arsenal"
-            }
-
-            override fun getActionUpdateThread() = ActionUpdateThread.EDT
-        }
-
     private fun selectedNode(): EvalNode? = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? EvalNode
 
     /** O artefato abre na Visualização, ou o trecho no texto; o que ainda não foi gerado abre a etapa no Lançador. */
     private fun openSelected() {
         val node = selectedNode() ?: return
         if (node is EvalNode.Missing) {
-            project.messageBus.syncPublisher(AttackTabs.GOTO).goto(node.step)
+            project.messageBus.syncPublisher(AttackTabs.GOTO).goto(node.step, node.feature)
             AttackTabs.showTab(project, AttackTabs.LAUNCHER)
             return
         }
@@ -226,7 +185,7 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
         val node = DefaultMutableTreeNode(EvalNode.Feature(report, active))
         val spec = report.spec
         if (spec == null) {
-            node.add(DefaultMutableTreeNode(EvalNode.Missing("spec.md", SddStep.SPECIFY)))
+            node.add(DefaultMutableTreeNode(EvalNode.Missing("spec.md", SddStep.SPECIFY, report.dir)))
         } else {
             node.add(DefaultMutableTreeNode(EvalNode.Spec(report)).apply {
                 spec.stories.forEach { add(DefaultMutableTreeNode(EvalNode.Story(spec.file, it))) }
@@ -239,7 +198,7 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
         }
         val plan = report.plan
         if (plan == null) {
-            if (spec != null) node.add(DefaultMutableTreeNode(EvalNode.Missing("plan.md", SddStep.PLAN)))
+            if (spec != null) node.add(DefaultMutableTreeNode(EvalNode.Missing("plan.md", SddStep.PLAN, report.dir)))
         } else {
             node.add(DefaultMutableTreeNode(EvalNode.Plan(report)).apply {
                 plan.context.forEach { (key, value) -> add(DefaultMutableTreeNode(EvalNode.Context(plan.file, key, value))) }
@@ -252,7 +211,7 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
         }
         val tasks = report.tasks
         if (tasks == null) {
-            if (plan != null) node.add(DefaultMutableTreeNode(EvalNode.Missing("tasks.md", SddStep.TASKS)))
+            if (plan != null) node.add(DefaultMutableTreeNode(EvalNode.Missing("tasks.md", SddStep.TASKS, report.dir)))
         } else {
             node.add(DefaultMutableTreeNode(EvalNode.Tasks(report)).apply {
                 tasks.phases.forEach { phase ->
@@ -274,6 +233,10 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
         return node
     }
 
+    /**
+     * O cabeçalho fala da qualidade dos artefatos (pendências, checklists, a última análise); o andamento das etapas e
+     * das tarefas fica no Lançador.
+     */
     private fun updateHeader(snapshot: Snapshot) {
         val active = snapshot.active
         if (!snapshot.initialized) {
@@ -284,39 +247,43 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
             header.update(
                 "Nenhuma feature",
                 Tone.GRAY.accent,
-                if (snapshot.constitutionReady) "Constituição definida. Designe o primeiro alvo no Lançador." else "Comece pelas Regras de Engajamento no Lançador.",
+                if (snapshot.constitutionReady) "Designe o primeiro alvo no Lançador." else "Comece pelas Regras de Engajamento no Lançador.",
             )
             return
         }
-        val tasks = active.tasks
-        val openChecks = active.customChecklists.sumOf { it.items.size - it.done }
+        val lists = active.customChecklists
+        val checks = lists.sumOf { it.items.size }
+        val checked = lists.sumOf { it.done }
         val pending = active.pending.size
+        val analysis = snapshot.runsOf(active).firstOrNull { it.step == SddStep.ANALYZE && it.verdict != null }?.verdict
         val color = when {
-            pending > 0 -> Tone.YELLOW
-            tasks != null && tasks.total > 0 && tasks.done == tasks.total -> Tone.GREEN
+            pending > 0 || analysis == Verdict.ISSUES -> Tone.YELLOW
+            checks > 0 && checked == checks -> Tone.GREEN
             else -> Tone.PURPLE
         }
         val produced = listOfNotNull(
             "spec".takeIf { active.spec != null },
             "plano".takeIf { active.plan != null },
             "${active.designDocs.size} de design".takeIf { active.designDocs.isNotEmpty() },
-            "tarefas".takeIf { tasks != null },
+            "tarefas".takeIf { active.tasks != null },
             "${active.checklists.size} checklist(s)".takeIf { active.checklists.isNotEmpty() },
         )
+        val subtitle = listOfNotNull(
+            if (produced.isEmpty()) "Nada gerado ainda" else "Gerado: " + produced.joinToString(", "),
+            analysis?.let { "última análise: ${it.label.lowercase()}" },
+        ).joinToString("  ·  ")
         header.update(
             active.name,
             color.accent,
-            if (produced.isEmpty()) "Nada gerado ainda." else "Gerado: " + produced.joinToString(" · "),
+            subtitle,
             stats = listOf(
+                Stat(pending, "a esclarecer", Tone.YELLOW),
+                Stat(checks - checked, "itens de checklist abertos", Tone.PINK),
                 Stat(active.spec?.stories?.size ?: 0, "histórias", Tone.BLUE),
                 Stat(active.spec?.requirements ?: 0, "requisitos", Tone.PURPLE),
-                Stat(tasks?.done ?: 0, "tarefas feitas", Tone.GREEN),
-                Stat((tasks?.total ?: 0) - (tasks?.done ?: 0), "tarefas abertas", Tone.ORANGE),
-                Stat(pending, "esclarecimentos pendentes", Tone.YELLOW),
-                Stat(openChecks, "itens de checklist abertos", Tone.PINK),
             ),
-            bar = if (tasks != null) listOf(Segment(tasks.done, Tone.GREEN.accent), Segment(tasks.total - tasks.done, Tone.ORANGE.accent)) else emptyList(),
-            warning = if (pending > 0) "$pending ponto(s) [NEEDS CLARIFICATION]: rode o Reconhecimento (clarify) antes do Plano de Voo." else null,
+            bar = if (checks > 0) listOf(Segment(checked, Tone.GREEN.accent), Segment(checks - checked, Tone.PINK.accent)) else emptyList(),
+            warning = if (pending > 0) "$pending ponto(s) a esclarecer: rode o Reconhecimento antes do Plano de Voo." else null,
         )
     }
 
@@ -358,7 +325,7 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
                     row.icon(AllIcons.General.Warning)
                     row.text("Esclarecimentos pendentes", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                     row.pill(node.markers.size.toString(), Tone.YELLOW, bold = true)
-                    row.detail("Rode o Reconhecimento (clarify) ou edite os trechos marcados")
+                    row.detail("Rode o Reconhecimento ou edite os trechos marcados")
                 }
                 is EvalNode.PendingItem -> {
                     row.icon(AllIcons.General.BalloonWarning)
@@ -435,7 +402,7 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
                 is EvalNode.Missing -> {
                     row.icon(AllIcons.General.Add)
                     row.text(node.label, SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                    row.text("ainda não gerado: duplo clique lança ${node.step.codename} no Lançador", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
+                    row.text("ainda não gerado: duplo clique abre ${node.step.codename} no Lançador", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
                 }
                 null -> Unit
             }

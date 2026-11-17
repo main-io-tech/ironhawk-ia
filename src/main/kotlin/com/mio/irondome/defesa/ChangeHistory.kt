@@ -83,16 +83,6 @@ class ChangeHistory(val commits: List<Commit>) {
         )
     }
 
-    /**
-     * Entre [changed], os parceiros fortes que ficaram de fora: `A` mudou, mas `B`, que muda junto com `A` em 80%
-     * dos commits, não. Um alerta melhor que qualquer dependência estática.
-     */
-    fun missingPartners(changed: Collection<String>): List<Pair<String, CoChange>> {
-        val set = changed.toSet()
-        return changed.flatMap { path -> of(path).strongCoChanges.filter { it.path !in set }.map { path to it } }
-            .sortedByDescending { it.second.ratio }
-    }
-
     companion object {
         const val MONTHS = 6
         const val CO_CHANGE_MAX_FILES = 20
@@ -146,14 +136,6 @@ class ChangeHistoryService(private val project: Project) {
     @Volatile
     private var readAt = 0L
     private val loading = AtomicBoolean(false)
-
-    /** O histórico já lido, ou vazio enquanto a primeira leitura roda em segundo plano. */
-    val current: ChangeHistory
-        get() {
-            val cached = history
-            if (cached == null || System.currentTimeMillis() - readAt > MAX_AGE_MS) refresh()
-            return cached ?: ChangeHistory.EMPTY
-        }
 
     /** O histórico em cache ou, sem ele, lido agora. Não chame na EDT. */
     fun currentOrLoad(): ChangeHistory = history?.also { if (System.currentTimeMillis() - readAt > MAX_AGE_MS) refresh() } ?: load()

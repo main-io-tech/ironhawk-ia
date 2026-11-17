@@ -79,14 +79,16 @@ object GitSnapshot {
 
     private fun git(root: Path, vararg args: String, env: Map<String, String> = emptyMap()): String {
         val errors = Files.createTempFile("iron-dome-git", ".log")
+        // A saída vai para um arquivo: lida do pipe antes do waitFor, um git travado prenderia a thread sem tempo-limite.
+        val out = Files.createTempFile("iron-dome-git", ".out")
         try {
             val process = ProcessBuilder(listOf("git", "-c", "core.quotepath=off", "-c", "core.safecrlf=false") + args)
                 .directory(root.toFile())
+                .redirectOutput(out.toFile())
                 .redirectError(errors.toFile())
                 .apply { environment().putAll(env) }
                 .start()
             process.outputStream.close()
-            val output = process.inputStream.bufferedReader(Charsets.UTF_8).readText()
             if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
                 throw GitException("git ${args.first()} passou de $TIMEOUT_SECONDS s")
@@ -95,9 +97,10 @@ object GitSnapshot {
                 val message = Files.readString(errors).lines().lastOrNull { it.isNotBlank() } ?: "código ${process.exitValue()}"
                 throw GitException("git ${args.first()}: $message")
             }
-            return output
+            return Files.readString(out, Charsets.UTF_8)
         } finally {
             Files.deleteIfExists(errors)
+            Files.deleteIfExists(out)
         }
     }
 }

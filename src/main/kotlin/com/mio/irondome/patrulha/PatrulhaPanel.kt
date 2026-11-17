@@ -6,6 +6,7 @@ import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -24,6 +25,7 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
@@ -44,6 +46,7 @@ import com.mio.irondome.base.Segment
 import com.mio.irondome.base.Stat
 import com.mio.irondome.base.SummaryHeader
 import com.mio.irondome.base.Tone
+import com.mio.irondome.base.moreActions
 import com.mio.irondome.base.plural
 import com.mio.irondome.defesa.ClassDossier
 import com.mio.irondome.defesa.ReviewFeedback
@@ -92,7 +95,8 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         val drafts: List<ReviewComment>,
         val active: Boolean,
         val checkedOut: Boolean,
-        val historyShown: Boolean,
+        /** Em revisão, com os comentários do PR tirados do editor pelo Ocultar no Editor. */
+        val editorHidden: Boolean,
         /** A IA responde sozinha às conversas que você abriu neste PR. */
         val autoReply: Boolean,
         /** O modo automático está conferindo ou respondendo agora. */
@@ -119,24 +123,22 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     private class DraftItem(val number: Int, val comment: ReviewComment)
 
     /**
-     * [thread] é a conversa do pedido no GitHub, quando as conversas do PR já foram lidas. [inEditor] é nulo fora da
-     * revisão do PR, quando nenhum pedido vai para o editor.
+     * [thread] é a conversa do pedido no GitHub, quando as conversas do PR já foram lidas. [hiddenInEditor]: na revisão,
+     * com o PR no editor, o pedido foi ocultado sozinho pelo Ocultar do cartão.
      */
     private class RequestItem(
         val number: Int,
         val request: ChangeRequest,
-        val inEditor: Boolean?,
+        val hiddenInEditor: Boolean,
         val thread: Discussion? = null,
         val auto: AutoStatus? = null,
     )
 
-    /**
-     * As conversas do PR no GitHub que não são pedidos do `.md`: [discussions] nulo enquanto carrega ou se deu [error].
-     * [inEditor] diz se elas estão ligadas no editor.
-     */
-    private class DiscussionsItem(val number: Int, val discussions: List<Discussion>?, val error: String?, val me: String?, val inEditor: Boolean)
+    /** As conversas do PR no GitHub que não são pedidos do `.md`: [discussions] nulo enquanto carrega ou se deu [error]. */
+    private class DiscussionsItem(val number: Int, val discussions: List<Discussion>?, val error: String?, val me: String?)
 
-    private class DiscussionItem(val number: Int, val discussion: Discussion, val mine: Boolean, val inEditor: Boolean, val auto: AutoStatus?)
+    /** [hiddenInEditor]: na revisão, com o PR no editor, a conversa foi ocultada sozinha pelo Ocultar do cartão. */
+    private class DiscussionItem(val number: Int, val discussion: Discussion, val mine: Boolean, val hiddenInEditor: Boolean, val auto: AutoStatus?)
 
     /** Resposta numa conversa, de [discussion]; também as respostas aos pedidos. */
     private class ReplyItem(val number: Int, val discussion: Discussion, val comment: DiscussionComment, val mine: Boolean)
@@ -191,6 +193,244 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         const val STASH_PREVIEW = 8
     }
 
+    // O fluxo da revisão fica à vista na barra; o resto, no ⋮ e no menu do botão direito de cada nó.
+
+    private val reviewAction = action(
+        "Revisar Este PR",
+        "Faz o checkout do PR e liga o modo revisão: os comentários do editor vão para o PR",
+        IronDomeIcons.patrulha,
+        enabled = { selectedPr()?.pr != null },
+        text = {
+            val item = selectedPr()
+            when {
+                item?.active != true -> "Revisar Este PR"
+                item.checkedOut || context == null -> "Encerrar Revisão"
+                else -> "Atualizar ou Encerrar Revisão"
+            }
+        },
+        tooltipFor = {
+            val item = selectedPr()
+            when {
+                item?.active != true -> "Faz o checkout do PR e liga o modo revisão: os comentários do editor vão para o PR"
+                item.checkedOut || context == null -> "Desliga o modo revisão e oferece voltar à branch de antes"
+                else -> "O PR recebeu commits ou a branch mudou: traga o código novo ou encerre a revisão"
+            }
+        },
+        selected = { selectedPr()?.active == true },
+    ) { toggleReview() }
+
+    private val diffAction = action(
+        "Ver Alterações",
+        "Abre o diff do PR no arquivo selecionado ou no primeiro",
+        AllIcons.Actions.Diff,
+        enabled = { selectedPr()?.pr != null && context != null },
+    ) {
+        val pr = selectedPr()?.pr
+        if (pr != null) {
+            val path = when (val item = selectedNode()?.userObject) {
+                is FileItem -> item.file.path
+                is DirItem -> item.folder.allFiles.firstOrNull()?.path
+                else -> null
+            }
+            showDiff(pr, path)
+        }
+    }
+
+    private val aiReviewAction = action(
+        "Revisar com IA",
+        "A IA lê o PR e propõe comentários, que entram como não enviados para você revisar",
+        IronDomeIcons.ia,
+        enabled = {
+            val runner = AgentRunner.getInstance(project)
+            selectedPr()?.let { it.active && it.checkedOut } == true && runner.running == null && runner.available()
+        },
+        tooltipFor = {
+            val runner = AgentRunner.getInstance(project)
+            when {
+                !runner.available() -> "Configure e teste a IA no Arsenal para revisar com ela"
+                selectedPr()?.let { it.active && it.checkedOut } != true -> "Disponível na revisão do PR, com o código dele no checkout"
+                runner.running != null -> "A IA já está trabalhando: espere ela terminar"
+                else -> "A IA lê o PR e propõe comentários, que entram como não enviados para você revisar"
+            }
+        },
+    ) { reviewWithAi() }
+
+    private val sendAction = action(
+        "Enviar ao GitHub",
+        "Envia os não enviados como rascunho no GitHub: só você vê até Concluir Revisão",
+        AllIcons.Actions.Upload,
+        enabled = { selectedPr()?.let { it.pr != null && it.drafts.isNotEmpty() } == true },
+    ) { send() }
+
+    private val concludeAction = action(
+        "Concluir Revisão",
+        "Publica a revisão do PR com o veredito: aprovar, solicitar alterações ou comentar",
+        AllIcons.Actions.Commit,
+        enabled = { selectedPr()?.pr != null && context != null },
+        text = { pendingComments(selectedPr()).takeIf { it > 0 }?.let { "Concluir Revisão ($it)…" } ?: "Concluir Revisão…" },
+        tooltipFor = { concludeDescription() },
+    ) { conclude() }
+
+    private val refreshButton = refreshAction { refresh() }
+
+    private val autoReplyAction = action(
+        "Respostas da IA",
+        "A IA responde em seu nome às conversas que você abriu no PR, até você desligar",
+        AllIcons.Actions.Lightning,
+        enabled = {
+            selectedPr()?.takeIf { it.pr != null && context?.account != null }
+                ?.let { autoReply.isOn(it.number) || (it.active && AgentRunner.getInstance(project).available()) } == true
+        },
+        text = { if (selectedPr()?.let { autoReply.isOn(it.number) } == true) "Desligar Respostas da IA" else "Ligar Respostas da IA" },
+        selected = { selectedPr()?.let { autoReply.isOn(it.number) } == true },
+        tooltipFor = {
+            val item = selectedPr()
+            when {
+                item != null && autoReply.isOn(item.number) -> "A IA para de responder às conversas deste PR"
+                !AgentRunner.getInstance(project).available() -> "Configure e teste a IA no Arsenal para ligar as respostas"
+                item?.active != true -> "Só dá para ligar na revisão do PR; depois, elas seguem até você desligar"
+                else -> "A IA responde em seu nome às conversas que você abriu no PR, até você desligar"
+            }
+        },
+    ) { toggleAutoReply() }
+
+    private val checkNowAction = action(
+        "Conferir Respostas Agora",
+        "Confere já as conversas dos PRs com as respostas da IA ligadas",
+        AllIcons.Actions.Execute,
+        enabled = { selectedPr()?.let { autoReply.isOn(it.number) } == true && !autoReply.isChecking },
+        tooltipFor = {
+            if (autoReply.isChecking) "Uma conferência já está em andamento: acompanhe no nó Respostas da IA"
+            else "Confere já as conversas dos PRs com as respostas da IA ligadas"
+        },
+    ) {
+        if (!autoReply.checkNow()) {
+            notify("Conferência em andamento", "Acompanhe no nó Respostas da IA do PR.", NotificationType.INFORMATION)
+        }
+    }
+
+    private val guidelinesAction = action(
+        "Minhas Instruções e Regras para a IA",
+        "Como você avalia um PR e as regras .md que a IA segue na revisão e nas respostas",
+        AllIcons.General.User,
+        enabled = { true },
+        text = {
+            val rules = ReviewRules.getInstance(project).paths.size
+            val parts = listOfNotNull(
+                "instruções".takeIf { ReviewerGuidelines.text.isNotBlank() },
+                rules.takeIf { it > 0 }?.let { if (it == 1) "1 regra" else "$it regras" },
+            )
+            if (parts.isEmpty()) "Minhas Instruções e Regras para a IA…" else "Minhas Instruções e Regras para a IA (${parts.joinToString(" + ")})…"
+        },
+    ) { editGuidelines() }
+
+    private val replyAction = action(
+        "Responder",
+        "Responde no GitHub ao comentário selecionado",
+        AllIcons.Actions.Back,
+        enabled = { replyTarget() != null && context != null },
+        tooltipFor = {
+            when (replyTarget()?.first?.repliesInPlace) {
+                null -> "Selecione uma conversa, uma resposta ou um pedido publicado"
+                true -> "Responde na conversa da linha no GitHub" + if (selectedPr()?.record?.pendingReviewNodeId != null) ", no seu rascunho" else ""
+                false -> "Vai como comentário novo na conversa do PR, citando o selecionado"
+            }
+        },
+    ) { replySelected() }
+
+    private val editAction = action(
+        "Editar",
+        "Edita o comentário selecionado, também no GitHub se já foi enviado",
+        AllIcons.Actions.Edit,
+        enabled = { selectedNode()?.userObject.let { it is DraftItem || (it is RequestItem && !it.request.deleted) } },
+    ) { editSelected() }
+
+    private val deleteAction = action(
+        "Excluir",
+        "Exclui o comentário selecionado; o publicado sai do GitHub só se você escolher",
+        AllIcons.General.Remove,
+        enabled = { selectedNode()?.userObject.let { it is DraftItem || it is RequestItem } },
+    ) { deleteSelected() }
+
+    private val deleteAllAction = action(
+        "Excluir Todos",
+        "Exclui de uma vez os comentários do PR; os publicados saem do GitHub só se você escolher",
+        AllIcons.Actions.GC,
+        enabled = { selectedPr()?.let { it.drafts.isNotEmpty() || !it.record?.requests.isNullOrEmpty() } == true },
+    ) { deleteAll() }
+
+    private val editorAction = action(
+        "Mostrar no Editor",
+        "Mostra ou oculta no editor os comentários do PR em revisão",
+        AllIcons.Actions.Show,
+        enabled = { selectedPr()?.active == true },
+        text = { if (editorShown() == true) "Ocultar no Editor" else "Mostrar no Editor" },
+        selected = { editorShown() == true },
+        tooltipFor = {
+            when (editorShown()) {
+                null -> "Os comentários do PR só aparecem no editor durante a revisão dele"
+                true -> "Tira do editor os comentários deste PR, sem apagar nenhum"
+                false -> "Mostra no editor os comentários do PR, inclusive os ocultados um a um"
+            }
+        },
+    ) { toggleEditor() }
+
+    private val verifyAction = action(
+        "Verificar Pedidos",
+        "Confere no head do PR e nas conversas se os pedidos foram atendidos",
+        AllIcons.Actions.Checked,
+        enabled = { selectedPr()?.record?.requests?.isNotEmpty() == true && context != null },
+    ) { verify() }
+
+    private val openRecordAction = action(
+        "Abrir .md dos Pedidos",
+        "Abre o pr-<número>.md com os pedidos enviados ao PR",
+        AllIcons.Actions.EditSource,
+        enabled = { selectedPr()?.record != null },
+    ) { selectedPr()?.let { openRecord(it.number) } }
+
+    private val browseAction = action(
+        "Abrir no GitHub",
+        "Abre o PR ou o comentário selecionado no navegador",
+        AllIcons.General.Web,
+        enabled = { selectedUrl() != null },
+    ) { selectedUrl()?.let(BrowserUtil::browse) }
+
+    private val tokenAction = action(
+        "Entrar com Token…",
+        "Entra no GitHub com um token pessoal, para organizações que bloqueiam o login pelo navegador",
+        AllIcons.Vcs.Vendors.Github,
+        enabled = { context != null },
+    ) { loginWithToken() }
+
+    /** O menu do botão direito: só as ações que valem para o nó clicado. */
+    private inner class NodeMenu : ActionGroup(), DumbAware {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        override fun getChildren(e: AnActionEvent?): Array<AnAction> {
+            val separator = Separator.getInstance()
+            val actions: List<AnAction> = when (val item = selectedNode()?.userObject) {
+                is PrItem -> if (item.pr == null) {
+                    listOf(openRecordAction, browseAction, separator, deleteAllAction)
+                } else {
+                    listOf(
+                        reviewAction, diffAction, sendAction, concludeAction, separator,
+                        editorAction, autoReplyAction, verifyAction, separator,
+                        openRecordAction, browseAction, separator, deleteAllAction,
+                    )
+                }
+                is DraftItem -> listOf(editAction, deleteAction, separator, sendAction)
+                is RequestItem -> listOf(replyAction, editAction, deleteAction, separator, browseAction)
+                is DiscussionItem, is ReplyItem -> listOf(replyAction, browseAction)
+                is AutoReplyItem -> listOf(autoReplyAction, checkNowAction, guidelinesAction)
+                is FilesItem, is DirItem, is FileItem -> listOf(diffAction, browseAction)
+                is AuthorItem, is BranchItem, is ParticipantsItem, is DiscussionsItem, is AutoEventItem -> listOf(browseAction)
+                else -> listOf(refreshButton)
+            }
+            return actions.toTypedArray()
+        }
+    }
+
     init {
         setContent(JPanel(BorderLayout()).apply {
             add(JPanel(VerticalLayout(0)).apply {
@@ -200,154 +440,26 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             add(ScrollPaneFactory.createScrollPane(tree, true), BorderLayout.CENTER)
         })
         val actions = DefaultActionGroup(
-            action(
-                "Revisar Este PR",
-                "Faz o checkout do PR, se precisar (guardando no stash ou descartando o que não está commitado, à sua escolha), e entra no modo revisão do PR: os comentários feitos no editor vão para o PR, não para a IA",
-                IronDomeIcons.patrulha,
-                enabled = { selectedPr()?.pr != null }, text = {
-                    val item = selectedPr()
-                    when {
-                        item?.active != true -> "Revisar Este PR"
-                        item.checkedOut || context == null -> "Encerrar Revisão"
-                        else -> "Atualizar ou Encerrar Revisão"
-                    }
-                }, selected = { selectedPr()?.active == true }) { toggleReview() },
-            action("Ver Alterações", "Abre o diff dos arquivos do PR, no arquivo selecionado ou no primeiro; as setas passam pelos demais", AllIcons.Actions.Diff,
-                enabled = { selectedPr()?.pr != null && context != null }) {
-                val pr = selectedPr()?.pr
-                if (pr != null) {
-                    val path = when (val item = selectedNode()?.userObject) {
-                        is FileItem -> item.file.path
-                        is DirItem -> item.folder.allFiles.firstOrNull()?.path
-                        else -> null
-                    }
-                    showDiff(pr, path)
-                }
-            },
-            action(
-                "Revisar com IA",
-                "A IA configurada lê os arquivos alterados do PR e propõe comentários, que entram como rascunhos para você revisar antes de enviar",
-                IronDomeIcons.ia,
-                enabled = {
-                    val runner = AgentRunner.getInstance(project)
-                    selectedPr()?.let { it.active && it.checkedOut } == true && runner.running == null && runner.available()
-                },
-            ) { reviewWithAi() },
-            action(
-                "Respostas Automáticas da IA",
-                "Liga ou desliga, neste PR, a IA que acompanha as conversas que você abriu e responde no GitHub, em seu nome, quando alguém responde",
-                AllIcons.Actions.Lightning,
-                enabled = {
-                    selectedPr()?.takeIf { it.pr != null && context?.account != null }
-                        ?.let { autoReply.isOn(it.number) || (it.active && AgentRunner.getInstance(project).available()) } == true
-                },
-                text = { if (selectedPr()?.let { autoReply.isOn(it.number) } == true) "Desligar Respostas da IA" else "Ligar Respostas da IA" },
-                selected = { selectedPr()?.let { autoReply.isOn(it.number) } == true },
-                tooltipFor = {
-                    val item = selectedPr()
-                    if (item != null && !item.active && !autoReply.isOn(item.number)) {
-                        "Use Revisar Este PR para ligar as respostas da IA: elas valem durante a revisão do PR"
-                    } else if (AgentRunner.getInstance(project).available()) {
-                        "A cada ${AutoReplyService.POLL_MINUTES} minutos, confere as conversas que você abriu no PR. Quando alguém responde, a IA avalia e " +
-                            "responde em seu nome, até chegar a uma conclusão, quando resolve a conversa (no máximo ${AutoReply.MAX_ROUNDS} rodadas). " +
-                            "Se precisar de uma decisão sua, ela não responde e avisa."
-                    } else {
-                        "Configure e teste a IA no Arsenal para ligar as respostas automáticas"
-                    }
-                },
-            ) { toggleAutoReply() },
-            action(
-                "Minhas Instruções e Regras para a IA",
-                "Como você avalia um PR (o que cobra, o que deixa passar e o tom) e os arquivos .md de regras do projeto. " +
-                    "A IA segue na Revisão com IA e nas respostas automáticas",
-                AllIcons.General.User,
-                enabled = { true },
-                text = {
-                    val rules = ReviewRules.getInstance(project).paths.size
-                    val parts = listOfNotNull(
-                        "instruções".takeIf { ReviewerGuidelines.text.isNotBlank() },
-                        rules.takeIf { it > 0 }?.let { if (it == 1) "1 regra" else "$it regras" },
-                    )
-                    if (parts.isEmpty()) "Minhas Instruções e Regras para a IA…" else "Minhas Instruções e Regras para a IA (${parts.joinToString(" + ")})…"
-                },
-            ) { editGuidelines() },
-            action(
-                "Conferir Respostas Agora",
-                "Confere agora as conversas dos PRs com as respostas da IA ligadas, sem esperar a próxima conferência",
-                AllIcons.Actions.Execute,
-                enabled = { selectedPr()?.let { autoReply.isOn(it.number) } == true && !autoReply.isChecking },
-                tooltipFor = {
-                    if (autoReply.isChecking) "Uma conferência já está em andamento: acompanhe no nó Respostas da IA do PR"
-                    else "Confere agora as conversas dos PRs com as respostas da IA ligadas, sem esperar a próxima conferência"
-                },
-            ) {
-                if (!autoReply.checkNow()) {
-                    notify("Conferência em andamento", "Acompanhe no nó Respostas da IA do PR.", NotificationType.INFORMATION)
-                }
-            },
-            action("Enviar ao GitHub", "Envia os comentários não enviados deste PR, como rascunho que só você vê ou publicados. Escolha quais enviar, quais deixar para depois e quais excluir", AllIcons.Actions.Upload,
-                enabled = { selectedPr()?.let { it.pr != null && it.drafts.isNotEmpty() } == true }) { send() },
-            action(
-                "Concluir Revisão",
-                "Publica a revisão do PR no GitHub com o veredito: aprovar, solicitar alterações ou só comentar",
-                AllIcons.Actions.Commit,
-                enabled = { selectedPr()?.pr != null && context != null },
-                text = { pendingComments(selectedPr()).takeIf { it > 0 }?.let { "Concluir Revisão ($it)…" } ?: "Concluir Revisão…" },
-                tooltipFor = { concludeDescription() },
-            ) { conclude() },
-            action(
-                "Responder",
-                "Responde ao comentário selecionado no GitHub, seu ou de outra pessoa: na conversa da linha, ou citando o comentário na conversa do PR",
-                AllIcons.Actions.Back,
-                enabled = { replyTarget() != null && context != null },
-                tooltipFor = {
-                    when (replyTarget()?.first?.repliesInPlace) {
-                        null -> "Selecione uma conversa do PR, uma resposta ou um pedido publicado"
-                        true -> "Responde na conversa da linha no GitHub" + if (selectedPr()?.record?.pendingReviewNodeId != null) ", no seu rascunho de revisão" else ""
-                        false -> "O GitHub não tem respostas aqui: vai como comentário novo na conversa do PR, citando o selecionado"
-                    }
-                },
-            ) { replySelected() },
-            action("Editar", "Edita o comentário selecionado: o não enviado no editor, ou o rascunho e o publicado também no GitHub", AllIcons.Actions.Edit,
-                enabled = { selectedNode()?.userObject.let { it is DraftItem || (it is RequestItem && !it.request.deleted) } }) { editSelected() },
-            action("Excluir", "Exclui o comentário selecionado: o não enviado, o rascunho (também no GitHub) ou o publicado (no GitHub, se você quiser)", AllIcons.General.Remove,
-                enabled = { selectedNode()?.userObject.let { it is DraftItem || it is RequestItem } }) { deleteSelected() },
-            action(
-                "Excluir Todos",
-                "Exclui de uma vez os comentários do PR: os não enviados, os rascunhos no GitHub e, se você quiser, os publicados",
-                AllIcons.Actions.GC,
-                enabled = { selectedPr()?.let { it.drafts.isNotEmpty() || !it.record?.requests.isNullOrEmpty() } == true },
-            ) { deleteAll() },
-            action(
-                "Mostrar no Editor",
-                "Mostra ou oculta no código os pedidos enviados (o histórico do PR inteiro, ou só o pedido selecionado) e as conversas do PR, " +
-                    "que no editor ficam só de leitura (todas pelo nó Conversas no PR, ou só a selecionada). Só no PR em revisão",
-                AllIcons.Actions.Show,
-                enabled = { historyTarget() != null },
-                text = { if (historyTarget()?.second == true) "Ocultar no Editor" else "Mostrar no Editor" },
-                selected = { historyTarget()?.second == true },
-                tooltipFor = {
-                    if (selectedPr()?.let { it.pr != null && !it.active } == true) {
-                        "Os comentários do PR só aparecem no editor durante a revisão dele: use Revisar Este PR"
-                    } else {
-                        "Mostra ou oculta no código os pedidos enviados e as conversas do PR, que no editor ficam só de leitura"
-                    }
-                },
-            ) { toggleHistory() },
+            reviewAction, diffAction, aiReviewAction, sendAction, concludeAction,
             Separator.getInstance(),
-            action("Verificar Pedidos", "Confere no head atual do PR e nas conversas se os pedidos foram atendidos", AllIcons.Actions.Checked,
-                enabled = { selectedPr()?.record?.requests?.isNotEmpty() == true && context != null }) { verify() },
-            action("Abrir .md dos Pedidos", "Abre ironhawk/iron-dome/pull-requests/pr-<número>.md", AllIcons.Actions.EditSource,
-                enabled = { selectedPr()?.record != null }) { selectedPr()?.let { openRecord(it.number) } },
-            action("Abrir no GitHub", "Abre o PR ou o comentário selecionado no navegador", AllIcons.General.Web,
-                enabled = { selectedUrl() != null }) { selectedUrl()?.let(BrowserUtil::browse) },
-            Separator.getInstance(),
-            refreshAction { refresh() },
+            refreshButton,
+            moreActions(
+                autoReplyAction, checkNowAction, guidelinesAction,
+                null,
+                replyAction, editAction, deleteAction, deleteAllAction,
+                null,
+                editorAction, verifyAction,
+                null,
+                openRecordAction, browseAction,
+                null,
+                tokenAction,
+            ),
         )
         toolbar = ActionManager.getInstance().createActionToolbar("IronDome.PatrulhaToolbar", actions, true)
             .apply { targetComponent = tree }.wrapping().component
-        PopupHandler.installPopupMenu(tree, actions, "IronDome.PatrulhaPopup")
+        // A navegação primeiro: o botão direito seleciona o nó antes de o menu dele ser montado.
         installNavigation()
+        PopupHandler.installPopupMenu(tree, NodeMenu(), "IronDome.PatrulhaPopup")
 
         val connection = project.messageBus.connect(this)
         connection.subscribe(ReviewCommentsListener.TOPIC, ReviewCommentsListener { scheduleRebuild() })
@@ -447,7 +559,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 active = radar.activePullRequest == number,
                 // Só a branch da Patrulha conta: outra branch no mesmo commit, como a do autor, pode ter alterações não commitadas.
                 checkedOut = pr != null && pr.headSha == head && branch == PatrulhaService.branchName(number),
-                historyShown = patrulha.isHistoryShown(number),
+                editorHidden = radar.activePullRequest == number && !patrulha.isAnyShownInEditor(number),
                 autoReply = autoReply.isOn(number),
                 autoWorking = autoReply.activity(number).step != null,
             )
@@ -485,9 +597,9 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             item.drafts.forEach { node.add(DefaultMutableTreeNode(DraftItem(item.number, it))) }
             item.record?.requests?.forEach { request ->
                 val thread = loaded?.let { Discussions.of(request, it) }
-                val inEditor = patrulha.isInEditor(item.number, request.id).takeIf { item.active }
+                val hidden = item.active && patrulha.isHistoryShown(item.number) && patrulha.isRequestHidden(item.number, request.id)
                 val auto = thread?.let { autoReply.status(item.number, it) }
-                val child = DefaultMutableTreeNode(RequestItem(item.number, request, inEditor, thread, auto))
+                val child = DefaultMutableTreeNode(RequestItem(item.number, request, hidden, thread, auto))
                 thread?.replies?.forEach { child.add(DefaultMutableTreeNode(ReplyItem(item.number, thread, it, Discussions.isMine(it, me)))) }
                 node.add(child)
             }
@@ -499,7 +611,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             root.add(section)
         }
         if (closed.isNotEmpty()) {
-            val section = DefaultMutableTreeNode(Section("Pedidos de PRs fechados ou fora da lista", AllIcons.Nodes.Folder, closed.size))
+            val section = DefaultMutableTreeNode(Section("PRs fechados", AllIcons.Nodes.Folder, closed.size))
             closed.forEach { addPr(section, it) }
             root.add(section)
         }
@@ -559,15 +671,16 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     private fun discussionsNode(item: PrItem, me: String?): DefaultMutableTreeNode {
         val loaded = patrulha.cachedDiscussions(item.number)?.let { Discussions.others(it, item.record) }
         val error = discussionsErrors[item.number]
-        val node = DefaultMutableTreeNode(DiscussionsItem(item.number, loaded, error, me, patrulha.isDiscussionsShown(item.number)))
+        val node = DefaultMutableTreeNode(DiscussionsItem(item.number, loaded, error, me))
         if (loaded == null) {
             node.add(DefaultMutableTreeNode(LoadingItem(error ?: "Lendo as conversas do GitHub…")))
             return node
         }
+        val shown = item.active && patrulha.isDiscussionsShown(item.number)
         loaded.forEach { discussion ->
-            val inEditor = inEditorKind(discussion) && patrulha.isDiscussionInEditor(item.number, discussion)
+            val hidden = shown && inEditorKind(discussion) && patrulha.isDiscussionHidden(item.number, discussion)
             val child = DefaultMutableTreeNode(
-                DiscussionItem(item.number, discussion, Discussions.isMine(discussion.first, me), inEditor, autoReply.status(item.number, discussion)),
+                DiscussionItem(item.number, discussion, Discussions.isMine(discussion.first, me), hidden, autoReply.status(item.number, discussion)),
             )
             discussion.replies.forEach { child.add(DefaultMutableTreeNode(ReplyItem(item.number, discussion, it, Discussions.isMine(it, me)))) }
             node.add(child)
@@ -728,8 +841,6 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             context.account == null -> {
                 tree.emptyText.text = "Nenhuma conta do GitHub em ${context.repo.host} no IntelliJ"
                 tree.emptyText.appendSecondaryText("Entrar no GitHub", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { login() }
-                tree.emptyText.appendSecondaryText("  ·  ", SimpleTextAttributes.GRAYED_ATTRIBUTES, null)
-                tree.emptyText.appendSecondaryText("Entrar com Token", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { loginWithToken() }
             }
             problem != null && needsToken -> {
                 tree.emptyText.text = "A organização bloqueia o login do IntelliJ pelo navegador"
@@ -750,13 +861,13 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         val active = items.firstOrNull { it.active }
         val subtitle = listOfNotNull(
             context?.account?.let { "Conta @${it.name}" },
-            active?.let { "modo revisão do PR #${it.number}: os comentários feitos no editor vão para ele" },
+            active?.let { "revisando o PR #${it.number}" },
         ).joinToString(" · ").ifEmpty { null }
         val warning = when {
-            context == null && !loading -> "O projeto não tem um remote do GitHub. A Patrulha lê os PRs do remote origin ou do primeiro remote do GitHub."
-            context != null && context.account == null -> "Entre com uma conta do GitHub em Settings > Version Control > GitHub para a Patrulha ler os PRs."
+            context == null && !loading -> "Sem remote do GitHub: a Patrulha lê o origin ou o primeiro remote do GitHub."
+            context != null && context.account == null -> "Entre com uma conta do GitHub em Settings > Version Control > GitHub."
             problem != null -> problem
-            active != null && active.pr != null && !active.checkedOut -> "O código local não é o head do PR #${active.number}: use Atualizar ou Encerrar Revisão para trazer o código novo, e os comentários caem nas linhas certas."
+            active != null && active.pr != null && !active.checkedOut -> "O código local não é o head do PR #${active.number}: use Atualizar ou Encerrar Revisão."
             else -> null
         }
         header.update(
@@ -767,7 +878,6 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 Stat(drafts, if (drafts == 1) "não enviado" else "não enviados", CommentStatus.UNSAVED.tone),
                 Stat(done, if (done == 1) "atendido" else "atendidos", Tone.GREEN),
                 Stat(pending, "sem alteração", Tone.YELLOW),
-                Stat(waiting, "a verificar", Tone.GRAY),
             ),
             bar = listOf(Segment(done, Tone.GREEN.accent), Segment(pending, Tone.YELLOW.accent), Segment(waiting, Tone.GRAY.accent)),
             warning = warning,
@@ -803,7 +913,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     /** [Messages.YES] atualiza o código do PR, [Messages.NO] encerra a revisão. */
     private fun askOutdated(pr: PullRequest): Int = Messages.showYesNoCancelDialog(
         project,
-        "O código local não é o head do PR #${pr.number} (${pr.headSha.take(7)}): o PR recebeu commits novos ou a branch foi trocada.",
+        "O código local não é o head do PR #${pr.number} (${pr.headSha.take(7)}): chegaram commits novos ou a branch mudou.",
         "Revisão do PR #${pr.number}",
         "Atualizar o Código do PR",
         "Encerrar Revisão",
@@ -833,13 +943,12 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 val stashNote = when {
                     local == LocalChangesChoice.DISCARD -> "As alterações não commitadas foram descartadas."
                     result.stash.isEmpty() -> null
-                    result.restorable -> "Suas alterações estão no stash \"${result.stashMessage}\" e voltam quando você encerrar a revisão."
-                    else -> "Suas alterações estão no stash \"${result.stashMessage}\"; restaure pelo Git > Unstash Changes quando quiser."
+                    result.restorable -> "Suas alterações estão no stash e voltam ao encerrar a revisão."
+                    else -> "Suas alterações estão no stash \"${result.stashMessage}\": restaure pelo Git > Unstash Changes."
                 }
                 notify(
                     "Revisando o PR #${pr.number} na branch $branch",
-                    listOfNotNull(pr.title, "Modo revisão ligado: os comentários feitos no editor vão para o PR, não para a IA.", stashNote)
-                        .joinToString(" "),
+                    stashNote ?: "Os comentários do editor agora vão para o PR.",
                     NotificationType.INFORMATION,
                 )
                 refresh()
@@ -854,15 +963,14 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         val where = changes.branch?.let { "na branch $it" } ?: "no checkout atual"
         val count = plural(changes.files.size, "alteração não commitada", "alterações não commitadas")
         val back = if (patrulha.returnPoint() == null) {
-            "No stash, ao encerrar a revisão a Patrulha oferece voltar para ${changes.branch ?: "o commit de agora"} e devolver as alterações."
+            "No stash, elas voltam ao encerrar a revisão."
         } else {
-            "Você já veio de outra branch para revisar um PR: este stash não volta sozinho, restaure pelo Git > Unstash Changes."
+            "Este stash não volta sozinho: restaure pelo Git > Unstash Changes."
         }
         val choice = Messages.showYesNoCancelDialog(
             project,
             "Há $count $where:\n\n$shown$more\n\n" +
-                "Para trazer o código do PR #${pr.number} para a branch ${PatrulhaService.branchName(pr.number)}, guarde as alterações " +
-                "no stash ou descarte-as (as revisões em ${ReviewCommentService.REVIEW_DIR}/ e a pasta .idea ficam onde estão).\n\n$back",
+                "Guarde no stash ou descarte para trazer o PR #${pr.number} (${ReviewCommentService.REVIEW_DIR}/ e .idea ficam como estão). $back",
             "Iniciar a revisão do PR #${pr.number}",
             "Guardar no Stash e Revisar",
             "Descartar e Revisar",
@@ -878,15 +986,17 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
 
     private fun confirmDiscard(count: String): Boolean = Messages.showOkCancelDialog(
         project,
-        "Descartar $count? Os arquivos voltam como estão no último commit e os novos são apagados, sem stash: " +
-            "pelo Git não dá para desfazer (só pelo Local History da IDE).",
+        "Descartar $count? Sem stash, não dá para desfazer pelo Git (só pelo Local History da IDE).",
         "Descartar as alterações",
         "Descartar",
         "Cancelar",
         Messages.getWarningIcon(),
     ) == Messages.OK
 
-    /** Desliga a revisão e, se a Patrulha trouxe o usuário para o PR, oferece voltar à branch de antes com o stash. */
+    /**
+     * Desliga a revisão e, se a Patrulha trouxe o usuário para o PR, oferece voltar à branch de antes com o stash, ou
+     * encerrar sem voltar, ficando no código do PR. Cancelar mantém a revisão.
+     */
     private fun endReview(number: Int) {
         val context = context
         val point = patrulha.returnPoint()
@@ -897,11 +1007,10 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         val drafts = radar.pullRequestComments(number).size
         val target = if (point.branch) "a branch ${point.ref}" else "o commit ${point.ref.take(7)}"
         val message = buildString {
-            append("Voltar para $target")
-            append(if (point.stash.isNotEmpty()) " e devolver as alterações guardadas no stash?" else "?")
+            append("Encerrar a revisão e voltar para $target")
+            append(if (point.stash.isNotEmpty()) ", com as alterações do stash?" else "?")
             if (drafts > 0) {
-                append("\n\n${plural(drafts, "comentário ainda não foi enviado", "comentários ainda não foram enviados")} ao PR: ")
-                append("eles continuam na aba Patrulha, mas as linhas podem não bater fora do código do PR. Envie antes de sair.")
+                append("\n${plural(drafts, "comentário não enviado fica", "comentários não enviados ficam")} na Patrulha; envie antes, para as linhas baterem.")
             }
         }
         val choice = Messages.showYesNoCancelDialog(
@@ -909,7 +1018,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             message,
             "Encerrar a revisão do PR #$number",
             "Voltar para ${if (point.branch) point.ref else point.ref.take(7)}",
-            "Ficar no PR",
+            "Encerrar sem Voltar",
             "Cancelar",
             Messages.getQuestionIcon(),
         )
@@ -932,7 +1041,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 if (point.stash.isNotEmpty()) {
                     notify(
                         "Revisão do PR #$number encerrada",
-                        "Suas alterações continuam no stash \"${point.stashMessage}\": restaure pelo Git > Unstash Changes quando voltar para ${point.ref}.",
+                        "Suas alterações seguem no stash \"${point.stashMessage}\": restaure pelo Git > Unstash Changes.",
                         NotificationType.INFORMATION,
                     )
                 }
@@ -979,12 +1088,15 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         val empty = dialog.text.isBlank() && dialog.rules.isEmpty()
         notify(
             if (empty) "Instruções e regras para a IA removidas" else "Instruções e regras para a IA salvas",
-            if (empty) "A IA volta ao padrão na Revisão com IA e nas respostas automáticas."
-            else "A próxima Revisão com IA e as próximas respostas automáticas seguem a sua linha de avaliação e as regras vinculadas.",
+            if (empty) "A IA volta ao padrão na revisão e nas respostas." else "A Revisão com IA e as respostas da IA passam a segui-las.",
             NotificationType.INFORMATION,
         )
     }
 
+    /**
+     * Liga só na revisão do PR, para ser uma escolha de quem está revisando; depois as respostas seguem, mesmo com a
+     * revisão encerrada, até o usuário desligar.
+     */
     private fun toggleAutoReply() {
         val number = selectedPr()?.pr?.number ?: return
         if (autoReply.isOn(number)) {
@@ -995,10 +1107,8 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         if (selectedPr()?.active != true) return
         val confirmed = Messages.showYesNoDialog(
             project,
-            "A IA vai acompanhar as conversas que você abriu no PR #$number e responder no GitHub em seu nome, sem perguntar antes, " +
-                "até cada conversa chegar a uma conclusão, quando ela é resolvida. As respostas levam uma nota dizendo que foram da IA.\n\n" +
-                "Ela confere a cada ${AutoReplyService.POLL_MINUTES} minutos enquanto a IDE estiver aberta, faz no máximo ${AutoReply.MAX_ROUNDS} " +
-                "rodadas por conversa e devolve a conversa para você quando precisar de uma decisão sua.",
+            "A IA vai responder no GitHub, em seu nome, às conversas que você abriu no PR #$number (até ${AutoReply.MAX_ROUNDS} rodadas por conversa).\n" +
+                "Ela segue ligada depois da revisão, até você desligar, e devolve a conversa quando precisar de você.",
             "Ligar Respostas da IA no PR #$number",
             "Ligar",
             "Cancelar",
@@ -1006,11 +1116,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         )
         if (confirmed != Messages.YES) return
         autoReply.setOn(number, true)
-        notify(
-            "Respostas da IA ligadas no PR #$number",
-            "Conferindo as conversas agora; depois, a cada ${AutoReplyService.POLL_MINUTES} minutos. Acompanhe no nó Respostas da IA do PR.",
-            NotificationType.INFORMATION,
-        )
+        notify("Respostas da IA ligadas no PR #$number", "Acompanhe no nó Respostas da IA do PR.", NotificationType.INFORMATION)
     }
 
     private fun addAiDrafts(number: Int, comments: List<AiComment>) {
@@ -1035,8 +1141,8 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         notify(
             if (added.isEmpty()) "A IA não apontou nada no PR #$number" else "${plural(added.size, "rascunho", "rascunhos")} da IA no PR #$number",
             listOfNotNull(
-                "Revise, edite ou remova cada um antes de Enviar ao GitHub.".takeIf { added.isNotEmpty() },
-                "$skipped ${if (skipped == 1) "comentário apontava" else "comentários apontavam"} para arquivos fora do projeto ou gerados pela revisão (${ReviewCommentService.REVIEW_DIR}/).".takeIf { skipped > 0 },
+                "Revise cada um antes de Enviar ao GitHub.".takeIf { added.isNotEmpty() },
+                "${plural(skipped, "ficou de fora", "ficaram de fora")}, em arquivos fora do projeto.".takeIf { skipped > 0 },
             ).joinToString(" ").ifEmpty { "Nenhum problema encontrado nos arquivos alterados." },
             NotificationType.INFORMATION,
         )
@@ -1045,7 +1151,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
 
     /**
      * Com a revisão, o histórico e as conversas do PR aparecem no editor; ao encerrar, saem. Sair de [ref] encerra a
-     * revisão.
+     * revisão. As respostas da IA não dependem dela: seguem ligadas até o usuário desligar.
      */
     private fun startReview(number: Int, ref: String?) {
         patrulha.setReviewRef(ref)
@@ -1155,17 +1261,10 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     private fun concludeDescription(): String {
         val item = selectedPr()
         val pr = item?.pr ?: return "Selecione um PR aberto"
-        val along = listOfNotNull(
-            item.drafts.size.takeIf { it > 0 }?.let { plural(it, "comentário não enviado", "comentários não enviados") },
-            item.record?.drafts?.size?.takeIf { it > 0 }?.let { "o rascunho no GitHub (${plural(it, "comentário", "comentários")})" },
-        )
-        return buildString {
-            append(
-                if (isOwn(pr)) "O PR é seu: o GitHub só deixa comentar, sem aprovar nem solicitar alterações"
-                else "Publica a revisão no GitHub: aprovar, solicitar alterações ou só comentar",
-            )
-            if (along.isNotEmpty()) append(". Vão junto ${along.joinToString(" e ")}")
-        }
+        if (isOwn(pr)) return "O PR é seu: o GitHub só deixa comentar, sem aprovar nem solicitar alterações"
+        val along = pendingComments(item)
+        return if (along == 0) "Publica a revisão do PR com o veredito: aprovar, solicitar alterações ou comentar"
+        else "Publica a revisão com o veredito, levando junto ${plural(along, "comentário pendente", "comentários pendentes")}"
     }
 
     /**
@@ -1188,7 +1287,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                     "PR #${pr.number} ${verdict.done}",
                     when (verdict) {
                         ReviewVerdict.APPROVE -> "A aprovação está no GitHub${if (unsent.isNotEmpty() || item.record?.drafts?.isNotEmpty() == true) ", com os comentários como sugestões" else ""}."
-                        ReviewVerdict.REQUEST_CHANGES -> "O merge fica bloqueado até as alterações serem atendidas. Use Verificar Pedidos para conferir depois."
+                        ReviewVerdict.REQUEST_CHANGES -> "O merge fica bloqueado; use Verificar Pedidos para conferir depois."
                         ReviewVerdict.COMMENT -> "O autor do PR já vê a revisão."
                     },
                     NotificationType.INFORMATION,
@@ -1201,7 +1300,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             publish()
             return
         }
-        background("Enviando os comentários ao rascunho do PR #${pr.number}", { patrulha.send(context, pr, unsent, "", verdict.event, asDraft = true) }) {
+        background("Enviando os comentários ao rascunho do PR #${pr.number}", { patrulha.send(context, pr, unsent) }) {
             radar.remove(unsent)
             publish()
         }
@@ -1236,41 +1335,16 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         }
     }
 
-    /**
-     * O que Mostrar/Ocultar no Editor alterna, e se está no editor agora: um pedido selecionado, ou o
-     * histórico do PR quando a seleção é o PR.
-     */
-    private fun historyTarget(): Pair<Any, Boolean>? = if (selectedPr()?.active != true) null else when (val item = selectedNode()?.userObject) {
-        is RequestItem -> item to patrulha.isInEditor(item.number, item.request.id)
-        is PrItem -> if (item.record?.requests.isNullOrEmpty()) null else item to patrulha.isHistoryShown(item.number)
-        is DiscussionsItem -> item.takeIf { patrulha.editorDiscussions(it.number).isNotEmpty() }?.let { it to patrulha.isDiscussionsShown(it.number) }
-        is DiscussionItem -> item.takeIf { inEditorKind(it.discussion) }?.let { it to patrulha.isDiscussionInEditor(it.number, it.discussion) }
-        else -> null
-    }
+    /** Se os comentários do PR selecionado aparecem no editor; nulo fora da revisão dele, quando não vão para o editor. */
+    private fun editorShown(): Boolean? = selectedPr()?.takeIf { it.active }?.let { patrulha.isAnyShownInEditor(it.number) }
 
     /** Só as conversas de linha e de arquivo têm lugar no código. */
     private fun inEditorKind(discussion: Discussion) = discussion.kind == DiscussionKind.THREAD && discussion.path != null
 
-    private fun toggleHistory() {
-        val (item, shown) = historyTarget() ?: return
-        when (item) {
-            is RequestItem -> if (shown) {
-                patrulha.setRequestsHidden(item.number, listOf(item.request.id), true)
-            } else {
-                patrulha.setRequestsHidden(item.number, listOf(item.request.id), false)
-                patrulha.setHistoryShown(item.number, true)
-                navigate(item.request.path, (item.request.startLine - 1).takeIf { item.request.target == CommentTarget.LINES })
-            }
-            is PrItem -> patrulha.setHistoryShown(item.number, !shown)
-            is DiscussionsItem -> patrulha.setDiscussionsShown(item.number, !shown)
-            is DiscussionItem -> if (shown) {
-                patrulha.setDiscussionHidden(item.number, item.discussion, true)
-            } else {
-                patrulha.setDiscussionHidden(item.number, item.discussion, false)
-                patrulha.setDiscussionsShown(item.number, true)
-                navigateTo(item.discussion)
-            }
-        }
+    /** Mostrar ou Ocultar no Editor, um só para o PR inteiro; mostrar traz também os cartões ocultados um a um. */
+    private fun toggleEditor() {
+        val number = selectedPr()?.takeIf { it.active }?.number ?: return
+        patrulha.setAllShownInEditor(number, !patrulha.isAnyShownInEditor(number))
     }
 
     private fun send() {
@@ -1280,12 +1354,12 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         val drafts = radar.pullRequestComments(pr.number)
         if (drafts.isEmpty()) return
         val warning = if (context.repository.currentRevision != pr.headSha) {
-            "O código local não é o head do PR (${pr.headSha.take(7)}): as linhas dos comentários podem não bater com o GitHub. Atualize o código do PR pelo botão da revisão antes de enviar."
+            "O código local não é o head do PR (${pr.headSha.take(7)}): as linhas podem não bater; atualize o PR antes de enviar."
         } else {
             null
         }
         background("Lendo os arquivos do PR #${pr.number}", { ReviewPlan.plan(drafts, patrulha.client(context).files(context.repo, pr.number)) }) { planned ->
-            val dialog = SendReviewDialog(project, pr, planned, warning, isOwn(pr))
+            val dialog = SendReviewDialog(project, pr, planned, warning)
             if (!dialog.showAndGet()) return@background
             val toSend = dialog.toSend
             val toDelete = dialog.toDelete
@@ -1300,21 +1374,12 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 rebuild()
                 return@background
             }
-            val event = dialog.event
-            val general = dialog.generalText
-            val asDraft = dialog.asDraft
-            val title = if (asDraft) "Enviando o rascunho ao PR #${pr.number}" else "Enviando os pedidos ao PR #${pr.number}"
-            background(title, { patrulha.send(context, pr, toSend, general, event, asDraft) }) { result ->
+            background("Enviando o rascunho ao PR #${pr.number}", { patrulha.send(context, pr, toSend) }) { result ->
                 ReviewFeedback.getInstance(project).accepted(toSend)
                 radar.remove(toSend)
                 notify(
-                    if (asDraft) "${plural(result.requests.size, "rascunho enviado", "rascunhos enviados")} ao PR #${pr.number}"
-                    else "${plural(result.requests.size, "pedido publicado", "pedidos publicados")} no PR #${pr.number}",
-                    listOfNotNull(
-                        if (asDraft) "Só você vê no GitHub. Edite ou exclua aqui, e use Concluir Revisão quando estiver pronto."
-                        else "Ficaram em ironhawk/iron-dome/pull-requests/${PullRequestRecord.fileName(pr.number)} para verificar depois.",
-                        leftover,
-                    ).joinToString(" "),
+                    "${plural(result.requests.size, "rascunho enviado", "rascunhos enviados")} ao PR #${pr.number}",
+                    listOfNotNull("Só você vê; publique com Concluir Revisão.", leftover).joinToString(" "),
                     NotificationType.INFORMATION,
                     NotificationAction.createSimpleExpiring("Abrir no GitHub") { BrowserUtil.browse(result.reviewUrl.ifBlank { pr.url }) },
                     NotificationAction.createSimple("Abrir .md") { openRecord(pr.number) },
@@ -1347,7 +1412,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             notify(
                 "PR #${item.number}: ${summary.ifEmpty { "nenhum pedido" }}",
                 listOfNotNull(
-                    "Código conferido no head ${active.firstNotNullOfOrNull { it.codeCommit }?.take(7) ?: "atual"} e conversas lidas no GitHub.",
+                    "Conferido no head ${active.firstNotNullOfOrNull { it.codeCommit }?.take(7) ?: "atual"}.",
                     remote,
                 ).joinToString(" "),
                 if (pending > 0) NotificationType.WARNING else NotificationType.INFORMATION,
@@ -1387,12 +1452,12 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                     val changed = patrulha.record(result.number)?.requests.orEmpty().filter { it.id in result.edited || it.id in result.deleted }
                     val draft = when {
                         result.draftPublished -> "O rascunho foi publicado pelo GitHub."
-                        result.draftDiscarded -> "O rascunho foi descartado pelo GitHub, e os pedidos dele saíram do .md."
+                        result.draftDiscarded -> "O rascunho foi descartado pelo GitHub e saiu do .md."
                         else -> null
                     }
                     notify(
                         "PR #${result.number} mudou no GitHub",
-                        listOfNotNull(draft, remoteChanges(changed), "O .md e o histórico no editor já estão atualizados.").joinToString(" "),
+                        listOfNotNull(draft, remoteChanges(changed)).joinToString(" ").ifEmpty { "O .md do PR foi atualizado." },
                         NotificationType.INFORMATION,
                         NotificationAction.createSimple("Abrir .md") { openRecord(result.number) },
                     )
@@ -1436,9 +1501,16 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 if (e.clickCount != 2 || !SwingUtilities.isLeftMouseButton(e)) return
                 when (val item = (tree.getPathForLocation(e.x, e.y)?.lastPathComponent as? DefaultMutableTreeNode)?.userObject) {
                     is DraftItem -> navigate(item.comment.filePath, item.comment.startLine.takeIf { item.comment.target == CommentTarget.LINES })
-                    is RequestItem -> navigate(item.request.path, (item.request.startLine - 1).takeIf { item.request.target == CommentTarget.LINES })
+                    // Abrir o comentário no código traz de volta o cartão que tinha sido ocultado sozinho.
+                    is RequestItem -> {
+                        if (item.hiddenInEditor) patrulha.setRequestsHidden(item.number, listOf(item.request.id), false)
+                        navigate(item.request.path, (item.request.startLine - 1).takeIf { item.request.target == CommentTarget.LINES })
+                    }
                     is FileItem -> openPrs.firstOrNull { it.number == item.number }?.let { showDiff(it, item.file.path) }
-                    is DiscussionItem -> if (!navigateTo(item.discussion)) return
+                    is DiscussionItem -> {
+                        if (!navigateTo(item.discussion)) return
+                        if (item.hiddenInEditor) patrulha.setDiscussionHidden(item.number, item.discussion, false)
+                    }
                     is ReplyItem -> if (!navigateTo(item.discussion)) return
                     is AutoEventItem -> item.event.url.ifBlank { null }?.let(BrowserUtil::browse) ?: return
                     else -> return
@@ -1642,7 +1714,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 }
                 is RequestItem -> {
                     describeRequest(row, item.request)
-                    if (item.request.target != CommentTarget.PACKAGE && item.inEditor == false) row.pill("Oculto no editor", Tone.GRAY)
+                    if (item.request.target != CommentTarget.PACKAGE && item.hiddenInEditor) row.pill("Oculto no editor", Tone.GRAY)
                     item.auto?.let { autoPill(row, it) }
                 }
                 is DiscussionsItem -> describeDiscussions(row, item)
@@ -1679,12 +1751,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             val reviews = discussions.filter { it.kind == DiscussionKind.REVIEW }
             reviews.count { it.reviewState == "APPROVED" }.takeIf { it > 0 }?.let { row.pill(plural(it, "aprovação", "aprovações"), Tone.GREEN) }
             reviews.count { it.reviewState == "CHANGES_REQUESTED" }.takeIf { it > 0 }?.let { row.pill("$it pedindo alterações", Tone.RED) }
-            if (item.inEditor) row.pill("No editor", Tone.PURPLE)
-            row.tooltip(
-                "Os comentários do PR no GitHub, seus e de outras pessoas, fora os seus pedidos (as respostas a eles aparecem abaixo de cada pedido). " +
-                    "Selecione um e use Responder; duplo clique abre a linha comentada. Na revisão do PR, as conversas de linha aparecem no código, " +
-                    "só de leitura; Mostrar/Ocultar no Editor alterna.",
-            )
+            row.tooltip("Os comentários do PR no GitHub fora dos seus pedidos; duplo clique abre a linha comentada.")
         }
 
         private fun describeParticipants(row: Row, item: ParticipantsItem) {
@@ -1751,7 +1818,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             if (discussion.resolved) row.pill("Resolvida", Tone.GREEN)
             if (discussion.outdated) row.pill("Desatualizada", Tone.GRAY)
             if (discussion.replies.isNotEmpty()) row.pill(plural(discussion.replies.size, "resposta", "respostas"), Tone.BLUE)
-            if (item.inEditor) row.pill("No editor", Tone.PURPLE)
+            if (item.hiddenInEditor) row.pill("Oculto no editor", Tone.GRAY)
             item.auto?.let { autoPill(row, it) }
             if (first.body.isNotBlank()) row.detail(firstLine(first.body))
             row.tooltip(first.body.trim().ifEmpty { "Sem texto." })
@@ -1787,11 +1854,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 else -> null
             }
             detail?.let(row::detail)
-            row.tooltip(
-                "A cada ${AutoReplyService.POLL_MINUTES} minutos, a Patrulha confere as conversas que você abriu neste PR. Quando o dev responde, " +
-                    "a IA avalia e responde em seu nome, até concluir e resolver a conversa (no máximo ${AutoReply.MAX_ROUNDS} rodadas). " +
-                    "Abaixo, o histórico das conferências; Conferir Agora não espera a próxima.",
-            )
+            row.tooltip("Conferidas a cada ${AutoReplyService.POLL_MINUTES} minutos; abaixo, o histórico das conferências e respostas.")
         }
 
         private fun describeAutoEvent(row: Row, event: AutoEvent) {
@@ -1840,7 +1903,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             if (added > 0) row.pill(plural(added, "novo", "novos"), Tone.GREEN)
             if (removed > 0) row.pill(plural(removed, "removido", "removidos"), Tone.RED)
             if (renamed > 0) row.pill(plural(renamed, "renomeado", "renomeados"), Tone.PURPLE)
-            row.tooltip("Agrupados por pasta. Duplo clique num arquivo abre o diff do PR; as setas do diff passam pelos demais.")
+            row.tooltip("Duplo clique num arquivo abre o diff do PR.")
         }
 
         private fun describeDir(row: Row, item: DirItem) {
@@ -1900,7 +1963,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             if (item.active) row.pill("Em revisão", Tone.PURPLE, bold = true)
             if (item.checkedOut) row.pill("No checkout", Tone.TEAL)
             if (item.autoReply) row.pill(if (item.autoWorking) "IA trabalhando" else "Respostas da IA", Tone.PINK, bold = true)
-            if (item.historyShown && item.record?.requests?.isNotEmpty() == true) row.pill("Histórico no editor", Tone.BLUE)
+            if (item.editorHidden) row.pill("Oculto no editor", Tone.GRAY)
             if (item.drafts.isNotEmpty()) row.pill(plural(item.drafts.size, "não enviado", "não enviados"), CommentStatus.UNSAVED.tone)
             item.record?.drafts?.size?.takeIf { it > 0 }?.let { row.pill(plural(it, "rascunho no GitHub", "rascunhos no GitHub"), Tone.YELLOW, bold = true) }
             val requests = item.record?.active.orEmpty()
@@ -1910,8 +1973,8 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 row.bar(listOf(Segment(done, Tone.GREEN.accent), Segment(pending, Tone.YELLOW.accent), Segment(requests.size - done - pending, Tone.GRAY.accent)))
                 row.pill("$done/${requests.size} atendidos", if (done == requests.size) Tone.GREEN else Tone.GRAY)
             }
-            item.pr?.let { row.detail("Aberto por @${it.author} · ${it.headRef} → ${it.baseRef}") }
-                ?: item.record?.let { row.detail("${it.headRef} → ${it.baseRef} · fechado ou fora dos PRs abertos") }
+            // Nos abertos, o autor e as branches estão nos nós de baixo; nos fechados, que não têm esses nós, ficam aqui.
+            if (item.pr == null) item.record?.let { row.detail("${it.headRef} → ${it.baseRef} · fechado ou fora dos PRs abertos") }
         }
 
         private fun describeRequest(row: Row, request: ChangeRequest) {
@@ -1934,7 +1997,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 RemoteStatus.DELETED -> {
                     row.pill(request.remote.label, Tone.RED, bold = true)
                     row.detail(summary(request.text))
-                    row.tooltip("O revisor apagou este comentário no GitHub. Ele fica no .md como registro, fora das contas; use Excluir Pedido para tirá-lo.")
+                    row.tooltip("Apagado no GitHub; fica no .md como registro, fora das contas, até você Excluir.")
                     return
                 }
                 RemoteStatus.EDITED -> row.pill(request.remote.label, Tone.BLUE)
@@ -1943,7 +2006,7 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             if (request.pending) {
                 row.pill("Rascunho no GitHub", Tone.YELLOW, bold = true)
                 row.detail(summary(request.text))
-                row.tooltip("Só você vê no GitHub até publicar. Editar e Excluir valem lá também.\n\n${request.text}")
+                row.tooltip("Só você vê no GitHub até Concluir Revisão.\n\n${request.text}")
                 return
             }
             row.pill("Código: ${request.code.label}", codeTone(request.code))

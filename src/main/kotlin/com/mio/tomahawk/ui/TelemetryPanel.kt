@@ -19,6 +19,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.ScrollPaneFactory
+import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.util.ui.JBFont
@@ -33,8 +34,8 @@ import com.mio.irondome.base.SummaryHeader
 import com.mio.irondome.base.Tone
 import com.mio.irondome.base.WrapText
 import com.mio.irondome.base.wrapping
+import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.base.TomahawkIcons
-import com.mio.tomahawk.base.refreshAction
 import com.mio.tomahawk.run.LogKind
 import com.mio.tomahawk.run.LogLine
 import com.mio.tomahawk.run.MissionProgress
@@ -64,8 +65,9 @@ import javax.swing.Timer
 
 /**
  * A aba Telemetria: a missão em voo, as durações das últimas execuções e o histórico por dia, com a situação, o
- * veredito e o tempo de cada uma. Embaixo, o log ao vivo no console da IDE ou o registro da execução selecionada;
- * o duplo clique abre o registro no editor.
+ * veredito e o tempo de cada uma. Embaixo, o log ao vivo no console da IDE ou o registro da execução selecionada,
+ * formatado num navegador embutido que só é criado na primeira vez que um registro é escolhido; o duplo clique abre
+ * o registro no editor.
  */
 class TelemetryPanel(private val project: Project) : SimpleToolWindowPanel(true, true), Disposable {
 
@@ -77,6 +79,8 @@ class TelemetryPanel(private val project: Project) : SimpleToolWindowPanel(true,
         selectionMode = ListSelectionModel.SINGLE_SELECTION
         cellRenderer = RunRenderer()
         addListSelectionListener { if (!it.valueIsAdjusting) showSelected() }
+        emptyText.text = "Nenhuma missão lançada neste projeto ainda."
+        emptyText.appendLine("Abrir o Lançador", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { AttackTabs.showTab(project, AttackTabs.LAUNCHER) }
     }
     private val chart = DurationChart { pick(it) }
     private val chartTitle = JBLabel().apply {
@@ -90,7 +94,9 @@ class TelemetryPanel(private val project: Project) : SimpleToolWindowPanel(true,
     }
     private val viewerTitle = WrapText(font = JBFont.small().asBold()).apply { border = JBUI.Borders.empty(6, 10, 4, 10) }
     private val console: ConsoleView = TextConsoleBuilderFactory.getInstance().createBuilder(project).apply { setViewer(true) }.console
-    private val preview = ArtifactView(project, this)
+
+    /** O registro formatado: o navegador embutido nasce só quando o usuário escolhe um registro. */
+    private var preview: ArtifactView? = null
     private val cards = CardLayout()
     private val bottomCards = JPanel(cards)
     private val timer = Timer(LIVE_TICK_MS) { if (runs.selectedValue == null) showLive() }
@@ -101,12 +107,11 @@ class TelemetryPanel(private val project: Project) : SimpleToolWindowPanel(true,
 
     /** A missão cujo log está no console e quantas linhas dela já foram escritas. */
     private var shown: MissionProgress? = null
-    private var printed = -1
+    private var printed = -1L
 
     init {
         Disposer.register(this, console)
         bottomCards.add(console.component, LIVE_CARD)
-        bottomCards.add(preview, RUN_CARD)
         val bottom = JPanel(BorderLayout()).apply {
             add(viewerTitle, BorderLayout.NORTH)
             add(bottomCards, BorderLayout.CENTER)
@@ -128,7 +133,7 @@ class TelemetryPanel(private val project: Project) : SimpleToolWindowPanel(true,
         toolbar = ActionManager.getInstance().createActionToolbar(
             "Tomahawk.TelemetryToolbar",
             DefaultActionGroup(
-                object : DumbAwareAction("Log ao Vivo", "Mostra o log da missão em voo (ou da última)", AllIcons.Debugger.Console) {
+                object : DumbAwareAction("Log ao Vivo", "Mostra o log da missão em voo, ou da última", AllIcons.Debugger.Console) {
                     override fun actionPerformed(e: AnActionEvent) {
                         runs.clearSelection()
                         showLive()
@@ -145,8 +150,6 @@ class TelemetryPanel(private val project: Project) : SimpleToolWindowPanel(true,
                 },
                 Separator.getInstance(),
                 filterActions(),
-                Separator.getInstance(),
-                refreshAction { service.refresh(0) },
             ),
             true,
         ).apply { targetComponent = this@TelemetryPanel }.wrapping().component
@@ -176,7 +179,7 @@ class TelemetryPanel(private val project: Project) : SimpleToolWindowPanel(true,
 
     private fun filterActions() = DefaultActionGroup("Filtrar", true).apply {
         templatePresentation.icon = AllIcons.General.Filter
-        templatePresentation.description = "Mostra só algumas situações ou só as execuções da feature ativa"
+        templatePresentation.description = "Filtra as execuções pela situação ou pela feature ativa"
         RunStatus.entries.forEach { status ->
             add(object : DumbAwareToggleAction(status.label.replaceFirstChar { it.uppercase() }, "Mostra as execuções ${status.label}s", null) {
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
@@ -207,7 +210,7 @@ class TelemetryPanel(private val project: Project) : SimpleToolWindowPanel(true,
         dayCounts = shownRuns.groupingBy { day(it.startedAt) }.eachCount()
         runsModel.clear()
         shownRuns.forEach(runsModel::addElement)
-        runs.emptyText.text = if (records.isEmpty()) "Nenhuma missão lançada neste projeto ainda" else "Nenhuma execução com esse filtro"
+        if (records.isNotEmpty()) runs.emptyText.text = "Nenhuma execução com esse filtro."
         selected?.let { file -> shownRuns.indexOfFirst { it.file == file }.takeIf { it >= 0 }?.let { runs.selectedIndex = it } }
         val recent = records.take(CHART_SIZE).reversed()
         chart.runs = recent
@@ -235,7 +238,7 @@ class TelemetryPanel(private val project: Project) : SimpleToolWindowPanel(true,
             else -> Tone.GREEN
         }
         val subtitle = if (records.isEmpty()) {
-            "Lance uma etapa no Lançador; cada passo da IA aparece aqui."
+            "Lance uma etapa no Lançador para acompanhar a missão aqui."
         } else {
             listOfNotNull(
                 "${records.size} execução(ões)" + if (onlyActive) " da feature ativa" else "",
@@ -274,26 +277,22 @@ class TelemetryPanel(private val project: Project) : SimpleToolWindowPanel(true,
         cards.show(bottomCards, LIVE_CARD)
         chart.selected = null
         val progress = runner.progress ?: runner.latest
-        if (progress !== shown || printed < 0 || (progress != null && progress.log.size < printed)) {
+        if (progress !== shown || printed < 0 || (progress != null && progress.logged < printed)) {
             console.clear()
             shown = progress
-            printed = 0
+            printed = 0L
             if (progress == null) {
                 viewerTitle.text = "Log ao vivo"
-                console.print(
-                    "Nenhuma missão em voo. Lance uma etapa no Lançador; aqui aparece cada passo da IA: leituras, edições, comandos e a resposta.\n\n" +
-                        "Selecione uma execução acima para ver o registro dela.\n",
-                    ConsoleViewContentType.SYSTEM_OUTPUT,
-                )
+                console.print("Nenhuma missão em voo. Escolha uma execução acima para ver o registro.\n", ConsoleViewContentType.SYSTEM_OUTPUT)
                 return
             }
         }
         progress ?: return
         val prefix = if (progress === runner.progress) "Log ao vivo" else "Log da última missão"
         viewerTitle.text = "$prefix: ${progress.mission.step.codename} (${progress.invocation})"
-        val lines = progress.log
-        for (index in printed until lines.size) print(lines[index])
-        printed = lines.size
+        val (lines, total) = progress.logAfter(printed)
+        lines.forEach(::print)
+        printed = total
     }
 
     private fun print(line: LogLine) {
@@ -313,8 +312,12 @@ class TelemetryPanel(private val project: Project) : SimpleToolWindowPanel(true,
         val record = runs.selectedValue ?: return
         chart.selected = record.file
         viewerTitle.text = "Registro: ${record.file.fileName}"
+        val view = preview ?: ArtifactView(project, this).also {
+            preview = it
+            bottomCards.add(it, RUN_CARD)
+        }
         cards.show(bottomCards, RUN_CARD)
-        preview.show(record.file)
+        view.show(record.file)
     }
 
     private inner class RunRenderer : ListCellRenderer<RunRecord> {

@@ -53,7 +53,7 @@ data class WatchedPr(
 )
 
 /** O que o Rádio sabe dos PRs do usuário: [me] é o login dele no GitHub. */
-data class RadarSnapshot(val me: String, val repo: String, val prs: List<WatchedPr>)
+data class RadioSnapshot(val me: String, val repo: String, val prs: List<WatchedPr>)
 
 /** O texto que a IA lê para responder a uma conversa do PR. */
 object ReplyContext {

@@ -3,25 +3,36 @@ package com.mio.irondome.caixapreta
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
-/** Parte do plugin onde o bug apareceu, com o pacote do código, para quem for corrigir saber por onde começar. */
-enum class Mechanism(val title: String, val packageName: String, val contents: String) {
-    RADAR("Radar", "radar", "comentários, formulário, margem do editor, cartões e a aba Radar"),
-    COMANDO("Centro de Comando", "comando", "geração e leitura do .md, histórico consolidado e as ações de salvar"),
-    IMPACTO("Raio de Impacto", "impacto", "análise de dependências, diagrama e métricas"),
-    SENTINELA("Sentinela", "sentinela", "aba Sentinela e o diff dos arquivos não commitados"),
-    ESCUDO("Escudo", "escudo", "execução dos testes JUnit, formatação do @DisplayName e a aba Escudo"),
-    PATRULHA("Patrulha", "patrulha", "pull requests do GitHub, envio dos pedidos de alteração e a verificação deles"),
-    INTERCEPTOR("Arsenal", "interceptor", "integração com a IA pelo Cursor CLI ou Antigravity CLI: configuração, execução e registro"),
-    BASE("Base", "base", "tool window, abas extras, barra flutuante do editor e componentes visuais compartilhados"),
-    CAIXA_PRETA("Caixa-Preta", "caixapreta", "o próprio Reportar Bug: formulário, capturas e envio como issue no GitHub");
+private const val DEFENSE = "com.mio.irondome"
 
-    val qualifiedPackage get() = "$ROOT_PACKAGE.$packageName"
+/** Parte do plugin onde o bug apareceu, com o pacote do código, para quem for corrigir saber por onde começar. */
+enum class Mechanism(val title: String, val qualifiedPackage: String, val contents: String, private val tabs: Set<String> = setOf(title)) {
+    RADAR("Radar", "$DEFENSE.radar", "comentários, formulário, margem do editor, cartões e a aba Radar"),
+    COMANDO("Centro de Comando", "$DEFENSE.comando", "geração e leitura do .md, histórico consolidado e as ações de salvar"),
+    IMPACTO("Raio de Impacto", "$DEFENSE.impacto", "análise de dependências, diagrama e métricas"),
+    SENTINELA("Sentinela", "$DEFENSE.sentinela", "aba Sentinela e o diff dos arquivos não commitados"),
+    ESCUDO("Escudo", "$DEFENSE.escudo", "execução dos testes JUnit, formatação do @DisplayName e a aba Escudo"),
+    PATRULHA("Patrulha", "$DEFENSE.patrulha", "pull requests do GitHub, envio dos pedidos de alteração e a verificação deles"),
+    DEFESA("Inteligência da IA", "$DEFENSE.defesa", "dossiê das classes, histórico do git, aprendizado e conflitos entre comentários"),
+    INTERCEPTOR("Arsenal", "$DEFENSE.interceptor", "integração com a IA pelo CLI (Cursor, Claude Code, Codex ou Antigravity): configuração, execução e registro"),
+    BASE("Base", "$DEFENSE.base", "tool window, abas extras, barra flutuante do editor e componentes visuais compartilhados"),
+    CAIXA_PRETA("Caixa-Preta", "$DEFENSE.caixapreta", "o próprio Reportar Bug: formulário, capturas e envio como issue no GitHub"),
+    ATAQUE(
+        "Ataque (Tomahawk)", "com.mio.tomahawk", "Lançador, Avaliação, Telemetria, Rádio e Extração: as missões do Spec Kit e os PRs",
+        setOf("Lançador", "Avaliação", "Telemetria", "Rádio"),
+    ),
+    IRONHAWK("Painel do IronHawk", "com.mio.ironhawk", "o painel único, a aba Arsenal, as configurações e a migração dos plugins antigos");
+
     val sourceDir get() = "src/main/kotlin/${qualifiedPackage.replace('.', '/')}/"
 
     companion object {
-        const val ROOT_PACKAGE = "com.mio.irondome"
+        /** Os pacotes do plugin: a Defesa, o Ataque e o que é comum aos dois. */
+        val PACKAGES = listOf(DEFENSE, "com.mio.tomahawk", "com.mio.ironhawk")
 
-        fun ofTab(title: String?): Mechanism? = entries.firstOrNull { it.title == title }
+        /** [text] cita código do plugin: o logger, a mensagem ou um frame da pilha. */
+        fun isPluginCode(text: String): Boolean = PACKAGES.any { it in text }
+
+        fun ofTab(title: String?): Mechanism? = entries.firstOrNull { title in it.tabs }
 
         /** Pelo pacote de um frame da pilha, como `com.mio.irondome.radar.CommentForm.submit(CommentForm.kt:120)`. */
         fun ofFrame(frame: String): Mechanism? = entries.firstOrNull { frame.startsWith("${it.qualifiedPackage}.") }
@@ -37,7 +48,7 @@ data class PluginError(val time: String, val level: String, val message: String,
     /** Primeiro frame do plugin na pilha: o ponto mais provável do bug. */
     val origin: String?
         get() = stack.firstNotNullOfOrNull { line ->
-            line.trim().removePrefix("at ").takeIf { it.startsWith("${Mechanism.ROOT_PACKAGE}.") }
+            line.trim().removePrefix("at ").takeIf { frame -> Mechanism.PACKAGES.any { frame.startsWith("$it.") } }
         }
 
     /** Pela origem na pilha ou, sem ela, pelo logger que registrou. */
@@ -88,7 +99,7 @@ object BugReportMarkdown {
 
         appendLine("# Bug: ${report.title.oneLine()}")
         appendLine()
-        appendLine("Relatado em ${report.createdAt.format(DATE)} pelo Reportar Bug do Iron Dome IA.")
+        appendLine("Relatado em ${report.createdAt.format(DATE)} pelo Reportar Bug do IronHawk IA.")
         appendLine()
         appendLine("## Onde no plugin")
         appendLine()
@@ -189,7 +200,7 @@ object BugReportMarkdown {
                 continue
             }
             framesInBlock++
-            if (framesInBlock <= LEADING_FRAMES || Mechanism.ROOT_PACKAGE in trimmed) {
+            if (framesInBlock <= LEADING_FRAMES || Mechanism.isPluginCode(trimmed)) {
                 flushSkipped()
                 result += line
             } else {

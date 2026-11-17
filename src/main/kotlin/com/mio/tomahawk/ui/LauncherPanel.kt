@@ -14,10 +14,12 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
+import com.mio.irondome.base.Collapsible
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.TitledSeparator
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextArea
@@ -36,13 +38,12 @@ import com.mio.irondome.base.Stat
 import com.mio.irondome.base.SummaryHeader
 import com.mio.irondome.base.Tone
 import com.mio.irondome.base.WrapText
+import com.mio.irondome.base.wrapping
 import com.mio.irondome.interceptor.AgentProgressPanel
 import com.mio.irondome.interceptor.AgentRunner
 import com.mio.irondome.interceptor.AgentTask
-import com.mio.irondome.base.wrapping
 import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.base.TomahawkIcons
-import com.mio.tomahawk.base.refreshAction
 import com.mio.tomahawk.run.ExtraSkills
 import com.mio.tomahawk.run.LaunchTerminal
 import com.mio.tomahawk.run.Mission
@@ -73,6 +74,7 @@ import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.ListCellRenderer
 import javax.swing.ListSelectionModel
+import javax.swing.SwingConstants
 
 /** Uma opção do seletor de feature: uma pasta de `specs/` ou uma feature nova, a designar. */
 private sealed interface FeatureChoice {
@@ -84,9 +86,13 @@ private sealed interface FeatureChoice {
 private class StepRow(val status: StepStatus, val mark: String, val group: String? = null)
 
 /**
- * A aba Lançador: a constituição do projeto, que vale para todas as features, e as oito etapas da feature
- * escolhida, com o estado de cada uma e a próxima em destaque. Escolhida a etapa, escreve-se a entrada e lança-se
- * pelo CLI de IA, no devcontainer ou no terminal. Embaixo, a Extração leva a feature para revisão num PR.
+ * A aba Lançador: as nove etapas do SDD, a constituição do projeto, que vale para todas as features, e as oito da
+ * feature escolhida, com o estado de cada uma e a próxima em destaque. O formulário da etapa tem seções: a etapa (o
+ * que ela faz e por que está no estado atual, com os detalhes recolhidos), Executar (a entrada e onde lançar), as
+ * skills extras marcadas no Arsenal e a Entrega (commit, push e PR), recolhida até o usuário abrir.
+ *
+ * Escolher outra feature no seletor só muda o que se vê: ela vira a ativa (`.specify/feature.json`) quando o
+ * usuário lança uma etapa ou copia o comando.
  */
 class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, true), Disposable {
 
@@ -97,9 +103,7 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     private val setup = SpecKitSetupPanel(project, this, withInit = true)
     private val initPanel = JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)).apply {
         border = JBUI.Borders.compound(JBUI.Borders.customLineBottom(JBColor.border()), JBUI.Borders.empty(10, 14))
-        add(WrapText(
-            "Este projeto ainda não tem o .specify/. Inicialize o Spec Kit para instalar no projeto os comandos de SDD do ${TomahawkSettings.provider.title}.",
-        ))
+        add(WrapText("Este projeto ainda não tem o .specify/: inicialize o Spec Kit para instalar os comandos do SDD."))
         add(setup)
     }
 
@@ -112,6 +116,7 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 null -> ""
             }
         }
+        toolTipText = "A feature escolhida vira a ativa quando você lança uma etapa ou copia o comando"
         addActionListener { if (!loading) featureChanged() }
     }
     private val featureBar = JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
@@ -128,11 +133,22 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         addListSelectionListener { if (!it.valueIsAdjusting && !loading) stepChanged() }
     }
 
+    // Etapa: o nome, as pílulas, o que ela faz (uma frase), por que está no estado atual e os detalhes recolhidos.
     private val stepTitle = WrapText(font = JBFont.h4())
     private val stepPills = wrapRow()
     private val purpose = WrapText()
     private val reason = NoticeBox(AllIcons.General.Information, Tone.BLUE)
+    private val fullPurpose = WrapText(font = JBFont.small(), color = UIUtil.getContextHelpForeground())
     private val commandLink = ActionLink("") { selectedStatus()?.let { s -> service.snapshot.commands[s.step]?.let { openFile(project, it.file) } } }
+    private val details = JPanel()
+    private val detailsBody = JPanel(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)).apply {
+        isOpaque = false
+        border = JBUI.Borders.emptyLeft(4)
+        add(fullPurpose)
+        add(commandLink)
+    }
+
+    // Executar: a entrada, onde lançar e o aviso da missão em voo, com o caminho para a Telemetria.
     private val input = JBTextArea(5, 30).apply {
         lineWrap = true
         wrapStyleWord = true
@@ -158,14 +174,28 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     }
     private val copy = JButton("Copiar Comando", AllIcons.Actions.Copy).apply {
         toolTipText = "Copia o comando com a entrada, para colar no chat do agente"
-        addActionListener { mission()?.let(runner::copyCommand) }
+        addActionListener { copyCommand() }
     }
-    private val openArtifact = JButton("Abrir Artefato", AllIcons.Actions.EditSource).apply { addActionListener { artifactOf()?.let { openFile(project, it) } } }
-    private val delivery = DeliveryPanel(project, this)
+    private val flying = wrapRow().apply {
+        add(JBLabel("Há uma missão em voo.", AllIcons.General.Information, SwingConstants.LEFT))
+        add(telemetryLink(project))
+    }
+
+    private val delivery = DeliveryPanel(project, this) { selectedFeature() ?: service.snapshot.active }
     private val agent = AgentRunner.getInstance(project)
+
+    /** O progresso da IA nas skills extras; some enquanto a missão em voo ocupa o topo, para não mostrar dois ao mesmo tempo. */
+    private val agentProgress = JPanel(BorderLayout()).apply {
+        isOpaque = false
+        add(AgentProgressPanel(project, AttackTabs.LAUNCHER, this@LauncherPanel), BorderLayout.CENTER)
+    }
 
     /** Os botões das skills extras que o usuário marcou no Arsenal; some quando não há nenhuma. */
     private val skillsRow = JPanel(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)).apply { isOpaque = false }
+
+    /** As skills extras achadas no disco, pelo nome; lidas fora da EDT. Nulo enquanto a primeira leitura não volta. */
+    private var foundSkills: Map<String, Skill>? = null
+    private var skillsGeneration = 0
 
     /** O texto escrito em cada etapa, para trocar de etapa sem perder o rascunho. */
     private val drafts = mutableMapOf<SddStep, String>()
@@ -176,13 +206,19 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     private var loading = false
 
     init {
+        Collapsible(details, "Detalhes", false).apply {
+            setContentComponent(detailsBody)
+            setOn(false)
+        }
+        details.isOpaque = false
         val form = JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)).apply {
             border = JBUI.Borders.empty(10, 14, 14, 14)
             add(stepTitle)
             add(stepPills)
             add(purpose)
             add(reason)
-            add(commandLink)
+            add(details)
+            add(TitledSeparator("Executar"))
             add(JBLabel("Entrada (\$ARGUMENTS)").apply { font = JBFont.small().asBold(); foreground = UIUtil.getContextHelpForeground() })
             add(ScrollPaneFactory.createScrollPane(input))
             add(wrapRow().apply {
@@ -190,9 +226,9 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 add(JBLabel("em"))
                 add(mode)
                 add(copy)
-                add(openArtifact)
             })
             add(modeHint)
+            add(flying)
             add(skillsRow)
             add(JPanel(BorderLayout()).apply {
                 isOpaque = false
@@ -211,7 +247,7 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             add(JPanel(VerticalLayout(0)).apply {
                 add(header)
                 add(MissionProgressPanel(project, this@LauncherPanel))
-                add(AgentProgressPanel(project, AttackTabs.LAUNCHER, this@LauncherPanel))
+                add(agentProgress)
                 add(initPanel)
             }, BorderLayout.NORTH)
             add(splitter, BorderLayout.CENTER)
@@ -241,7 +277,6 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 object : DumbAwareAction("Arsenal", "Abre o Arsenal: a IA, onde rodar e as proteções", AllIcons.General.Settings) {
                     override fun actionPerformed(e: AnActionEvent) = AttackTabs.showTab(project, AttackTabs.ARSENAL)
                 },
-                refreshAction { service.refresh(0) },
             ),
             true,
         ).apply { targetComponent = this@LauncherPanel }.wrapping().component
@@ -261,9 +296,9 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         )
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             ExtraSkills.Listener.TOPIC,
-            ExtraSkills.Listener { ApplicationManager.getApplication().invokeLater({ updateButtons() }, project.disposed) },
+            ExtraSkills.Listener { ApplicationManager.getApplication().invokeLater({ discoverSkills() }, project.disposed) },
         )
-        project.messageBus.connect(this).subscribe(AttackTabs.GOTO, AttackTabs.GotoListener { goto(it) })
+        project.messageBus.connect(this).subscribe(AttackTabs.GOTO, AttackTabs.GotoListener { step, dir -> goto(step, dir) })
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             TomahawkSettings.Listener.TOPIC,
             TomahawkSettings.Listener { ApplicationManager.getApplication().invokeLater({ reload(service.snapshot) }, project.disposed) },
@@ -277,14 +312,22 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
 
     override fun dispose() = Unit
 
-    /** A Avaliação pediu uma etapa: o Designar Alvo numa feature que já tem spec começa uma feature nova. */
-    private fun goto(step: SddStep) {
+    /**
+     * A Avaliação pediu uma etapa da feature [dir]: o Lançador escolhe a feature e a etapa. O Designar Alvo numa feature
+     * que já tem spec começa uma feature nova.
+     */
+    private fun goto(step: SddStep, dir: Path?) {
         wanted = step
-        if (step == SddStep.SPECIFY && service.snapshot.active?.spec != null) {
-            featureModel.selectedItem = FeatureChoice.New
-        } else {
-            fillSteps(service.snapshot)
-            stepChanged()
+        val target = dir?.let(::choiceFor)
+        when {
+            step == SddStep.SPECIFY && feature.selectedItem != FeatureChoice.New &&
+                (target as? FeatureChoice.Existing ?: feature.selectedItem as? FeatureChoice.Existing)?.report?.spec != null ->
+                featureModel.selectedItem = FeatureChoice.New
+            target != null && target != feature.selectedItem -> featureModel.selectedItem = target
+            else -> {
+                fillSteps(service.snapshot)
+                stepChanged()
+            }
         }
     }
 
@@ -298,11 +341,18 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             featureModel.removeAllElements()
             snapshot.features.reversed().forEach { featureModel.addElement(FeatureChoice.Existing(it)) }
             featureModel.addElement(FeatureChoice.New)
-            // Com "Nova feature" escolhida, a seleção só segue a ativa quando ela muda: o specify acabou de criar uma.
+            // A escolha do usuário fica enquanto a feature existir; a seleção só segue a ativa quando a ativa muda
+            // (um lançamento a gravou, ou o specify acabou de criar uma).
             val activeChanged = snapshot.active?.dir != lastActive
             lastActive = snapshot.active?.dir
-            featureModel.selectedItem = if (previous == FeatureChoice.New && !activeChanged) FeatureChoice.New
-            else snapshot.active?.let { FeatureChoice.Existing(it) } ?: FeatureChoice.New
+            val kept = when (previous) {
+                FeatureChoice.New -> FeatureChoice.New
+                is FeatureChoice.Existing -> choiceFor(previous.report.dir)
+                null -> null
+            }
+            featureModel.selectedItem = kept.takeIf { !activeChanged }
+                ?: snapshot.active?.let { choiceFor(it.dir) }
+                ?: FeatureChoice.New
             fillSteps(snapshot)
         } finally {
             loading = false
@@ -310,7 +360,11 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         stepChanged()
         updateHeader(snapshot)
         delivery.update()
+        discoverSkills()
     }
+
+    private fun choiceFor(dir: Path): FeatureChoice? =
+        (0 until featureModel.size).map { featureModel.getElementAt(it) }.firstOrNull { it is FeatureChoice.Existing && it.report.dir == dir }
 
     /** A constituição e as etapas da feature; a próxima da feature é marcada entre as dela. */
     private fun statuses(snapshot: Snapshot): Pair<StepStatus?, List<StepStatus>> {
@@ -346,15 +400,13 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         }
     }
 
+    /** Trocar de feature no seletor só muda o que se vê; nada é gravado no disco até lançar ou copiar o comando. */
     private fun featureChanged() {
-        when (val choice = feature.selectedItem as? FeatureChoice) {
-            is FeatureChoice.Existing -> if (choice.report.dir != service.snapshot.active?.dir) service.activate(choice.report.dir)
-            FeatureChoice.New -> wanted = SddStep.SPECIFY
-            null -> Unit
-        }
+        if (feature.selectedItem == FeatureChoice.New) wanted = SddStep.SPECIFY
         fillSteps(service.snapshot)
         stepChanged()
         updateHeader(service.snapshot)
+        delivery.update()
     }
 
     private fun stepChanged() {
@@ -369,7 +421,7 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             stepPills.removeAll()
             purpose.text = ""
             reason.isVisible = false
-            commandLink.isVisible = false
+            details.isVisible = false
             input.text = ""
             updateButtons()
             return
@@ -379,18 +431,19 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         stepPills.removeAll()
         stepPills.add(Pill(snapshot.invocation(step), Tone.ORANGE, bold = true))
         stepPills.add(Pill(status.state.label, status.state.tone))
-        if (step == SddStep.CONSTITUTION) stepPills.add(Pill("Do projeto", Tone.PURPLE))
         if (step.argsRequired) stepPills.add(Pill("Entrada obrigatória", Tone.YELLOW))
-        if (step.optional) stepPills.add(Pill("Opcional", Tone.GRAY))
         if (step.readOnly) stepPills.add(Pill("Só leitura", Tone.GRAY))
         if (step.interactive) stepPills.add(Pill("Faz perguntas", Tone.PURPLE))
-        purpose.text = step.purpose
+        purpose.text = firstSentence(step.purpose)
         reason.isVisible = true
         reason.text = status.reason
         val ref = snapshot.commands[step]
+        fullPurpose.text = step.purpose.takeIf { it != purpose.text }.orEmpty()
+        fullPurpose.isVisible = fullPurpose.text.isNotEmpty()
         commandLink.isVisible = ref != null
         commandLink.text = ref?.let { "Abrir o comando (${if (it.skill) it.file.parent?.fileName else it.file.fileName})" }.orEmpty()
         commandLink.toolTipText = ref?.let { snapshot.relative(it.file) }
+        details.isVisible = fullPurpose.isVisible || commandLink.isVisible
         if (switched) {
             input.text = drafts[step].orEmpty()
             input.emptyText.text = step.argsHint
@@ -405,11 +458,11 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
 
     private fun updateButtons() {
         val status = selectedStatus()
-        val flying = runner.progress != null
+        val inFlight = runner.progress != null
         val blocked = status?.state == StepState.BLOCKED || status?.state == StepState.UNAVAILABLE
         val why = when {
             status == null -> "Escolha uma etapa"
-            flying -> "Há uma missão em voo: acompanhe na Telemetria"
+            inFlight -> "Há uma missão em voo"
             !TomahawkSettings.ready -> "Teste a integração com a IA no Arsenal"
             blocked -> status.reason
             else -> null
@@ -417,22 +470,23 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         launch.isEnabled = why == null
         launch.toolTipText = why ?: "Ctrl+Enter"
         copy.isEnabled = status != null
-        openArtifact.isEnabled = artifactOf() != null
         reason.isVisible = status != null
+        flying.isVisible = inFlight
+        agentProgress.isVisible = !inFlight
         updateHint()
         updateSkills()
     }
 
     private fun updateHint() {
-        modeHint.text = if (mode.selectedItem == RunMode.TERMINAL) "No terminal, você conversa com a IA, responde às perguntas e aprova os comandos."
-        else "No devcontainer, a IA roda sem perguntar e a Telemetria acompanha cada passo e grava o registro em ironhawk/tomahawk/execucoes/."
+        modeHint.text = if (mode.selectedItem == RunMode.TERMINAL) "No terminal, você conversa com a IA e aprova os comandos."
+        else "No devcontainer, a IA roda sem perguntar e a Telemetria acompanha cada passo."
     }
 
     private fun updateHeader(snapshot: Snapshot) {
         val aiWarning = when {
             TomahawkSettings.ready -> null
-            TomahawkSettings.launch() == null -> "O ${TomahawkSettings.provider.title} CLI não foi encontrado. Configure a IA no Arsenal."
-            else -> "Teste a integração com a IA no Arsenal: as missões só saem depois que o teste passa."
+            TomahawkSettings.launch() == null -> "O ${TomahawkSettings.provider.title} CLI não foi encontrado: configure a IA no Arsenal."
+            else -> "Teste a integração com a IA no Arsenal antes de lançar."
         }
         if (snapshot.layout == null) {
             if (project.basePath == null) header.update("Projeto sem pasta", Tone.GRAY.accent, "Abra um projeto com pasta no disco.")
@@ -443,7 +497,7 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             header.update(
                 "Spec Kit não inicializado",
                 Tone.GRAY.accent,
-                "O Tomahawk dispara os comandos /speckit pelo ${TomahawkSettings.provider.title} CLI.",
+                "Inicialize o Spec Kit para lançar as etapas pelo ${TomahawkSettings.provider.title} CLI.",
                 warning = aiWarning,
             )
             return
@@ -460,7 +514,6 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 converged -> "Missão cumprida: a implementação convergiu"
                 else -> "Nenhuma etapa pendente"
             },
-            "${counts[StepState.DONE] ?: 0}/${featureSteps.size} etapas",
             TomahawkSettings.provider.title,
         ).joinToString("  ·  ")
         header.update(
@@ -468,15 +521,35 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             (next?.state?.tone ?: Tone.GREEN).accent,
             subtitle,
             stats = listOf(
-                Stat(counts[StepState.DONE] ?: 0, "etapas concluídas", Tone.GREEN),
+                Stat(counts[StepState.DONE] ?: 0, "de ${featureSteps.size} etapas", Tone.GREEN),
                 Stat(tasks?.done ?: 0, "tarefas feitas", Tone.BLUE),
                 Stat((tasks?.total ?: 0) - (tasks?.done ?: 0), "tarefas abertas", Tone.ORANGE),
-                Stat(chosen?.pending?.size ?: 0, "a esclarecer", Tone.YELLOW),
             ),
             bar = featureSteps.map { Segment(1, it.state.tone.accent) },
             warning = aiWarning
-                ?: if (!snapshot.constitutionReady) "A constituição ainda é o modelo: comece pelas Regras de Engajamento, que guiam as outras etapas." else null,
+                ?: if (!snapshot.constitutionReady) "A constituição ainda é o modelo: comece pelas Regras de Engajamento." else null,
         )
+    }
+
+    /** Relê as skills extras fora da EDT: a busca percorre pastas do projeto e da pasta pessoal. */
+    private fun discoverSkills() {
+        val generation = ++skillsGeneration
+        if (ExtraSkills.selected.isEmpty()) {
+            foundSkills = emptyMap()
+            updateSkills()
+            return
+        }
+        val root = service.root()
+        val custom = ExtraSkills.customFolders
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val home = runCatching { Path.of(System.getProperty("user.home")) }.getOrNull()
+            val found = runCatching { ExtraSkills.discover(root, home, custom).associateBy { it.name } }.getOrDefault(emptyMap())
+            ApplicationManager.getApplication().invokeLater({
+                if (generation != skillsGeneration) return@invokeLater
+                foundSkills = found
+                updateSkills()
+            }, project.disposed)
+        }
     }
 
     /** Um botão por skill extra marcada no Arsenal; desligado se ela sumiu ou a IA não pode rodar agora. */
@@ -485,17 +558,17 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         val chosen = ExtraSkills.selected.sorted()
         skillsRow.isVisible = chosen.isNotEmpty()
         if (chosen.isEmpty()) return
-        val home = runCatching { Path.of(System.getProperty("user.home")) }.getOrNull()
-        val found = ExtraSkills.discover(service.root(), home).associateBy { it.name }
-        skillsRow.add(JBLabel("Skills extras").apply { font = JBFont.small().asBold(); foreground = UIUtil.getContextHelpForeground() })
+        val found = foundSkills
+        skillsRow.add(TitledSeparator("Skills extras"))
         skillsRow.add(wrapRow().apply {
             chosen.forEach { name ->
-                val skill = found[name]
+                val skill = found?.get(name)
                 val why = when {
-                    skill == null -> "Skill não encontrada neste projeto nem nesta máquina: ajuste no Arsenal"
+                    found == null -> "Procurando a skill…"
+                    skill == null -> "Skill não encontrada no projeto nem nesta máquina: ajuste no Arsenal"
                     !agent.available() -> "Teste a integração com a IA no Arsenal"
                     agent.running != null -> "A IA já está trabalhando"
-                    runner.progress != null -> "Há uma missão em voo: acompanhe na Telemetria"
+                    runner.progress != null -> "Há uma missão em voo"
                     else -> null
                 }
                 add(JButton(name, AllIcons.Actions.Execute).apply {
@@ -537,13 +610,23 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         )
     }
 
+    /** Lançar confirma a feature escolhida: o [MissionRunner] grava a ativa antes de disparar. */
     private fun launch() {
         val mission = mission() ?: return
         if (runner.launch(mission)) {
             drafts.remove(mission.step)
             input.text = ""
+            if (mission.feature != null) service.refresh()
         }
         updateButtons()
+    }
+
+    /** Copiar o comando também confirma a feature: no chat, o agente acha a feature pelo `.specify/feature.json`. */
+    private fun copyCommand() {
+        val mission = mission() ?: return
+        val chosen = selectedFeature()
+        if (mission.feature != null && chosen != null && chosen.dir != service.snapshot.active?.dir) service.activate(chosen.dir)
+        runner.copyCommand(mission)
     }
 
     private fun mission(): Mission? {

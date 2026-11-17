@@ -49,10 +49,9 @@ class ReviewBranchWatcher(private val project: Project) : GitRepositoryChangeLis
         // De volta onde estava antes do PR: dá para devolver o stash ali mesmo.
         val stashBack = point != null && point.stash.isNotEmpty() && current == (if (point.branch) point.ref else "@${point.ref}")
         val content = listOfNotNull(
-            "Você trocou para $currentName: o modo revisão do PR #$number foi encerrado e os comentários feitos no editor voltam para o Radar.",
-            plural(drafts, "comentário não enviado continua", "comentários não enviados continuam").takeIf { drafts > 0 }?.let { "$it na Patrulha." },
-            point?.takeIf { it.stash.isNotEmpty() && !stashBack }?.let { "Suas alterações continuam no stash \"${it.stashMessage}\"." },
-            point?.takeIf { stashBack }?.let { "Suas alterações de ${it.ref} estão no stash \"${it.stashMessage}\"." },
+            "Você trocou para $currentName; os comentários do editor voltam para o Radar.",
+            plural(drafts, "não enviado segue", "não enviados seguem").takeIf { drafts > 0 }?.let { "$it na Patrulha." },
+            point?.takeIf { it.stash.isNotEmpty() }?.let { "Suas alterações estão no stash \"${it.stashMessage}\"." },
         ).joinToString(" ")
         val actions = buildList {
             point?.takeIf { stashBack }?.let { back ->

@@ -9,15 +9,16 @@ import com.intellij.openapi.editor.toolbar.floating.AbstractFloatingToolbarProvi
 import com.intellij.openapi.editor.toolbar.floating.FloatingToolbarComponent
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.vcs.changes.ChangeListListener
+import com.mio.irondome.interceptor.FireWithAiAction
 import com.mio.irondome.radar.ReviewCommentsListener
 import com.mio.irondome.radar.ReviewCommentService
 import com.mio.irondome.radar.ReviewGutter
 import com.mio.irondome.sentinela.ChangeDiff
 
 /**
- * Barra no canto superior direito do editor: "Inspecionar Diff" quando o arquivo tem alterações não
- * commitadas, "Disparar Este Arquivo" e "Disparar Todos" enquanto há alvos não disparados, e minimizar e ocultar
- * os comentários do PR durante a revisão dele. Cada ação decide se aparece conforme o arquivo aberto.
+ * Barra no canto superior direito do editor: "Inspecionar Diff" quando o arquivo tem alterações não commitadas,
+ * "Disparar com IA" enquanto há alvos pendentes, e minimizar e ocultar os comentários do PR durante a revisão dele.
+ * Cada ação decide se aparece conforme o arquivo aberto.
  */
 class ReviewFloatingToolbarProvider : AbstractFloatingToolbarProvider(ACTION_GROUP) {
 
@@ -35,7 +36,8 @@ class ReviewFloatingToolbarProvider : AbstractFloatingToolbarProvider(ACTION_GRO
         val service = project.service<ReviewCommentService>()
         val update = {
             val changed = file != null && ChangeDiff.changeOf(project, file) != null
-            if (service.hasPendingChanges() || changed || service.activePullRequest != 0) component.scheduleShow() else component.scheduleHide()
+            val pending = FireWithAiAction.fireable(service.activeComments()).isNotEmpty()
+            if (pending || changed || service.activePullRequest != 0) component.scheduleShow() else component.scheduleHide()
         }
         val connection = project.messageBus.connect(parentDisposable)
         connection.subscribe(ReviewCommentsListener.TOPIC, ReviewCommentsListener { update() })

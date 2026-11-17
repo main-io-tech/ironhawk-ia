@@ -35,7 +35,7 @@ class IronHawkPlatformTest : BasePlatformTestCase() {
             assertEquals(AttackProvider.CLAUDE, TomahawkSettings.provider)
             assertFalse(TomahawkSettings.ready)
 
-            TomahawkSettings.markVerified("06/11/2026 18:00")
+            AgentSettings.markVerified("06/11/2026 18:00")
             assertTrue("um teste vale para os dois sistemas", AgentSettings.ready && TomahawkSettings.ready)
 
             TomahawkSettings.model = "sonnet"
@@ -81,13 +81,21 @@ class IronHawkPlatformTest : BasePlatformTestCase() {
         }
     }
 
+    /** Espera a leitura do disco e do PATH, que o Arsenal faz fora da EDT, chegar à tela. */
+    private fun ArsenalPanel.awaitProbe(): ArsenalPanel = apply {
+        PlatformTestUtil.waitWithEventsDispatching("o Arsenal não terminou de ler o disco", { probed }, 30)
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+    }
+
     fun testTheArsenalShowsOnlyTheSystemsThatAreOn() {
         AgentSettings.autoSetupTried = true
-        val tab = ArsenalPanel(project)
+        val tab = ArsenalPanel(project).awaitProbe()
         try {
             val both = allTabsText(tab)
             assertTrue("Contenção da IA" in both && "Proteções das missões" in both)
             assertEquals("uma escolha só de onde rodar a IA", 1, Regex("Onde rodar a IA").findAll(both).count())
+            assertEquals("um cartão só de segurança", 1, Regex("Segurança").findAll(both).count())
+            assertTrue("a Contenção é sempre ligada; as Proteções, não", "sempre ligada" in both)
 
             IronHawkSystem.DEFENSE.enabled = false
             PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
@@ -109,14 +117,15 @@ class IronHawkPlatformTest : BasePlatformTestCase() {
 
     fun testTheArsenalHasFourTabsAndOpensWhereThereIsSomethingToSolve() {
         AgentSettings.autoSetupTried = true
-        val tab = ArsenalPanel(project)
+        val tab = ArsenalPanel(project).awaitProbe()
         try {
             assertEquals(listOf("IA", "Execução", "Recursos", "Execuções"), tabTitles(tab))
             val expected = if (AgentSettings.ready) "Execuções" else "IA"
             assertEquals("abre na aba do problema, ou nas execuções com tudo pronto", expected, selectedTab(tab))
             assertTrue("o cabeçalho de estado fica à vista", "Configuração" in panelText(tab) || "IA" in panelText(tab))
             val text = allTabsText(tab)
-            assertEquals("cada aba mostra o seu assunto", true, "CLI de IA" in text && "Onde rodar a IA" in text && "O que a IA libera" in text)
+            assertEquals("cada aba mostra o seu assunto", true, "CLI de IA" in text && "Onde rodar a IA" in text && "Skills extras" in text)
+            assertFalse("sem o texto de divulgação", "O que a IA libera" in text)
         } finally {
             Disposer.dispose(tab)
         }

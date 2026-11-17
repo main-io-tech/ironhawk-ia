@@ -84,8 +84,7 @@ class IronHawkWindow(private val project: Project) {
                 OpenSettings(),
             ),
         )
-        val gear = listOf(TabErrorPanel.COMPATIBILITY_ACTION, TabErrorPanel.ERROR_LOG_ACTION).mapNotNull(actions::getAction)
-        if (gear.isNotEmpty()) toolWindow.setAdditionalGearActions(DefaultActionGroup(gear))
+        actions.getAction(TabErrorPanel.DIAGNOSTICS_ACTION)?.let { toolWindow.setAdditionalGearActions(DefaultActionGroup(it)) }
         Disposer.register(toolWindow.disposable) {
             (tabs.values.flatten() + listOfNotNull(arsenal)).filter { !it.onPanel() }.forEach(Disposer::dispose)
             tabs.clear()
@@ -173,7 +172,7 @@ class IronHawkWindow(private val project: Project) {
         }
         return ContentFactory.getInstance().createContent(component, InterceptorTab.TITLE, false).apply {
             icon = IronDomeIcons.arsenal
-            description = "A IA dos dois sistemas: qual CLI usar, o teste da integração, o que é de cada sistema e as execuções recentes"
+            description = "A IA dos dois sistemas: o CLI, onde rodar, a segurança e as execuções recentes"
             putUserData(ToolWindow.SHOW_CONTENT_ICON, true)
             setDisposer(panel)
         }

@@ -134,7 +134,7 @@ class MissionRunner(private val project: Project) {
     private fun guard(root: Path, runName: String, mission: Mission, provider: AgentProvider, log: (String) -> Unit): Guard {
         if (!Guardrails.enabled) {
             runCatching { Guardrails.applyCursorConfig(root, on = false) }
-            log("Proteções desligadas no Arsenal: a IA roda sem as regras do Tomahawk e sem ponto de restauração")
+            log("Proteções desligadas no Arsenal: a IA roda sem as regras do IronHawk IA e sem ponto de restauração")
             return Guard(null, null)
         }
         var settings: Path? = null
@@ -267,7 +267,7 @@ class MissionRunner(private val project: Project) {
             val command = launch.terminal(provider, prompt, TomahawkSettings.model, extra, shell, root.toString(), env, settings = guard.settings)
             var error: Throwable? = null
             ApplicationManager.getApplication().invokeAndWait({
-                error = runCatching { terminal.run(project, root.toString(), "Tomahawk: ${mission.step.codename}", command) }.exceptionOrNull()
+                error = runCatching { terminal.run(project, root.toString(), "IronHawk IA: ${mission.step.codename}", command) }.exceptionOrNull()
             }, ModalityState.any())
             val entry = Transcript.Entry(
                 step = mission.step,
@@ -386,7 +386,7 @@ class MissionRunner(private val project: Project) {
             }
             while (!process.waitFor(100, TimeUnit.MILLISECONDS)) {
                 blocked.get()?.let { why ->
-                    error = "Abortada pela proteção do Tomahawk: $why."
+                    error = "Abortada pela proteção do IronHawk IA: $why."
                     stop()
                 }
                 if (error != null) break
@@ -403,7 +403,7 @@ class MissionRunner(private val project: Project) {
             }
             reader.join(2_000)
             errors.join(1_000)
-            if (error == null) blocked.get()?.let { error = "Abortada pela proteção do Tomahawk: $it." }
+            if (error == null) blocked.get()?.let { error = "Abortada pela proteção do IronHawk IA: $it." }
             if (!cancelled && error == null && process.exitValue() != 0) {
                 error = synchronized(stderr) { stderr.toString() }.lines().lastOrNull { it.isNotBlank() }
                     ?: "O ${provider.title} terminou com o código ${process.exitValue()}."

@@ -58,7 +58,7 @@ class DependencyPanel(private val project: Project, @Suppress("UNUSED_PARAMETER"
 
     init {
         val actions = DefaultActionGroup(
-            object : DumbAwareAction("Mirar Classe Atual", "Desenha o diagrama de classes da classe aberta no editor", IronDomeIcons.impacto) {
+            object : DumbAwareAction("Mirar Classe Atual", "Desenha o diagrama da classe aberta no editor e das ligadas a ela", IronDomeIcons.impacto) {
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
                 override fun actionPerformed(e: AnActionEvent) = analyzeCurrentEditor()
             },
@@ -153,7 +153,7 @@ class DependencyPanel(private val project: Project, @Suppress("UNUSED_PARAMETER"
             header.update(
                 "Raio de Impacto",
                 color,
-                message ?: "Mire uma classe para ver o diagrama de classes dela e das que dependem dela ou de que ela depende.",
+                message ?: "Mire uma classe para ver quem depende dela e de quem ela depende.",
                 stats = emptyList(),
             )
             return
@@ -220,7 +220,7 @@ class DependencyPanel(private val project: Project, @Suppress("UNUSED_PARAMETER"
 
     private fun table(model: ClassTableModel) = JBTable(model).apply {
         emptyText.text = "Nenhuma classe no raio ainda"
-        emptyText.appendSecondaryText("Mire uma classe para preencher esta tabela", SimpleTextAttributes.GRAYED_ATTRIBUTES, null)
+        emptyText.appendSecondaryText("Mirar Classe Atual", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { analyzeCurrentEditor() }
         autoCreateRowSorter = true
         setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
         setShowGrid(false)

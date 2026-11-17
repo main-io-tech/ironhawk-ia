@@ -17,7 +17,6 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.SimpleTextAttributes
-import com.intellij.ui.TitledSeparator
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
@@ -54,11 +53,13 @@ import com.mio.tomahawk.run.ExtraSkills
 import com.mio.tomahawk.run.Guardrails
 import com.mio.tomahawk.run.LaunchTerminal
 import com.mio.tomahawk.run.MissionRunner
+import com.mio.tomahawk.run.Skill
 import com.mio.tomahawk.run.SpecKitSetup
 import com.mio.tomahawk.run.TomahawkSettings
 import com.mio.tomahawk.speckit.SddStep
 import com.mio.tomahawk.speckit.SpecKitService
 import com.mio.tomahawk.ui.SpecKitSetupPanel
+import org.jetbrains.annotations.TestOnly
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.event.MouseAdapter
@@ -76,10 +77,10 @@ import javax.swing.SpinnerNumberModel
 import javax.swing.SwingConstants
 
 /**
- * O Arsenal, um só para os dois sistemas, organizado por assunto: a IA que os dois usam (configuração automática, o
- * CLI, onde ele está, o executável, o modelo, o tempo, os argumentos, a chave do Cursor e os testes); onde rodar a IA,
- * uma escolha só; as proteções; o que a IA libera e o Spec Kit; e as execuções recentes. O que vale só para um sistema
- * leva a etiqueta dele e some com ele desligado.
+ * O Arsenal, um só para os dois sistemas, em quatro abas: IA (a configuração automática e o CLI), Execução (onde rodar,
+ * a segurança de cada modo e o devcontainer), Recursos (as skills extras e o Spec Kit do Ataque) e Execuções (as
+ * recentes dos dois sistemas). O que vale só para um sistema leva a etiqueta dele e some com ele desligado. O que lê o
+ * disco ou o PATH roda fora da EDT ([Probe]); a tela mostra a última leitura e se refaz quando a próxima chega.
  */
 class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, true), Disposable {
 
@@ -87,6 +88,40 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
 
     /** Uma execução da IA: um pedido da Defesa ou uma missão do Ataque. */
     private class Run(val path: Path, val title: String, val status: String, val ok: Boolean, val system: IronHawkSystem, val time: Long)
+
+    /** O que a tela precisa do disco e do PATH, lido fora da EDT de uma vez. */
+    private class Probe(
+        val launch: AgentLaunch?,
+        val ready: Boolean,
+        val verifiedAt: String?,
+        val terminalVerifiedAt: String?,
+        val containerCli: Boolean,
+        val containerConfig: Path?,
+        val containerProblems: List<String>,
+        val specify: Path?,
+        val specifyInfo: SpecKitSetup.Installed?,
+        val skills: List<Skill>,
+    ) {
+        companion object {
+            fun read(root: Path?, attack: Boolean): Probe {
+                val config = root?.let(DevContainer::config)?.takeIf { Files.isRegularFile(it) }
+                val specify = if (attack) TomahawkSettings.resolveSpecify() else null
+                val home = runCatching { Path.of(System.getProperty("user.home")) }.getOrNull()
+                return Probe(
+                    launch = AgentSettings.launch(),
+                    ready = AgentSettings.ready,
+                    verifiedAt = AgentSettings.verifiedAt,
+                    terminalVerifiedAt = AgentSettings.terminalVerifiedAt,
+                    containerCli = DevContainer.cli() != null,
+                    containerConfig = config,
+                    containerProblems = config?.let { DevContainer.audit(runCatching { Files.readString(it) }.getOrDefault("")) }.orEmpty(),
+                    specify = specify,
+                    specifyInfo = SpecKitSetup.infoFor(specify),
+                    skills = if (attack) ExtraSkills.discover(root, home) else emptyList(),
+                )
+            }
+        }
+    }
 
     private val service = SpecKitService.getInstance(project)
     private val missions = MissionRunner.getInstance(project)
@@ -105,8 +140,8 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         isEditable = true
         addActionListener { if (!loading) updateProviderFields() }
     }
-    /** O CLI achado em cada distribuição, por `provedor|distribuição`: procurar roda o wsl.exe. */
-    private val wslFound = mutableMapOf<String, String?>()
+    /** O CLI achado em cada lugar, por `provedor|onde|caminho`: procurar roda o wsl.exe ou lê o PATH, fora da EDT. */
+    private val foundCache = mutableMapOf<String, String?>()
     private val executable = TextFieldWithBrowseButton().apply {
         addBrowseFolderListener(project, FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor().withTitle("Executável do CLI de IA"))
     }
@@ -114,20 +149,20 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     private val model = JBTextField().apply { emptyText.text = "Padrão do CLI" }
     private val timeout = JSpinner(SpinnerNumberModel(AgentSettings.DEFAULT_TIMEOUT_MINUTES, 1, AgentSettings.MAX_TIMEOUT_MINUTES, 5))
     private val extraArgs = JBTextField().apply { emptyText.text = "Ex.: --approve-mcps" }
+
+    /** Vazio mantém a chave salva; só o Remover a apaga, como nas configurações. */
     private val cursorKey = JBPasswordField()
+    private val keyState = small("")
     private val clearKey = ActionLink("Remover a chave salva") {
         ApplicationManager.getApplication().executeOnPooledThread { AgentSettings.cursorApiKey = null }
         cursorKey.text = ""
     }
     private val providerNotice = NoticeBox(AllIcons.General.Warning, Tone.YELLOW)
-    private val hangNotice = NoticeBox(AllIcons.General.Warning, Tone.YELLOW).apply {
-        text = "O agy -p pode travar quando chamado por outro programa (issue 318 do antigravity-cli); o tempo máximo interrompe."
-    }
     private val saveTest = JButton("Salvar e Testar", AllIcons.Actions.Execute).apply {
         putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true)
         addActionListener { save(test = true) }
     }
-    private val saveOnly = JButton("Salvar").apply { addActionListener { save(test = false) } }
+    private val saveOnly = JButton("Salvar", AllIcons.Actions.MenuSaveall).apply { addActionListener { save(test = false) } }
     private val terminalTest = JButton("Testar no Terminal", AllIcons.Debugger.Console).apply { addActionListener { testTerminal() } }
     private val testLine = small("")
     private val terminalLine = small("")
@@ -138,13 +173,17 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     private val autoLine = small("")
     private val autoNotice = NoticeBox(AllIcons.General.Warning, Tone.YELLOW).apply { isVisible = false }
 
-    private val hostRow = labeled("Onde está o CLI", host)
+    private val hostRow = JPanel(VerticalLayout(JBUI.scale(3), VerticalLayout.FILL)).apply {
+        isOpaque = false
+        add(labeled("Onde está o CLI", host))
+        add(small(HOST_HINT))
+    }
     private val distroRow = labeled("Distribuição do WSL", distro)
     private val keyRow = JPanel(VerticalLayout(JBUI.scale(3), VerticalLayout.FILL)).apply {
         isOpaque = false
         add(labeled("Chave de API do Cursor", cursorKey))
-        add(small("Opcional: sem ela, vale o agent login. Crie em cursor.com/dashboard › Integrations. Fica no cofre de senhas da IDE."))
-        add(clearKey)
+        add(small(CURSOR_KEY_HINT))
+        add(row(keyState, clearKey))
     }
     private val cliUses = small("")
 
@@ -158,7 +197,7 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         add(small("Vão para o CLI antes do pedido, separados por espaço; aspas agrupam."))
     }
     private val advancedToggle = ActionLink(ADVANCED_CLOSED) { advanced.isVisible = !advanced.isVisible; updateAdvancedToggle() }
-    private val cliCard =JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)).apply {
+    private val cliCard = JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)).apply {
         isOpaque = false
         add(subtitle("CLI de IA", AllIcons.Nodes.Console))
         add(cliUses)
@@ -176,7 +215,6 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         add(keyRow)
         add(advancedToggle)
         add(advanced)
-        add(hangNotice)
         add(row(saveTest, saveOnly, terminalTest))
         add(testLine)
         add(terminalLine)
@@ -184,10 +222,7 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     private val autoCard = JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)).apply {
         isOpaque = false
         add(subtitle("Configuração automática", AllIcons.Actions.Lightning))
-        add(small(
-            "Procura o ${AgentProvider.entries.joinToString(", ") { "${it.title} CLI" }} instalados" +
-                (if (AgentLaunch.wslSupported) ", nesta máquina e no WSL," else "") + " e testa cada um, com o modelo padrão, até um responder.",
-        ))
+        add(small(AUTO_SETUP_HINT))
         add(row(autoButton))
         add(autoLine)
         add(autoNotice)
@@ -227,6 +262,17 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     private var terminalStatus: Status? = null
     private var containerStatus: Status? = null
     private var containerBusy = false
+    private var securityDetailsOpen = false
+
+    /** A última leitura do disco e do PATH; nula até a primeira chegar. */
+    private var probe: Probe? = null
+    private var probing = false
+    private var probeAgain = false
+    private var autoSetupChecked = false
+
+    /** A primeira leitura do disco e do PATH já chegou à tela. */
+    @get:TestOnly
+    internal val probed: Boolean get() = probe != null
 
     init {
         aiTab.add(autoCard)
@@ -247,9 +293,11 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         toolbar = ActionManager.getInstance().createActionToolbar(
             "IronHawk.ArsenalToolbar",
             DefaultActionGroup(refreshAction {
+                foundCache.clear()
                 loadDefenseRuns()
                 service.refresh(0)
-                SpecKitSetup.check(force = true)
+                ApplicationManager.getApplication().executeOnPooledThread { SpecKitSetup.check(force = true) }
+                refreshCards()
             }),
             true,
         ).apply { targetComponent = this@ArsenalPanel }.wrapping().component
@@ -276,7 +324,6 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         loadDistros()
         loadDefenseRuns()
         refreshCards()
-        if (!AgentSettings.ready && !AgentSettings.autoSetupTried && AgentSettings.untouched) app.invokeLater({ autoSetup() }, project.disposed)
     }
 
     override fun dispose() = Unit
@@ -293,10 +340,6 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             extraArgs.text = AgentSettings.extraArgs.orEmpty()
         } finally {
             loading = false
-        }
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val key = AgentSettings.cursorApiKey.orEmpty()
-            ApplicationManager.getApplication().invokeLater({ cursorKey.text = key }, project.disposed)
         }
         updateProviderFields()
     }
@@ -324,33 +367,29 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     private fun updateProviderFields() {
         val chosen = provider.selectedItem as? AgentProvider ?: return
         keyRow.isVisible = chosen == AgentProvider.CURSOR
-        clearKey.isVisible = AgentSettings.hasCursorApiKey
-        hangNotice.isVisible = chosen == AgentProvider.ANTIGRAVITY
+        val savedKey = AgentSettings.hasCursorApiKey
+        keyState.text = if (savedKey) "Há uma chave salva; deixe o campo vazio para mantê-la." else "Nenhuma chave salva."
+        clearKey.isVisible = savedKey
         providerNotice.isVisible = chosen == AgentProvider.ANTIGRAVITY
-        providerNotice.text = "O Antigravity não está no devcontainer: com ele, a IA só roda no terminal da IDE." +
-            if (IronHawkSystem.ATTACK.enabled) " Ele também não lança as missões do Ataque, porque o Spec Kit não tem integração para ele." else ""
+        providerNotice.text = antigravityHint()
         hostRow.isVisible = AgentLaunch.wslSupported
         val inWsl = host.selectedItem == AgentHost.WSL && AgentLaunch.wslSupported
         distroRow.isVisible = inWsl
-        executable.isEnabled = true
         val configured = executable.text.trim().ifEmpty { null }
-        if (!inWsl) {
-            showFound(AgentSettings.resolveExecutable(chosen, configured)?.toString(), chosen)
-            return
-        }
         val name = (distro.selectedItem as? String)?.trim()?.ifEmpty { null }
         when {
-            name == null -> showFound(null, chosen, "Escolha a distribuição do WSL.")
-            configured != null -> showFound("WSL $name: $configured", chosen)
+            inWsl && name == null -> showFound(null, chosen, "Escolha a distribuição do WSL.")
+            inWsl && configured != null -> showFound("WSL $name: $configured", chosen)
             else -> {
-                val key = "${chosen.name}|$name"
-                if (key in wslFound) return showFound(wslFound[key]?.let { "WSL $name: $it" }, chosen)
-                found.text = "Procurando o ${chosen.title} CLI no WSL $name…"
+                val key = "${chosen.name}|${if (inWsl) name else ""}|${configured.orEmpty()}"
+                if (key in foundCache) return showFound(foundCache[key], chosen)
+                found.text = "Procurando o ${chosen.title} CLI${if (inWsl) " no WSL $name" else ""}…"
                 found.foreground = UIUtil.getContextHelpForeground()
                 ApplicationManager.getApplication().executeOnPooledThread {
-                    val path = AgentLaunch.findInWsl(chosen, name)
+                    val path = if (inWsl) AgentLaunch.findInWsl(chosen, name!!)?.let { "WSL $name: $it" }
+                    else AgentSettings.resolveExecutable(chosen, configured)?.toString()
                     ApplicationManager.getApplication().invokeLater({
-                        wslFound[key] = path
+                        foundCache[key] = path
                         updateProviderFields()
                     }, project.disposed)
                 }
@@ -372,11 +411,12 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         AgentSettings.model = model.text
         AgentSettings.timeoutMinutes = timeout.value as Int
         AgentSettings.extraArgs = extraArgs.text
-        val key = String(cursorKey.password)
+        val key = String(cursorKey.password).trim()
+        cursorKey.text = ""
         testStatus = Status(if (test) "Testando o ${AgentSettings.provider.title}…" else "Salvo.", if (test) null else true)
         refreshCards()
         ApplicationManager.getApplication().executeOnPooledThread {
-            if (key.isNotBlank()) AgentSettings.cursorApiKey = key
+            if (key.isNotEmpty()) AgentSettings.cursorApiKey = key
             ApplicationManager.getApplication().invokeLater({
                 saving = false
                 if (test) {
@@ -407,6 +447,7 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
                 refreshCards()
             },
             onDone = { result ->
+                foundCache.clear()
                 loadFields()
                 status(autoLine, Status(if (result.ok) result.message else "Não deu para configurar sozinho: termine nos campos do CLI.", result.ok))
                 autoNotice.isVisible = !result.ok
@@ -427,7 +468,7 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             }
             ApplicationManager.getApplication().invokeLater({
                 defenseRuns = loaded
-                refreshCards()
+                render()
             }, project.disposed)
         }
     }
@@ -446,9 +487,46 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         if (run.system == IronHawkSystem.DEFENSE) agent.open(run.path) else missions.open(run.path)
     }
 
-    /** O cabeçalho, os botões do CLI e os cartões de baixo, com o estado de agora. */
+    /** Pede uma leitura nova do disco e do PATH e, enquanto ela não chega, mostra a última. */
     private fun refreshCards() {
-        updateHeader()
+        requestProbe()
+        render()
+    }
+
+    private fun requestProbe() {
+        if (probing) {
+            probeAgain = true
+            return
+        }
+        probing = true
+        val root = service.root()
+        val attack = IronHawkSystem.ATTACK.enabled
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val fresh = runCatching { Probe.read(root, attack) }.getOrNull()
+            ApplicationManager.getApplication().invokeLater({
+                probing = false
+                fresh?.let { probe = it }
+                if (probeAgain) {
+                    probeAgain = false
+                    requestProbe()
+                }
+                render()
+                fresh?.let(::autoSetupOnce)
+            }, project.disposed)
+        }
+    }
+
+    /** A configuração automática roda sozinha na primeira vez, se nada foi configurado à mão. */
+    private fun autoSetupOnce(probe: Probe) {
+        if (autoSetupChecked) return
+        autoSetupChecked = true
+        if (!probe.ready && !AgentSettings.autoSetupTried && AgentSettings.untouched) autoSetup()
+    }
+
+    /** O cabeçalho, os botões do CLI e os cartões de baixo, com o estado de agora e a última leitura do disco. */
+    private fun render() {
+        val probe = probe
+        updateHeader(probe)
         val busy = AgentAutoSetup.running || AgentVerifier.testing
         autoButton.isEnabled = !busy
         autoButton.text = if (AgentAutoSetup.running) "Configurando…" else "Configurar Automaticamente"
@@ -456,30 +534,30 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         saveTest.text = if (AgentVerifier.testing) "Testando…" else "Salvar e Testar"
         saveOnly.isEnabled = !busy
         val terminal = AgentTerminal.available() != null
-        terminalTest.isEnabled = terminal && !AgentVerifier.testingTerminal && AgentSettings.launch() != null
+        terminalTest.isEnabled = terminal && !AgentVerifier.testingTerminal && probe?.launch != null
         terminalTest.text = if (AgentVerifier.testingTerminal) "Esperando o Terminal…" else "Testar no Terminal"
         terminalTest.toolTipText = if (terminal) "Abre o terminal da IDE e roda o CLI com a configuração salva" else "O plugin de terminal da IDE está desligado"
-        status(testLine, testStatus ?: AgentSettings.verifiedAt?.takeIf { AgentSettings.ready }?.let { Status("Testada em $it.", true) })
-        status(terminalLine, terminalStatus ?: AgentSettings.terminalVerifiedAt?.let { Status("Terminal testado em $it.", true) })
+        status(testLine, testStatus ?: probe?.verifiedAt?.takeIf { probe.ready }?.let { Status("Testada em $it.", true) })
+        status(terminalLine, terminalStatus ?: probe?.terminalVerifiedAt?.let { Status("Terminal testado em $it.", true) })
         cliUses.text = "O agente que executa " + listOfNotNull(
-            "as ordens de interceptação e as revisões da Defesa".takeIf { IronHawkSystem.DEFENSE.enabled },
-            "as missões do Spec Kit do Ataque".takeIf { IronHawkSystem.ATTACK.enabled },
+            "as tarefas da Defesa".takeIf { IronHawkSystem.DEFENSE.enabled },
+            "as missões do Ataque".takeIf { IronHawkSystem.ATTACK.enabled },
         ).joinToString(" e ") + "."
         updateProviderFields()
 
         executionTab.removeAll()
         executionTab.add(runCard())
-        executionTab.add(containerCard())
-        if (IronHawkSystem.DEFENSE.enabled) executionTab.add(containmentCard())
-        if (IronHawkSystem.ATTACK.enabled) executionTab.add(guardCard())
+        executionTab.add(securityCard())
+        executionTab.add(containerCard(probe))
         resourcesTab.removeAll()
-        resourcesTab.add(capsCard())
         if (IronHawkSystem.ATTACK.enabled) {
-            resourcesTab.add(skillsCard())
-            resourcesTab.add(specKitCard())
+            resourcesTab.add(skillsCard(probe))
+            resourcesTab.add(specKitCard(probe))
+        } else {
+            resourcesTab.add(small("Os recursos do Ataque aparecem aqui quando ele está ligado."))
         }
         runsTab.removeAll()
-        runsTab.add(small("O pedido, os passos, os arquivos alterados e a resposta de cada execução: as da Defesa em ironhawk/iron-dome/ia/ e as missões do Ataque em ironhawk/tomahawk/execucoes/. Duplo clique abre o registro."))
+        runsTab.add(small("Duplo clique abre o registro: o pedido, os passos, os arquivos alterados e a resposta."))
         runsModel.clear()
         runs().forEach(runsModel::addElement)
         runsTab.add(ScrollPaneFactory.createScrollPane(runsList).apply { preferredSize = JBUI.size(120, 320) })
@@ -487,7 +565,7 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             it.revalidate()
             it.repaint()
         }
-        updateTabs()
+        updateTabs(probe)
     }
 
     private fun updateAdvancedToggle() {
@@ -495,39 +573,32 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     }
 
     /** A pendência de uma aba, ou nulo se está tudo certo nela. */
-    private fun pending(tab: Tab): Pending? = when (tab) {
+    private fun pending(tab: Tab, probe: Probe): Pending? = when (tab) {
         Tab.AI -> when {
-            AgentSettings.launch() == null -> Pending(Tone.RED, "a IA não está configurada")
-            !AgentSettings.ready -> Pending(Tone.YELLOW, "a integração ainda não foi testada")
+            probe.launch == null -> Pending(Tone.RED, "a IA não está configurada")
+            !probe.ready -> Pending(Tone.YELLOW, "a integração ainda não foi testada")
             else -> null
         }
-        Tab.EXECUTION -> {
-            val root = service.root()
-            val config = root?.let(DevContainer::config)?.takeIf { Files.isRegularFile(it) }
-            val problems = config?.let { DevContainer.audit(runCatching { Files.readString(it) }.getOrDefault("")) }.orEmpty()
-            when {
-                problems.isNotEmpty() -> Pending(Tone.RED, "o devcontainer não isola a máquina")
-                AgentSettings.runMode == AgentRunMode.BACKGROUND && (config == null || DevContainer.cli() == null) ->
-                    Pending(Tone.YELLOW, "a IA roda na aba, mas o devcontainer não está pronto")
-                else -> null
-            }
+        Tab.EXECUTION -> when {
+            probe.containerProblems.isNotEmpty() -> Pending(Tone.RED, "o devcontainer não isola a máquina")
+            // Perguntar a cada vez também pode rodar na aba: o devcontainer precisa estar pronto do mesmo jeito.
+            AgentSettings.runMode != AgentRunMode.TERMINAL && (probe.containerConfig == null || !probe.containerCli) ->
+                Pending(Tone.YELLOW, "a IA pode rodar na aba, mas o devcontainer não está pronto")
+            else -> null
         }
-        Tab.RESOURCES -> if (!IronHawkSystem.ATTACK.enabled) {
-            null
-        } else {
-            val info = TomahawkSettings.resolveSpecify()?.let(SpecKitSetup::infoFor)
-            when {
-                TomahawkSettings.resolveSpecify() == null -> Pending(Tone.YELLOW, "o specify do Spec Kit não está instalado")
-                info?.broken == true -> Pending(Tone.RED, "o specify está com defeito")
-                else -> null
-            }
+        Tab.RESOURCES -> when {
+            !IronHawkSystem.ATTACK.enabled -> null
+            probe.specify == null -> Pending(Tone.YELLOW, "o specify do Spec Kit não está instalado")
+            probe.specifyInfo?.broken == true -> Pending(Tone.RED, "o specify está com defeito")
+            else -> null
         }
         Tab.RUNS -> null
     }
 
-    /** Os pontos nos títulos das abas, o link da pendência no topo e, na primeira vez, a aba em que abrir. */
-    private fun updateTabs() {
-        val pendings = Tab.entries.mapNotNull { tab -> pending(tab)?.let { tab to it } }
+    /** Os pontos nos títulos das abas, o link da pendência no topo e, na primeira leitura, a aba em que abrir. */
+    private fun updateTabs(probe: Probe?) {
+        probe ?: return
+        val pendings = Tab.entries.mapNotNull { tab -> pending(tab, probe)?.let { tab to it } }
         Tab.entries.forEach { tab ->
             val found = pendings.firstOrNull { it.first == tab }?.second
             tabs.setIconAt(tab.ordinal, found?.let { ColorIcon(8, it.tone.accent) })
@@ -542,101 +613,141 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         }
     }
 
-    private fun updateHeader() {
-        val launch = AgentSettings.launch()
+    private fun updateHeader(probe: Probe?) {
         val chosen = AgentSettings.provider
+        val launch = probe?.launch
         val working = agent.running
-        val subtitle = if (launch == null) chosen.installHint
-        else "${chosen.title} CLI${launch.where} · ${AgentSettings.model?.let { "modelo $it" } ?: "modelo padrão"}" +
-            AgentSettings.verifiedAt?.let { " · testada em $it" }.orEmpty()
+        val subtitle = when {
+            probe == null -> "${chosen.title} CLI"
+            launch == null -> chosen.installHint
+            else -> "${chosen.title} CLI${launch.where} · ${AgentSettings.model?.let { "modelo $it" } ?: "modelo padrão"}" +
+                probe.verifiedAt?.let { " · testada em $it" }.orEmpty()
+        }
         when {
             AgentAutoSetup.running -> header.update("Configurando a IA…", Tone.YELLOW.accent, autoLine.text)
             AgentVerifier.testing -> header.update("Testando a integração…", Tone.YELLOW.accent, subtitle)
+            probe == null -> header.update("Verificando a IA…", Tone.GRAY.accent, subtitle)
             launch == null -> header.update("IA não configurada", Tone.GRAY.accent, subtitle,
                 warning = if (AgentSettings.host == AgentHost.WSL) "Escolha a distribuição do WSL." else null)
-            !AgentSettings.ready -> header.update("Teste a integração", Tone.YELLOW.accent, subtitle,
+            !probe.ready -> header.update("Teste a integração", Tone.YELLOW.accent, subtitle,
                 warning = "Os botões de IA ficam desligados até Salvar e Testar passar.")
             working != null -> header.update("IA trabalhando: ${working.title}", Tone.GREEN.accent, subtitle)
             missions.progress != null -> header.update("Missão em voo", Tone.GREEN.accent, subtitle)
-            else -> header.update("IA pronta para os dois sistemas", Tone.GREEN.accent, subtitle)
+            else -> header.update("IA pronta", Tone.GREEN.accent, subtitle)
         }
     }
 
-    /** Onde rodar a IA, uma escolha só para os dois sistemas, e o que cada um faz com ela. */
+    /** Onde rodar a IA, uma escolha só para os dois sistemas. */
     private fun runCard(): JComponent = card {
-        val defense = IronHawkSystem.DEFENSE.enabled
-        val attack = IronHawkSystem.ATTACK.enabled
         add(subtitle("Onde rodar a IA", AllIcons.Actions.Execute))
-        add(small(if (defense && attack) "Uma escolha só para a Defesa e o Ataque." else "Quando um botão chama a IA."))
         add(labeled("Rodar", ComboBox(AgentRunMode.entries.toTypedArray()).apply {
             renderer = SimpleListCellRenderer.create("") { it.label }
             selectedItem = AgentSettings.runMode
             addActionListener { (selectedItem as? AgentRunMode)?.let { if (it != AgentSettings.runMode) AgentSettings.runMode = it } }
         }))
-        if (defense) add(tagged(IronHawkSystem.DEFENSE, RUN_MODE_HINT))
-        if (attack) add(tagged(IronHawkSystem.ATTACK, ATTACK_RUN_MODE_HINT))
-        if (defense) {
-            add(NoticeBox(AllIcons.General.Information, Tone.BLUE).apply {
-                text = "Defesa na aba: só no devcontainer do projeto. Nas tarefas que alteram arquivos, como Disparar com IA, não há janela para aprovar " +
-                    "cada passo: o Cursor roda com --force (edita e roda comandos sem perguntar), o Claude Code com --permission-mode acceptEdits " +
-                    "(edita sem perguntar; comandos de terminal só os liberados nas configurações dele ou com --allowedTools nos argumentos extras) e o " +
-                    "Antigravity e o Codex com --dangerously-skip-permissions e --dangerously-bypass-approvals-and-sandbox. " +
-                    (if (AgentSettings.confirmWrites) "Por isso o plugin pergunta antes de cada uma. " else "Você desligou a pergunta antes de cada uma. ") +
-                    "No terminal, a IA pede aprovação a cada passo. Nas de leitura, como revisões e explicações, nenhum deles recebe permissão para escrever."
-            })
-            if (!AgentSettings.confirmWrites) add(ActionLink("Voltar a perguntar antes de alterar arquivos") { AgentSettings.confirmWrites = true })
-        }
-        if (attack) {
-            add(NoticeBox(AllIcons.General.Warning, Tone.YELLOW).apply {
-                text = "Missões do Ataque na aba: só no devcontainer do projeto, a única forma de a IA rodar sem perguntar. Lá o Cursor roda com " +
-                    "--force --trust, o Claude Code com --permission-mode bypassPermissions e o Codex com --dangerously-bypass-approvals-and-sandbox, " +
-                    "mas o container só enxerga a pasta do projeto.\n" +
-                    "No terminal da IDE: modo agente sem permissão total, nesta máquina: a IA edita o projeto e pede a sua aprovação antes de rodar comandos.\n" +
-                    "Textos (commit, PR, respostas do Rádio): só leitura, para um comentário malicioso num PR não dar à IA permissão para alterar arquivos."
-            })
-        }
+        add(small(RUN_MODE_HINT))
+        if (IronHawkSystem.ATTACK.enabled) add(tagged(IronHawkSystem.ATTACK, "Cada etapa do Lançador pode trocar na hora de lançar."))
         if (LaunchTerminal.available() == null) add(small("O plugin de terminal da IDE está desligado: a IA só roda na aba.").apply { foreground = JBColor.RED })
     }
 
-    private fun containerCard(): JComponent = card {
+    /**
+     * A segurança de cada modo, num cartão só: o que vale na aba, no terminal e nos textos, a contenção da Defesa (sempre
+     * ligada) e as proteções das missões do Ataque (que dá para desligar). As flags de cada CLI ficam nos detalhes.
+     */
+    private fun securityCard(): JComponent = card {
+        val defense = IronHawkSystem.DEFENSE.enabled
+        val attack = IronHawkSystem.ATTACK.enabled
+        add(subtitle("Segurança", AllIcons.Nodes.Padlock))
+        caps(
+            listOf(
+                Triple(true, "Na aba", "sem perguntar, só no devcontainer, que enxerga só a pasta do projeto."),
+                Triple(true, "No terminal", "nesta máquina, com a IA pedindo a sua aprovação antes de agir."),
+                Triple(true, "Textos e revisões", "sempre só leitura, nos dois modos."),
+            ),
+        )
+        if (defense) {
+            add(tagged(IronHawkSystem.DEFENSE, "Contenção da IA, sempre ligada: foto do projeto antes de alterar e Desfazer Alterações da IA no fim."))
+            add(JBCheckBox("Perguntar antes de cada tarefa que altera arquivos na aba", AgentSettings.confirmWrites).apply {
+                isOpaque = false
+                addActionListener { AgentSettings.confirmWrites = isSelected }
+            })
+        }
+        if (attack) {
+            val on = TomahawkSettings.guardrails
+            add(JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
+                isOpaque = false
+                add(JBCheckBox("Proteções das missões: regras, vigia e ponto de restauração", on).apply {
+                    isOpaque = false
+                    addActionListener {
+                        TomahawkSettings.guardrails = isSelected
+                        val enabled = isSelected
+                        service.root()?.let { root ->
+                            ApplicationManager.getApplication().executeOnPooledThread { runCatching { Guardrails.applyCursorConfig(root, enabled) } }
+                        }
+                        refreshCards()
+                    }
+                }, BorderLayout.CENTER)
+                add(systemPill(IronHawkSystem.ATTACK), BorderLayout.EAST)
+            })
+            if (!on) {
+                add(NoticeBox(AllIcons.General.Error, Tone.RED).apply {
+                    text = "Desligadas: as missões rodam sem as regras do Ataque e sem ponto de restauração."
+                })
+            }
+            add(row(JButton("Desfazer a Última Missão", AllIcons.Actions.Rollback).apply {
+                isEnabled = missions.progress == null
+                toolTipText = "Volta o projeto para o ponto de restauração da última missão, depois de mostrar o que mudou"
+                addActionListener { missions.undo() }
+            }))
+        }
+        add(ActionLink(if (securityDetailsOpen) DETAILS_OPEN else DETAILS_CLOSED) {
+            securityDetailsOpen = !securityDetailsOpen
+            render()
+        })
+        if (securityDetailsOpen) {
+            if (defense) {
+                add(tagged(IronHawkSystem.DEFENSE, DEFENSE_FLAGS))
+                add(small(DEFENSE_CONTAINMENT))
+            }
+            if (attack) {
+                add(tagged(IronHawkSystem.ATTACK, ATTACK_FLAGS))
+                caps(ATTACK_GUARDS.map { Triple(TomahawkSettings.guardrails, it.first, it.second) })
+            }
+        }
+    }
+
+    private fun containerCard(probe: Probe?): JComponent = card {
         val root = service.root()
-        val cli = DevContainer.cli()
-        val config = root?.let(DevContainer::config)?.takeIf { Files.isRegularFile(it) }
-        val problems = config?.let { file -> DevContainer.audit(runCatching { Files.readString(file) }.getOrDefault("")) }.orEmpty()
+        val cli = probe?.containerCli
+        val config = probe?.containerConfig
+        val problems = probe?.containerProblems.orEmpty()
         add(subtitle("Devcontainer", AllIcons.Nodes.Deploy))
-        add(small("Na aba, a IA dos dois sistemas roda num container que só enxerga a pasta do projeto, a única forma de ela rodar sem perguntar. " +
-            "Sem ele, a IA só roda no terminal da IDE, com você aprovando os passos."))
+        add(small("Na aba, a IA dos dois sistemas roda só aqui; sem ele, só no terminal da IDE."))
+        if (probe == null) {
+            add(small("Conferindo o devcontainer…"))
+            return@card
+        }
         add(pills(
-            if (cli != null) Pill("devcontainer CLI ✓", Tone.GREEN) else Pill("devcontainer CLI não instalado", Tone.RED),
+            if (cli == true) Pill("devcontainer CLI ✓", Tone.GREEN) else Pill("devcontainer CLI não instalado", Tone.RED),
             when {
                 config == null -> Pill("projeto sem devcontainer", Tone.YELLOW)
                 problems.isEmpty() -> Pill("isolamento conferido ✓", Tone.GREEN)
                 else -> Pill("${problems.size} problema(s) de isolamento", Tone.RED)
             },
         ))
-        if (cli == null) add(NoticeBox(AllIcons.General.Warning, Tone.YELLOW).apply { text = DevContainer.CLI_HINT })
+        if (cli != true) add(NoticeBox(AllIcons.General.Warning, Tone.YELLOW).apply { text = DevContainer.CLI_HINT })
         if (problems.isNotEmpty()) {
             add(NoticeBox(AllIcons.General.Error, Tone.RED).apply {
                 text = "O ${DevContainer.CONFIG} não isola a máquina:\n" + problems.joinToString("\n") { "• $it" }
             })
         }
-        caps(
-            listOf(
-                "Só o projeto" to "o container não vê as suas pastas, as suas credenciais nem o Docker da máquina.",
-                "Git protegido" to "o .git/config e os hooks ficam só leitura lá dentro, porque o Git da sua máquina roda o que estiver neles.",
-                "Conferido a cada missão" to "o Tomahawk recusa o container privilegiado, com rede ou processos da máquina, ou com pastas da máquina montadas.",
-            ).map { Triple(true, it.first, it.second) },
-        )
-        if (AgentSettings.provider == AgentProvider.CURSOR) {
-            add(small("No container, o Cursor CLI entra pela chave de API do cartão CLI de IA.").apply {
+        when (AgentSettings.provider) {
+            AgentProvider.CURSOR -> add(small("No container, o Cursor CLI entra pela chave de API da aba IA.").apply {
                 if (!AgentSettings.hasCursorApiKey) foreground = JBColor.RED
             })
-        } else if (AgentSettings.provider == AgentProvider.CODEX) {
-            add(small("No container, o Codex usa o login feito lá dentro (guardado num volume) ou o OPENAI_API_KEY desta máquina. Para entrar uma vez: " +
-                "devcontainer exec --workspace-folder . --config ${DevContainer.CONFIG} codex login"))
-        } else {
-            add(small("No container, o Claude Code usa o login feito lá dentro (guardado num volume) ou o ANTHROPIC_API_KEY desta máquina. Para entrar uma vez: " +
-                "devcontainer exec --workspace-folder . --config ${DevContainer.CONFIG} claude"))
+            AgentProvider.CODEX -> add(small("No container, o Codex usa o login feito lá dentro ou o OPENAI_API_KEY desta máquina."))
+            AgentProvider.CLAUDE -> add(small("No container, o Claude Code usa o login feito lá dentro ou o ANTHROPIC_API_KEY desta máquina."))
+            AgentProvider.ANTIGRAVITY -> add(small("O Antigravity não está no container: com ele, a IA só roda no terminal.").apply { foreground = JBColor.RED })
         }
         if (config == null) {
             add(row(primary("Criar o Devcontainer") { createContainer() }.apply {
@@ -646,8 +757,8 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         } else {
             add(row(
                 JButton("Abrir devcontainer.json", AllIcons.Actions.EditSource).apply { addActionListener { root?.let { missions.open(DevContainer.config(it)) } } },
-                JButton(if (containerBusy) "Subindo…" else "Subir e Conferir", AllIcons.Actions.Execute).apply {
-                    isEnabled = cli != null && !containerBusy && missions.progress == null
+                JButton(if (containerBusy) "Subindo…" else "Subir e Conferir", AllIcons.Actions.Upload).apply {
+                    isEnabled = cli == true && !containerBusy && missions.progress == null
                     toolTipText = "Sobe o container (a primeira vez demora) e confere o isolamento"
                     addActionListener { root?.let(::containerUp) }
                 },
@@ -661,7 +772,7 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         containerStatus = runCatching { DevContainer.create(root) }.fold(
             onSuccess = {
                 missions.open(it)
-                Status("Criado em ${DevContainer.CONFIG}. Acrescente as ferramentas do projeto em features, se a IA precisar delas.", true)
+                Status("Criado em ${DevContainer.CONFIG}. Se a IA precisar de mais ferramentas, acrescente-as em features.", true)
             },
             onFailure = { Status("Não deu para criar: ${it.message ?: it.javaClass.simpleName}", false) },
         )
@@ -671,7 +782,7 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     private fun containerUp(root: Path) {
         containerBusy = true
         containerStatus = Status("Subindo o devcontainer (a primeira vez demora)…", null)
-        refreshCards()
+        render()
         var shown = 0L
         ApplicationManager.getApplication().executeOnPooledThread {
             val result = runCatching {
@@ -681,7 +792,7 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
                         shown = now
                         ApplicationManager.getApplication().invokeLater({
                             if (containerBusy) containerStatus = Status("Subindo: $line", null)
-                            refreshCards()
+                            render()
                         }, project.disposed)
                     }
                 }, { false })
@@ -697,91 +808,16 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         }
     }
 
-    private fun containmentCard(): JComponent = card {
-        add(subtitle("Contenção da IA", AllIcons.General.Warning, IronHawkSystem.DEFENSE))
-        add(small(
-            "Sempre ligada: antes de cada tarefa que altera arquivos, uma foto do projeto no git, sem mexer no seu índice nem na branch (sem git, no " +
-                "Local History), e o aviso do fim traz Desfazer Alterações da IA; na aba, a IA roda no devcontainer, sem git push e só com a credencial " +
-                "do CLI; o Claude Code recusa comandos destrutivos e mexer no .git; e a IA é parada na hora se tentar apagar pastas, descartar alterações " +
-                "do git, reescrever o histórico, rodar como administrador, formatar disco, baixar e executar scripts, ou escrever fora do projeto ou no .git.",
-        ))
-    }
-
-    private fun guardCard(): JComponent = card {
-        val on = TomahawkSettings.guardrails
-        val cursor = AgentSettings.provider == AgentProvider.CURSOR
-        add(subtitle("Proteções das missões", AllIcons.Actions.Lightning, IronHawkSystem.ATTACK))
-        add(small("Para a IA rodando sozinha nas missões. Dá para desligar."))
-        add(JBCheckBox("Proteções ligadas", on).apply {
-            addActionListener {
-                TomahawkSettings.guardrails = isSelected
-                val enabled = isSelected
-                service.root()?.let { root ->
-                    ApplicationManager.getApplication().executeOnPooledThread { runCatching { Guardrails.applyCursorConfig(root, enabled) } }
-                }
-                refreshCards()
-            }
-        })
-        if (!on) {
-            add(NoticeBox(AllIcons.General.Error, Tone.RED).apply {
-                text = "Com as proteções desligadas, a IA roda sem as regras do Tomahawk (no devcontainer e no terminal) e as missões não têm ponto de restauração."
-            })
-        }
-        caps(
-            listOf(
-                "Barrado antes de rodar" to "apagar pastas inteiras, formatar discos, desligar a máquina, pedir administrador, mudar o sistema, instalar " +
-                    "programas, rodar script baixado da internet, git push/reset --hard/clean. " +
-                    if (cursor) "Fica no .cursor/cli.json do projeto." else "Vai no --settings do Claude Code, que também não escreve fora do projeto.",
-                "Vigia" to "o Tomahawk lê cada passo da IA e aborta a missão num comando perigoso, numa escrita fora do projeto ou dentro do .git, ou numa " +
-                    "leitura de credenciais (~/.ssh, ~/.aws…).",
-                "Ponto de restauração" to "antes de cada missão, o projeto inteiro vai para o Git (em refs/tomahawk/, sem mexer na sua branch), e dá para desfazer.",
-                "Sem segredos" to "tokens e chaves do ambiente (GitHub, nuvem, npm) não chegam ao processo da IA.",
-            ).map { Triple(on, it.first, it.second) },
-        )
-        add(row(JButton("Desfazer a Última Missão", AllIcons.Actions.Rollback).apply {
-            isEnabled = missions.progress == null
-            toolTipText = "Volta o projeto para o ponto de restauração da última missão, depois de mostrar o que mudou"
-            addActionListener { missions.undo() }
-        }))
-    }
-
-    /** O que a IA libera nos dois sistemas, numa lista só, com a etiqueta de cada um. */
-    private fun capsCard(): JComponent = card {
-        val ready = AgentSettings.ready
-        add(subtitle("O que a IA libera", AllIcons.Actions.Lightning))
-        if (IronHawkSystem.DEFENSE.enabled) {
-            add(pills(systemPill(IronHawkSystem.DEFENSE)))
-            caps(DEFENSE_CAPABILITIES.map { Triple(ready, it.first, it.second) })
-            if (!ready) add(small("Desligadas até a integração ser testada com a configuração atual."))
-        }
-        if (IronHawkSystem.ATTACK.enabled) {
-            val attack = TomahawkSettings.ready
-            val terminal = LaunchTerminal.available() != null
-            add(pills(systemPill(IronHawkSystem.ATTACK)))
-            caps(
-                listOf(
-                    Triple(attack, "Lançador", "as nove etapas do SDD na aba, monitoradas, ou no terminal"),
-                    Triple(attack && terminal, "Terminal", "conversar com a IA nas etapas que fazem perguntas"),
-                    Triple(attack, "Avaliação", "Simulação de Rota (analyze) e Avaliação de Danos (converge) num clique"),
-                    Triple(attack, "Extração e Rádio", "a mensagem do commit, o texto do PR e as respostas aos comentários"),
-                    Triple(true, "Telemetria", "cada passo da IA ao vivo e o registro de cada missão"),
-                ),
-            )
-            if (!attack) {
-                add(small(if (!TomahawkSettings.supported) "Desligadas: o CLI escolhido não lança missões do Spec Kit." else "Desligadas até a integração ser testada com a configuração atual."))
-            }
-        }
-    }
-
     /** As skills extras do Ataque: as achadas no projeto e na máquina, quais viram botão no Lançador e as pastas indicadas. */
-    private fun skillsCard(): JComponent = card {
-        val home = runCatching { Path.of(System.getProperty("user.home")) }.getOrNull()
-        val skills = ExtraSkills.discover(service.root(), home)
+    private fun skillsCard(probe: Probe?): JComponent = card {
+        val skills = probe?.skills.orEmpty()
         val chosen = ExtraSkills.selected
         add(subtitle("Skills extras", AllIcons.Nodes.Plugin, IronHawkSystem.ATTACK))
-        add(small("As skills marcadas viram botões avulsos no Lançador, ao lado das etapas do Spec Kit. A escolha vale só para você, nesta IDE."))
-        if (skills.isEmpty()) {
-            add(small("Nenhuma skill achada em ${ExtraSkills.FOLDERS.joinToString(", ")}, no projeto nem na sua pasta pessoal. Se elas estão em outro lugar, indique a pasta abaixo."))
+        add(small("As marcadas viram botões no Lançador, ao lado das etapas do Spec Kit. Vale só para você, nesta IDE."))
+        if (probe == null) {
+            add(small("Procurando as skills…"))
+        } else if (skills.isEmpty()) {
+            add(small("Nenhuma skill achada em ${ExtraSkills.FOLDERS.joinToString(", ")}. Se elas estão em outro lugar, indique a pasta."))
         }
         skills.forEach { skill ->
             add(JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
@@ -794,15 +830,17 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
                 add(Pill(skill.scope.label, Tone.GRAY), BorderLayout.EAST)
             })
         }
-        chosen.filter { name -> skills.none { it.name == name } }.sorted().forEach { name ->
-            add(JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
-                isOpaque = false
-                add(JBCheckBox(name, true).apply {
+        if (probe != null) {
+            chosen.filter { name -> skills.none { it.name == name } }.sorted().forEach { name ->
+                add(JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
                     isOpaque = false
-                    addActionListener { toggleSkill(name, isSelected) }
-                }, BorderLayout.WEST)
-                add(small("Não encontrada neste projeto nem nesta máquina: o botão fica desligado no Lançador.").apply { foreground = JBColor.RED }, BorderLayout.CENTER)
-            })
+                    add(JBCheckBox(name, true).apply {
+                        isOpaque = false
+                        addActionListener { toggleSkill(name, isSelected) }
+                    }, BorderLayout.WEST)
+                    add(small("Não encontrada aqui: o botão fica desligado no Lançador.").apply { foreground = JBColor.RED }, BorderLayout.CENTER)
+                })
+            }
         }
         ExtraSkills.customFolders.forEach { folder ->
             add(row(small("Pasta: $folder"), ActionLink("Remover") {
@@ -829,16 +867,17 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         }
     }
 
-    private fun specKitCard(): JComponent = card {
+    private fun specKitCard(probe: Probe?): JComponent = card {
         val s = service.snapshot
-        val specify = TomahawkSettings.resolveSpecify()
-        val info = SpecKitSetup.infoFor(specify)
+        val specify = probe?.specify
+        val info = probe?.specifyInfo
         val installing = SpecKitSetup.job != null
         val integration = TomahawkSettings.provider.integration
         add(subtitle("Spec Kit", AllIcons.Nodes.PpLib, IronHawkSystem.ATTACK))
         add(small("O CLI specify nesta máquina e os comandos instalados neste projeto."))
         add(pills(*listOfNotNull(
             when {
+                probe == null -> Pill("procurando o specify…", Tone.GRAY)
                 specify == null -> Pill("specify não instalado", Tone.RED)
                 info?.broken == true -> Pill("specify com defeito", Tone.RED)
                 info?.outdated == true -> Pill("specify v${info.version ?: "?"} · nova v${info.latest.orEmpty()}", Tone.ORANGE)
@@ -852,15 +891,13 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         val key = s.integration.key
         if (s.initialized && key != null && key != integration && TomahawkSettings.supported) {
             add(NoticeBox(AllIcons.General.Warning, Tone.YELLOW).apply {
-                text = "O projeto foi inicializado para $key, mas a IA configurada é o ${TomahawkSettings.provider.title}, e os comandos dele podem não estar instalados " +
-                    "(specify integration install $integration)."
+                text = "O projeto foi inicializado para $key, mas a IA é o ${TomahawkSettings.provider.title}: instale a integração dele."
             })
-            add(row(JButton("Instalar a Integração $integration").apply {
+            add(row(JButton("Instalar a Integração $integration", AllIcons.General.Add).apply {
                 isEnabled = specify != null && !installing && info?.broken != true
                 addActionListener { SpecKitSetup.installIntegration(project) }
             }))
         }
-        if (!s.initialized) add(small("Este projeto ainda não tem o Spec Kit (a pasta .specify/)."))
         specKit.withInit = !s.initialized
         specKit.update()
         add(specKit)
@@ -868,7 +905,7 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             JButton("Verificar de Novo", AllIcons.Actions.Refresh).apply {
                 toolTipText = "Procura o specify de novo, relê a versão e o projeto"
                 addActionListener {
-                    SpecKitSetup.recheck()
+                    ApplicationManager.getApplication().executeOnPooledThread { SpecKitSetup.recheck() }
                     service.refresh(0)
                 }
             }.takeIf { specify != null && !installing },
@@ -929,7 +966,7 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         items.forEach(::add)
     }
 
-    private fun primary(text: String, action: () -> Unit) = JButton(text).apply {
+    private fun primary(text: String, action: () -> Unit) = JButton(text, AllIcons.General.Add).apply {
         putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true)
         addActionListener { action() }
     }
@@ -972,24 +1009,37 @@ class ArsenalPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         }
     }
 
-    internal companion object {
-        const val MAX_RUNS = 30
-        const val SKILL_DESCRIPTION_MAX = 160
-        const val ADVANCED_CLOSED = "Opções avançadas ▸"
-        const val ADVANCED_OPEN = "Opções avançadas ▾"
-        const val RUN_MODE_HINT = "No terminal, a IA roda à vista numa aba do terminal da IDE, onde dá para acompanhar e conversar com ela " +
-            "(o Cursor abre interativo, com o login do agent login). Ela grava a resposta final em ironhawk/iron-dome/ia/respostas/, " +
-            "e o plugin segue dali, como na aba. Testar no Terminal confere esse caminho com a configuração salva, no Windows ou no WSL."
-        const val ATTACK_RUN_MODE_HINT = "Nas missões do Ataque, na aba, a IA roda sem perguntar no devcontainer do projeto e a Telemetria " +
-            "acompanha cada passo; no terminal da IDE, você conversa com a IA e aprova os comandos dela. Cada etapa do Lançador pode " +
-            "trocar na hora de lançar."
+    companion object {
+        internal const val MAX_RUNS = 30
+        internal const val SKILL_DESCRIPTION_MAX = 160
+        internal const val ADVANCED_CLOSED = "Opções avançadas ▸"
+        internal const val ADVANCED_OPEN = "Opções avançadas ▾"
+        internal const val DETAILS_CLOSED = "Como cada CLI roda ▸"
+        internal const val DETAILS_OPEN = "Como cada CLI roda ▾"
 
-        val DEFENSE_CAPABILITIES = listOf(
-            "Radar e barra do editor" to "Disparar Todos com IA, ou Disparar Selecionados e Disparar no cartão do alvo: a IA executa a ordem de interceptação e marca os alvos atendidos",
-            "Patrulha" to "Revisar com IA (no modo revisão): comentários da IA como rascunhos do PR",
-            "Escudo" to "Explicar Falha com IA e, na resposta, Corrigir com IA",
-            "Raio de Impacto" to "Analisar Impacto com IA: as classes que os comentários e as alterações afetam",
-            "Caixa-Preta" to "Analisar com IA, no bug gerado e em Ver Logs de Erro",
+        /** Os textos curtos que a aba Arsenal e as configurações (Arsenal (IA)) mostram iguais. */
+        const val RUN_MODE_HINT = "Na aba, a IA roda sem perguntar no devcontainer; no terminal da IDE, à vista e pedindo aprovação."
+        const val HOST_HINT = "Vale para o terminal e o teste; na aba, a IA usa o CLI do devcontainer."
+        const val CURSOR_KEY_HINT = "Opcional: sem ela, vale o agent login. Fica no cofre de senhas da IDE."
+        const val AUTO_SETUP_HINT = "Procura os CLIs de IA instalados e testa cada um, com o modelo padrão, até um responder."
+
+        /** O Antigravity não está no devcontainer nem no Spec Kit: só roda no terminal, e o `agy -p` pode travar. */
+        fun antigravityHint(): String =
+            "O Antigravity só roda no terminal da IDE" + (if (IronHawkSystem.ATTACK.enabled) " e não lança missões do Ataque" else "") +
+                ". O agy -p pode travar; o tempo máximo interrompe."
+
+        /** Nos detalhes do cartão Segurança. */
+        private const val DEFENSE_FLAGS = "Na aba, nas tarefas que alteram arquivos: Cursor com --force, Claude Code com --permission-mode acceptEdits " +
+            "(comandos só os liberados nele) e Codex com --dangerously-bypass-approvals-and-sandbox. Nas de leitura, ninguém escreve."
+        private const val DEFENSE_CONTAINMENT = "Sem git push e só com a credencial do CLI; a IA é parada ao tentar apagar pastas, descartar " +
+            "alterações do git, reescrever o histórico, rodar como administrador ou escrever fora do projeto ou no .git."
+        private const val ATTACK_FLAGS = "Nas missões na aba: Cursor com --force --trust, Claude Code com --permission-mode bypassPermissions e " +
+            "Codex com --dangerously-bypass-approvals-and-sandbox. Commit, PR e Rádio: só leitura."
+        private val ATTACK_GUARDS = listOf(
+            "Barrado antes de rodar" to "apagar pastas, formatar discos, pedir administrador, instalar programas, git push/reset --hard/clean.",
+            "Vigia" to "a missão para num comando perigoso, numa escrita fora do projeto ou no .git, ou ao ler credenciais.",
+            "Ponto de restauração" to "o projeto vai para o Git (refs/tomahawk/) antes de cada missão, sem mexer na sua branch.",
+            "Sem segredos" to "tokens e chaves do ambiente (GitHub, nuvem, npm) não chegam à IA.",
         )
     }
 }

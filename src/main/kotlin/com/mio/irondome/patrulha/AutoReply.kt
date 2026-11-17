@@ -91,7 +91,7 @@ object AutoReply {
     private const val FILE_PREVIEW_LINES = 120
 
     /** No fim de cada resposta publicada, para o dev saber que quem respondeu foi a IA. */
-    fun footer(me: String) = "\n\n<sub>🤖 Resposta automática da IA (Iron Dome) em nome de @$me.</sub>"
+    fun footer(me: String) = "\n\n<sub>🤖 Resposta automática do IronHawk IA em nome de @$me.</sub>"
 
     /** Chave da conversa no estado do modo automático, como `12:thread:345`. */
     fun key(number: Int, discussion: Discussion) = "$number:${discussion.key}"

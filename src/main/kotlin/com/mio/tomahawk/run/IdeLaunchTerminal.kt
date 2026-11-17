@@ -7,7 +7,7 @@ import org.jetbrains.plugins.terminal.TerminalTabState
 import org.jetbrains.plugins.terminal.TerminalToolWindowFactory
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 
-/** [LaunchTerminal] pelo plugin de terminal da IDE; registrado em `tomahawk-terminal.xml`. */
+/** [LaunchTerminal] pelo plugin de terminal da IDE; registrado em `META-INF/ironhawk-terminal.xml`. */
 class IdeLaunchTerminal : LaunchTerminal {
 
     override fun shellPath(project: Project): String? =

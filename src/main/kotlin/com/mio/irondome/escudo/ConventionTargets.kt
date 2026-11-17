@@ -22,9 +22,9 @@ import com.mio.irondome.radar.CommentOrigin
 import com.mio.irondome.radar.ReviewCommentService
 
 /**
- * Deixar no Padrão: cada classe de teste fora da convenção vira um alvo no Radar, marcado como do Escudo,
- * na linha do `@DisplayName` (sem chave) ou da declaração da classe (sem `@DisplayName`). A IA corrige só o
- * `@DisplayName` quando a ordem de interceptação é disparada.
+ * Padronizar Testes, sem catálogo de critérios: cada classe de teste sem `@DisplayName` vira um alvo no Radar,
+ * marcado como do Escudo, na linha da declaração da classe. A IA corrige as anotações quando a ordem de
+ * interceptação é disparada.
  */
 object ConventionTargets {
 
@@ -107,14 +107,14 @@ object ConventionTargets {
             if (created > 0) " Dispare a ordem de interceptação para a IA deixar o @DisplayName no padrão." else ""
         val actions = buildList {
             add(NotificationAction.createSimpleExpiring("Abrir Radar") { DefenseTabs.showTab(project, DefenseTabs.RADAR) })
-            if (created > 0 && AgentSettings.ready) add(NotificationAction.createSimpleExpiring("Disparar Todos com IA") { FireWithAiAction.fire(project) })
+            if (created > 0 && AgentSettings.ready) add(NotificationAction.createSimpleExpiring("Disparar com IA") { FireWithAiAction.fire(project) })
         }
         notify(project, content, type, actions)
     }
 
     private fun notify(project: Project, content: String, type: NotificationType, actions: List<NotificationAction> = emptyList()) {
         NotificationGroupManager.getInstance().getNotificationGroup("Iron Dome IA")
-            .createNotification("Escudo: deixar no padrão", content, type)
+            .createNotification("Escudo: padronizar testes", content, type)
             .setIcon(IronDomeIcons.escudo)
             .apply { actions.forEach(::addAction) }
             .notify(project)

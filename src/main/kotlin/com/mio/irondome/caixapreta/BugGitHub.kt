@@ -16,7 +16,7 @@ class BugReportException(message: String, val needsAccount: Boolean = false, val
 class BugIssue(val number: Int, val url: String)
 
 /**
- * O destino dos bugs do plugin: as issues do repositório do próprio Iron Dome IA, criadas com a conta do GitHub que
+ * O destino dos bugs do plugin: as issues do repositório do próprio IronHawk IA, criadas com a conta do GitHub que
  * o usuário já tem no IntelliJ (a mesma da Patrulha). Quem não tem permissão no repositório, se ele ficar privado,
  * recebe um aviso claro. Faz rede: chame fora da EDT.
  */

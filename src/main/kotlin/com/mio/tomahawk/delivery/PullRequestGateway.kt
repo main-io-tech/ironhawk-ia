@@ -79,7 +79,7 @@ interface PullRequestGateway {
     fun branchContext(project: Project, base: String): String
 
     /** Fora da EDT; faz rede. Os PRs abertos pelo usuário no repositório, com as conversas; nulo sem repositório ou sem conta. */
-    fun radar(project: Project): RadarSnapshot?
+    fun radio(project: Project): RadioSnapshot?
 
     /** Fora da EDT; faz rede. Responde a [thread] do PR [number]: na conversa da linha ou na conversa geral, citando o autor. */
     fun reply(project: Project, number: Int, thread: PrThread, body: String): PrComment

@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.mio.tomahawk.run.AgentCommand as ArgumentPolicy
 import java.text.Normalizer
 
 /** CLI de agente de IA que o Arsenal chama, rodando na máquina do usuário sobre o projeto aberto. */
@@ -81,11 +82,12 @@ object AgentCommand {
         model: String?,
         timeoutMinutes: Int,
         extraArgs: List<String> = emptyList(),
-        /** O sandbox do Cursor CLI, que só existe no macOS e no Linux (inclusive no WSL). */
-        sandbox: Boolean = false,
     ): List<String> {
         val prompt = oneLine(task.prompt)
         val chosenModel = model?.trim()?.takeIf { it.isNotEmpty() }
+        // Só leitura não pode virar permissão total pelos argumentos extras: a revisão de PR e as respostas automáticas
+        // leem conteúdo de terceiros. As tarefas que alteram arquivos rodam no devcontainer, o isolamento.
+        val extra = if (task.write) extraArgs else ArgumentPolicy.withoutBypass(extraArgs)
         return when (provider) {
             AgentProvider.CURSOR -> buildList {
                 add(executable)
@@ -96,9 +98,8 @@ object AgentCommand {
                 add("--workspace")
                 add(workspace)
                 if (task.write) add("--force") else addAll(listOf("--mode", "ask"))
-                if (task.write && sandbox) addAll(listOf("--sandbox", "enabled"))
                 chosenModel?.let { addAll(listOf("--model", it)) }
-                addAll(extraArgs)
+                addAll(extra)
                 add(prompt)
             }
             // Sem janela, o Claude Code recusa sozinho o que pediria aprovação. O acceptEdits libera só editar arquivos:
@@ -108,7 +109,7 @@ object AgentCommand {
                 addAll(listOf(executable, "-p", "--disallowedTools", AgentGuard.claudeDisallowedTools, "--output-format", "stream-json", "--verbose"))
                 if (task.write) addAll(listOf("--permission-mode", "acceptEdits"))
                 chosenModel?.let { addAll(listOf("--model", it)) }
-                addAll(extraArgs)
+                addAll(extra)
                 add(prompt)
             }
             // O `exec` nunca pede aprovação. Ler: sandbox só leitura. Escrever: roda no devcontainer (o isolamento), onde o
@@ -117,7 +118,7 @@ object AgentCommand {
                 addAll(listOf(executable, "exec", "--json", "--skip-git-repo-check", "--cd", workspace))
                 if (task.write) add("--dangerously-bypass-approvals-and-sandbox") else addAll(listOf("--sandbox", "read-only"))
                 chosenModel?.let { addAll(listOf("--model", it)) }
-                addAll(extraArgs)
+                addAll(extra)
                 add(prompt)
             }
             AgentProvider.ANTIGRAVITY -> buildList {
@@ -131,7 +132,7 @@ object AgentCommand {
                 // Sem janela não há quem aprove: como o --force do Cursor, só nas tarefas que alteram arquivos.
                 if (task.write) add("--dangerously-skip-permissions")
                 chosenModel?.let { addAll(listOf("--model", it)) }
-                addAll(extraArgs)
+                addAll(extra)
             }
         }
     }
@@ -158,23 +159,25 @@ object AgentCommand {
         extraArgs: List<String> = emptyList(),
     ): String {
         val chosenModel = model?.trim()?.takeIf { it.isNotEmpty() }
+        // O terminal roda nesta máquina, fora do devcontainer: nunca com permissão total, e o teste só lendo.
+        val extra = if (interactive) ArgumentPolicy.withoutFullAccess(extraArgs) else ArgumentPolicy.withoutBypass(extraArgs)
         val args = when (provider) {
             AgentProvider.CURSOR -> buildList {
                 if (!interactive) addAll(listOf("-p", "--trust", "--output-format", "text"))
                 chosenModel?.let { addAll(listOf("--model", it)) }
-                addAll(extraArgs)
+                addAll(extra)
                 add(oneLine(prompt))
             }
             AgentProvider.CLAUDE -> buildList {
                 if (!interactive) add("-p")
                 chosenModel?.let { addAll(listOf("--model", it)) }
-                addAll(extraArgs)
+                addAll(extra)
                 add(oneLine(prompt))
             }
             AgentProvider.CODEX -> buildList {
                 if (!interactive) addAll(listOf("exec", "--skip-git-repo-check", "--sandbox", "read-only"))
                 chosenModel?.let { addAll(listOf("--model", it)) }
-                addAll(extraArgs)
+                addAll(extra)
                 add(oneLine(prompt))
             }
             AgentProvider.ANTIGRAVITY -> buildList {
@@ -183,7 +186,7 @@ object AgentCommand {
                 add("--print-timeout")
                 add("${timeoutMinutes}m")
                 chosenModel?.let { addAll(listOf("--model", it)) }
-                addAll(extraArgs)
+                addAll(extra)
             }
         }
         val quoted = (listOf(executable) + args).map { quote(it, shell) }

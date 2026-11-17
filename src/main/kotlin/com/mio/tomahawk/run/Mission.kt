@@ -65,18 +65,35 @@ class MissionProgress(val mission: Mission, val invocation: String, val provider
         actions++
     }
 
+    /** Quantas linhas já entraram no log, inclusive as que saíram pelo limite de [MAX_LOG]. */
+    @Volatile
+    var logged: Long = 0
+        private set
+
     internal fun log(kind: LogKind, text: String) {
-        if (log.size >= MAX_LOG) log.removeAt(0)
-        log += LogLine(System.currentTimeMillis(), kind, text)
+        synchronized(log) {
+            if (log.size >= MAX_LOG) log.removeAt(0)
+            log += LogLine(System.currentTimeMillis(), kind, text)
+            logged++
+        }
+    }
+
+    /**
+     * As linhas que entraram depois das primeiras [seen], e o total até elas: com o log cheio, o tamanho para de
+     * crescer, então quem acompanha conta pelo total. As que já saíram pelo limite ficam de fora.
+     */
+    fun logAfter(seen: Long): Pair<List<LogLine>, Long> = synchronized(log) {
+        val fresh = (logged - seen).coerceIn(0, log.size.toLong()).toInt()
+        log.subList(log.size - fresh, log.size).toList() to logged
     }
 
     fun cancel() {
         cancelled = true
     }
 
-    private companion object {
-        const val TRAIL_SIZE = 3
-        const val MAX_LOG = 2_000
+    companion object {
+        private const val TRAIL_SIZE = 3
+        internal const val MAX_LOG = 2_000
     }
 }
 

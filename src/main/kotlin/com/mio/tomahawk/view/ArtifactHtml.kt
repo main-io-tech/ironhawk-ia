@@ -96,17 +96,33 @@ object ArtifactHtml {
         return page(theme, kind, bridge, scrollY, content)
     }
 
+    /**
+     * O Markdown repassa HTML cru, e os artefatos e registros trazem texto escrito pela IA: só os scripts da própria página,
+     * com o nonce, rodam. Um `<script>` ou um `onerror` vindo do documento não alcança a ponte com a IDE.
+     */
     private fun page(theme: HtmlTheme, kind: ArtifactKind, bridge: String?, scrollY: Int, content: String): String = buildString {
-        append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">")
+        val nonce = nonce()
+        append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">")
+        append("<meta http-equiv=\"Content-Security-Policy\" content=\"").append(contentSecurityPolicy(nonce)).append("\">")
+        append("<meta name=\"viewport\" content=\"width=device-width\">")
         append("<style>").append(css(theme, kind)).append(Diagrams.CSS).append("</style></head>")
         append("<body class=\"").append(kind.css).append("\"><div class=\"wrap\">")
         append(content)
         append("</div>")
-        if (content.contains("class=\"diagram\"")) append("<script>").append(Diagrams.mermaidScript).append("</script>")
-        append("<script>").append(script(bridge, scrollY)).append("</script>")
-        append("<script>").append(Diagrams.script(theme)).append("</script>")
+        val open = "<script nonce=\"$nonce\">"
+        if (content.contains("class=\"diagram\"")) append(open).append(Diagrams.mermaidScript).append("</script>")
+        append(open).append(script(bridge, scrollY)).append("</script>")
+        append(open).append(Diagrams.script(theme)).append("</script>")
         append("</body></html>")
     }
+
+    internal fun contentSecurityPolicy(nonce: String) =
+        "default-src 'none'; script-src 'nonce-$nonce'; style-src 'unsafe-inline'; img-src data: https:; font-src data:; " +
+            "base-uri 'none'; form-action 'none'"
+
+    private val random = java.security.SecureRandom()
+
+    private fun nonce(): String = ByteArray(18).also(random::nextBytes).let { java.util.Base64.getEncoder().encodeToString(it) }
 
     /** Um contrato OpenAPI: cabeçalho, números, endpoints por tag, o diagrama dos schemas, as tabelas e o código-fonte. */
     private fun contractBody(spec: OpenApi.Spec, path: String, text: String): String = buildString {

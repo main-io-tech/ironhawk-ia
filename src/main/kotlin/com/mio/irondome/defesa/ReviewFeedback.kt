@@ -95,7 +95,7 @@ object FeedbackMarkdown {
     fun render(state: FeedbackState): String = buildString {
         appendLine("# Aprendizado da revisão")
         appendLine()
-        appendLine("O Iron Dome IA ajusta os pedidos à IA com o que o time aceita e descarta das sugestões dela. As regras abaixo")
+        appendLine("O IronHawk IA ajusta os pedidos à IA com o que o time aceita e descarta das sugestões dela. As regras abaixo")
         appendLine("entram em todo pedido de revisão: escreva uma por linha, começando com `- `, como")
         appendLine("`- No pacote legacy, não sugira refatoração.`")
         appendLine()

@@ -257,7 +257,7 @@ object SpecKitSetup {
                 notify(
                     if (ok) "Spec Kit instalado" else "O specify não apareceu",
                     if (ok) "O specify está pronto nesta máquina." else
-                        "Confira a aba \"${Job.INSTALL.title}\" do terminal. Se ele foi instalado em outra pasta, informe o caminho do specify nas configurações do Tomahawk.",
+                        "Confira a aba \"${Job.INSTALL.title}\" do terminal. Se ele foi instalado em outra pasta, informe o caminho do specify nas configurações do IronHawk IA.",
                     if (ok) NotificationType.INFORMATION else NotificationType.WARNING,
                 )
             }

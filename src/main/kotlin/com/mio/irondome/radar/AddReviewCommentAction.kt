@@ -6,6 +6,10 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.project.DumbAwareAction
 import com.mio.ironhawk.IronHawkSystem
 
+/**
+ * Marcar Trecho como Alvo: a seleção ou a linha do cursor, pelo menu do editor ou por Ctrl+Alt+Shift+M. O arquivo ou
+ * o pacote inteiro é com [MarkTargetAction].
+ */
 class AddReviewCommentAction : DumbAwareAction() {
 
     override fun getActionUpdateThread() = ActionUpdateThread.BGT
@@ -20,7 +24,7 @@ class AddReviewCommentAction : DumbAwareAction() {
         val pullRequest = service?.activePullRequest ?: 0
         if (pullRequest != 0) {
             val reviewOutput = target != null && service?.relativePath(target.second)?.let(ReviewCommentService::isReviewOutput) == true
-            e.presentation.text = "Iron Dome IA: Comentar no PR #$pullRequest"
+            e.presentation.text = "IronHawk IA: Comentar no PR #$pullRequest"
             e.presentation.description = if (reviewOutput) {
                 "Os arquivos gerados pela revisão, em ${ReviewCommentService.REVIEW_DIR}/, não fazem parte do PR e não recebem comentário"
             } else {

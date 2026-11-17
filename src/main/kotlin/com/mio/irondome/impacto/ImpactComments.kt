@@ -79,9 +79,4 @@ object ImpactComments {
             .map { ImpactComment(it.id, CommentSource.PATRULHA, it.path, it.target, it.startLine, it.endLine, it.text, it.suggestion, sent = true) }
         return targets + unsent + sent
     }
-
-    /** Os comentários de cada classe de [nodes], pelo arquivo dela; classes sem comentário ficam de fora. */
-    fun byClass(nodes: List<ClassNode>, comments: List<ImpactComment>): Map<String, List<ImpactComment>> =
-        nodes.associate { node -> node.qualifiedName to comments.filter { it.covers(node.filePath) } }
-            .filterValues { it.isNotEmpty() }
 }

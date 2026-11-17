@@ -61,10 +61,10 @@ internal object BugFlow {
 
     private const val GROUP = "Iron Dome IA"
 
-    /** Na EDT. */
-    fun start(project: Project, draft: BugDraft) {
+    /** Na EDT. [onPublished] roda só se a issue for criada. */
+    fun start(project: Project, draft: BugDraft, onPublished: ((BugIssue) -> Unit)? = null) {
         val runner = AgentRunner.getInstance(project)
-        if (!runner.available() || runner.running != null) return preview(project, draft, null)
+        if (!runner.available() || runner.running != null) return preview(project, draft, null, onPublished)
         val notification = NotificationGroupManager.getInstance().getNotificationGroup(GROUP).createNotification(
             "Organizando o relatório com a IA",
             "Só o texto que você escreveu é enviado. Se ela falhar, o relatório segue como você escreveu.",
@@ -74,7 +74,7 @@ internal object BugFlow {
         ApplicationManager.getApplication().executeOnPooledThread {
             val file = runner.writeInstructions(BugStructuring.INSTRUCTIONS_FILE, BugStructuring.instructions(draft.title, draft.text))
             ApplicationManager.getApplication().invokeLater({
-                if (file == null) return@invokeLater proceed(project, draft, null, notification)
+                if (file == null) return@invokeLater proceed(project, draft, null, notification, onPublished)
                 val started = runner.run(
                     AgentTask(
                         "Organizar o relatório de bug",
@@ -82,22 +82,22 @@ internal object BugFlow {
                         write = false,
                     ),
                     unattended = true,
-                    onDone = { result -> proceed(project, draft, if (result.ok) BugStructuring.parse(result.answer) else null, notification) },
+                    onDone = { result -> proceed(project, draft, if (result.ok) BugStructuring.parse(result.answer) else null, notification, onPublished) },
                 )
-                if (!started) proceed(project, draft, null, notification)
+                if (!started) proceed(project, draft, null, notification, onPublished)
             }, project.disposed)
         }
     }
 
-    private fun proceed(project: Project, draft: BugDraft, structured: StructuredBug?, notification: Notification) {
+    private fun proceed(project: Project, draft: BugDraft, structured: StructuredBug?, notification: Notification, onPublished: ((BugIssue) -> Unit)?) {
         notification.expire()
-        preview(project, draft, structured)
+        preview(project, draft, structured, onPublished)
     }
 
-    private fun preview(project: Project, draft: BugDraft, structured: StructuredBug?) {
+    private fun preview(project: Project, draft: BugDraft, structured: StructuredBug?, onPublished: ((BugIssue) -> Unit)?) {
         val dialog = BugPreviewDialog(project, draft, structured)
         if (dialog.showAndGet()) {
-            BugReports.submit(project, dialog.report(), draft.screenshot, draft.recording)
+            BugReports.submit(project, dialog.report(), draft.screenshot, draft.recording, onPublished)
         } else {
             draft.discard()
         }

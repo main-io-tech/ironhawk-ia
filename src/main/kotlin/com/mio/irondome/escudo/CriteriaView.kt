@@ -4,7 +4,7 @@ import java.text.Collator
 import java.util.Locale
 
 /**
- * A visão "Por critério" do Escudo: `Grupo > Critério > testes que o cobrem`, com a tag órfã, os testes sem critério
+ * A organização por critério do Escudo: `Grupo > Critério > testes que o cobrem`, com a tag órfã, os testes sem critério
  * e os que não se aplicam em grupos à parte, no fim. Um teste que cobre dois critérios aparece nos dois.
  */
 object CriteriaView {
@@ -13,7 +13,7 @@ object CriteriaView {
     const val WITHOUT = "Sem critério"
     const val NOT_APPLICABLE = "Critério não se aplica"
 
-    /** [results] são os testes por chave (de [TestResults.build]), de onde saem as classes dos testes sem critério. */
+    /** [results] são as classes de teste (as de [TestResults.build] e as do Cucumber), de onde saem as dos testes sem critério. */
     fun build(report: CriteriaReport, results: List<TestNode>): List<TestNode> {
         val collator = Collator.getInstance(Locale.of("pt", "BR"))
         val subjects = report.coverages.groupBy { it.criterion.groupName }
@@ -22,7 +22,7 @@ object CriteriaView {
         val special = listOfNotNull(
             report.orphans.takeIf { it.isNotEmpty() }?.let { orphans ->
                 subject("subject:orphans", ORPHANS, orphans.map { orphan ->
-                    node(TestKind.CRITERION, "crit:orphan:${orphan.id.lowercase()}", orphan.id, copies("orphan:${orphan.id.lowercase()}", orphan.tests), classKey = orphan.id)
+                    node(TestKind.CRITERION, "crit:orphan:${orphan.id.lowercase()}", orphan.id, copies("orphan:${orphan.id.lowercase()}", orphan.tests), criterionId = orphan.id)
                 })
             },
             classesOf(report.withoutCriterion, results, "nocrit")?.let { subject("subject:without", WITHOUT, it) },
@@ -36,7 +36,7 @@ object CriteriaView {
         "crit:${coverage.criterion.id.lowercase()}",
         coverage.criterion.title,
         copies(coverage.criterion.id.lowercase(), coverage.tests),
-        classKey = coverage.criterion.id,
+        criterionId = coverage.criterion.id,
         coverage = coverage,
     )
 
@@ -44,12 +44,11 @@ object CriteriaView {
     private fun copies(prefix: String, tests: List<TestNode>): List<TestNode> =
         tests.mapNotNull { it.pruned("crit:$prefix|") { true } }
 
-    /** As classes que têm [tests], só com eles, no lugar da chave do `@DisplayName`. */
+    /** As classes que têm [tests], só com eles. */
     private fun classesOf(tests: List<TestNode>, results: List<TestNode>, prefix: String): List<TestNode>? {
         if (tests.isEmpty()) return null
         val keys = tests.map { it.key }.toSet()
-        val classes = results.mapNotNull { group -> group.pruned("$prefix|") { it.key in keys } }
-            .flatMap { if (it.kind == TestKind.KEY) it.children else listOf(it) }
+        val classes = results.mapNotNull { node -> node.pruned("$prefix|") { it.key in keys } }
         return classes.takeIf { it.isNotEmpty() }
     }
 
@@ -61,7 +60,7 @@ object CriteriaView {
         key: String,
         label: String,
         children: List<TestNode>,
-        classKey: String? = null,
+        criterionId: String? = null,
         coverage: CriterionCoverage? = null,
     ) = TestNode(
         kind = kind,
@@ -74,7 +73,7 @@ object CriteriaView {
         stacktrace = null,
         children = children,
         leafOutcome = TestOutcome.NOT_RUN,
-        classKey = classKey,
+        criterionId = criterionId,
         coverage = coverage,
     )
 }

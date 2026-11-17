@@ -81,11 +81,10 @@ class DisplayNameFormatTest {
     }
 
     @Test
-    fun aLeadingKeyBecomesALabel() {
+    fun aLeadingKeyFromOldNamesStaysAsWritten() {
         val name = DisplayNameFormat.parse("[Frete] cobra frete grátis")
-        assertEquals("Frete", name.key)
         assertNull(name.index)
-        assertEquals(listOf(TEXT to "cobra frete grátis"), fragments(name.steps.single()))
+        assertEquals(listOf(TEXT to "[Frete] cobra frete grátis"), fragments(name.steps.single()))
     }
 
     private fun fragments(step: Step) = step.fragments.map { it.style to it.text }

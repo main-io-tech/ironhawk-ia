@@ -10,7 +10,7 @@ import com.mio.tomahawk.delivery.LocalState
 import com.mio.tomahawk.delivery.PrComment
 import com.mio.tomahawk.delivery.PrThread
 import com.mio.tomahawk.delivery.PullRequestGateway
-import com.mio.tomahawk.delivery.RadarSnapshot
+import com.mio.tomahawk.delivery.RadioSnapshot
 import com.mio.tomahawk.delivery.RemoteInfo
 import com.mio.tomahawk.delivery.ThreadKind
 import com.mio.ironhawk.IronHawkFolder
@@ -28,7 +28,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 
-/** [PullRequestGateway] pelo Git da IDE e pela conta do GitHub dela; registrado em `tomahawk-github.xml`. */
+/** [PullRequestGateway] pelo Git da IDE e pela conta do GitHub dela; registrado em `ironhawk-github.xml`. */
 class GitHubPullRequests : PullRequestGateway {
 
     private class Context(val repository: GitRepository, val remote: GitRemote, val repo: GitHubRepo)
@@ -213,13 +213,13 @@ class GitHubPullRequests : PullRequestGateway {
         return GitHubClient(account.server.toApiUrl(), token, account.server.toGraphQLUrl())
     }
 
-    override fun radar(project: Project): RadarSnapshot? {
+    override fun radio(project: Project): RadioSnapshot? {
         val context = context(project) ?: return null
         accountFor(project, context.repo) ?: return null
         val client = client(project, context.repo)
         val me = logins.getOrPut(context.repo.host) { client.currentUser() }
         val prs = client.openPullRequestsBy(context.repo, me).map { it.copy(threads = client.threads(context.repo, it.ref.number)) }
-        return RadarSnapshot(me, context.repo.fullName, prs)
+        return RadioSnapshot(me, context.repo.fullName, prs)
     }
 
     override fun reply(project: Project, number: Int, thread: PrThread, body: String): PrComment {

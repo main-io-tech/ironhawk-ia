@@ -27,8 +27,11 @@ class ReportBugAction : DumbAwareAction() {
         private const val MENU_CLOSE_DELAY_MS = 250L
         private const val ERRORS = 5
 
-        /** [focus] entra como o primeiro erro e define o mecanismo, como no Reportar Este Erro dos logs. */
-        fun open(project: Project, focus: PluginError? = null) {
+        /**
+         * [focus] entra como o primeiro erro e define o mecanismo, como no Reportar Este Erro dos logs. [onPublished] roda
+         * na EDT só quando a issue é criada no GitHub; desistir no caminho não o chama.
+         */
+        fun open(project: Project, focus: PluginError? = null, onPublished: ((BugIssue) -> Unit)? = null) {
             val context = BugContext.collect(project)
             val area = ScreenCapture.windowArea(project)
             ApplicationManager.getApplication().executeOnPooledThread {
@@ -40,7 +43,7 @@ class ReportBugAction : DumbAwareAction() {
                     ?: errors.firstNotNullOfOrNull { it.mechanism }
                     ?: Mechanism.RADAR
                 ApplicationManager.getApplication().invokeLater({
-                    ReportBugDialog(project, area, mechanism, errors, context.entries).show()
+                    ReportBugDialog(project, area, mechanism, errors, context.entries, onPublished).show()
                 }, project.disposed)
             }
         }

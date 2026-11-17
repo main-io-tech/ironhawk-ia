@@ -20,10 +20,10 @@ class MarkTargetAction : DumbAwareAction() {
         val pullRequest = project?.service<ReviewCommentService>()?.activePullRequest ?: 0
         if (file != null) {
             e.presentation.text = when {
-                pullRequest != 0 && file.isDirectory -> "Iron Dome IA: Comentar Pacote no PR #$pullRequest"
-                pullRequest != 0 -> "Iron Dome IA: Comentar Arquivo Inteiro no PR #$pullRequest"
-                file.isDirectory -> "Iron Dome IA: Marcar Pacote como Alvo"
-                else -> "Iron Dome IA: Marcar Arquivo Inteiro como Alvo"
+                pullRequest != 0 && file.isDirectory -> "IronHawk IA: Comentar Pacote no PR #$pullRequest"
+                pullRequest != 0 -> "IronHawk IA: Comentar Arquivo Inteiro no PR #$pullRequest"
+                file.isDirectory -> "IronHawk IA: Marcar Pacote como Alvo"
+                else -> "IronHawk IA: Marcar Arquivo Inteiro como Alvo"
             }
         }
         e.presentation.icon = if (pullRequest != 0) ReviewIcons.addPullRequestComment else templatePresentation.icon

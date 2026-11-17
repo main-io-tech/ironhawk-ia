@@ -223,7 +223,7 @@ class AgentRunner(private val project: Project) {
 
     private fun checkpoint(task: AgentTask): Checkpoint =
         Checkpoint(
-            runCatching { LocalHistory.getInstance().putSystemLabel(project, "Iron Dome IA: antes de ${task.title}") }
+            runCatching { LocalHistory.getInstance().putSystemLabel(project, "IronHawk IA: antes de ${task.title}") }
                 .onFailure { LOG.warn("O ponto do Local History antes da IA não pôde ser marcado", it) }
                 .getOrNull(),
         )
@@ -271,7 +271,7 @@ class AgentRunner(private val project: Project) {
             notify(
                 "Não deu para desfazer",
                 "${error.message ?: "Os arquivos não voltaram."} O ponto de restauração continua no git, em refs/iron-dome/antes-da-ia, " +
-                    "e no Local History do projeto, como \"Iron Dome IA: antes de ${task.title}\".",
+                    "e no Local History do projeto, como \"IronHawk IA: antes de ${task.title}\".",
                 NotificationType.WARNING,
             )
         }

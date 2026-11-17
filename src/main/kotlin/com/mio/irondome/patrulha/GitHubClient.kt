@@ -57,9 +57,15 @@ class GitHubClient(private val apiUrl: String, private val graphQlUrl: String, p
 
     fun currentUser(): String = request("GET", "/user").asJsonObject.string("login")
 
-    fun openPullRequests(repo: GitHubRepo): List<PullRequest> =
-        request("GET", "${repoPath(repo)}/pulls?state=open&sort=updated&direction=desc&per_page=100")
-            .asJsonArray.map { pullRequest(it.asJsonObject) }
+    fun openPullRequests(repo: GitHubRepo): List<PullRequest> {
+        val prs = mutableListOf<PullRequest>()
+        for (page in 1..MAX_PAGES) {
+            val batch = request("GET", "${repoPath(repo)}/pulls?state=open&sort=updated&direction=desc&per_page=100&page=$page").asJsonArray
+            batch.forEach { prs += pullRequest(it.asJsonObject) }
+            if (batch.size() < 100) break
+        }
+        return prs
+    }
 
     fun pullRequest(repo: GitHubRepo, number: Int): PullRequest =
         pullRequest(request("GET", "${repoPath(repo)}/pulls/$number").asJsonObject)
@@ -396,6 +402,7 @@ class GitHubClient(private val apiUrl: String, private val graphQlUrl: String, p
             draft = json.get("draft")?.takeUnless { it is JsonNull }?.asBoolean == true,
             createdAt = json.optString("created_at").orEmpty(),
             headOwner = (head.get("repo") as? JsonObject)?.getAsJsonObject("owner")?.optString("login").orEmpty(),
+            open = json.optString("state")?.let { it == "open" } ?: true,
         )
     }
 

@@ -17,38 +17,6 @@ enum class ClassKind(val label: String) {
  */
 enum class EdgeKind { EXTENDS, IMPLEMENTS, ASSOCIATION, USAGE }
 
-/** Quanto do projeto pode quebrar se a classe mudar, medido pelas classes que dependem dela. */
-enum class ChangeRisk(val label: String) {
-    LOW("Baixo"),
-    MEDIUM("Médio"),
-    HIGH("Alto");
-
-    override fun toString() = label
-
-    companion object {
-        const val MEDIUM_FROM = 3
-        const val HIGH_FROM = 8
-
-        /** Estar num ciclo sobe o risco um nível. */
-        fun of(afferent: Int, inCycle: Boolean): ChangeRisk {
-            val base = when {
-                afferent >= HIGH_FROM -> HIGH
-                afferent >= MEDIUM_FROM -> MEDIUM
-                else -> LOW
-            }
-            return if (inCycle) entries[minOf(base.ordinal + 1, HIGH.ordinal)] else base
-        }
-    }
-}
-
-enum class TestCoverage(val label: String) {
-    NONE("Sem testes"),
-    PARTIAL("Parcial"),
-    GOOD("Bem coberta"),
-    /** A própria classe é um teste, então a métrica não se aplica. */
-    TEST_CLASS("Classe de teste"),
-}
-
 /**
  * [afferent]: classes de produção que dependem desta. [efferent]: classes de produção de que esta
  * depende. Contam o projeto inteiro, não só as classes do diagrama. [attributes] e [operations] são os

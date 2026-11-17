@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/IntelliJ%20IDEA-2025.2%2B-000000?logo=intellijidea&logoColor=white" alt="IntelliJ IDEA 2025.2+">
   <img src="https://img.shields.io/badge/funciona%20com-Cursor%20%C2%B7%20Claude%20Code%20%C2%B7%20Codex-8250DF" alt="Funciona com Cursor, Claude Code e Codex">
-  <img src="https://img.shields.io/badge/vers%C3%A3o-0.1.0-0969DA" alt="Versão 0.1.0">
+  <img src="https://img.shields.io/badge/vers%C3%A3o-0.2.0-0969DA" alt="Versão 0.2.0">
 </p>
 
 O IronHawk IA junta dois plugins num só. Cada sistema pode ser ligado ou desligado em
@@ -20,20 +20,30 @@ O IronHawk IA junta dois plugins num só. Cada sistema pode ser ligado ou deslig
 
 | Sistema | O que faz |
 |---|---|
-| 🛡️ **Defesa: Iron Dome** | Revisão do código com a IA: você marca os alvos no editor e a IA intercepta as correções. Radar, Centro de Comando, Raio de Impacto, Sentinela, Escudo, Patrulha e Inteligência. |
-| 🚀 **Ataque: Tomahawk** | Desenvolvimento guiado pela spec com o [Spec Kit](https://github.com/github/spec-kit): a IA escreve a feature etapa por etapa. Lançador, Extração, Rádio, Avaliação e Telemetria. |
+| 🛡️ **Defesa: Iron Dome** | Revisão do código com a IA: você marca os alvos no editor, usa **Disparar com IA** e a IA intercepta as correções. Abas Radar, Sentinela, Raio de Impacto, Escudo e Patrulha. |
+| 🚀 **Ataque: Tomahawk** | Desenvolvimento guiado pela spec com o [Spec Kit](https://github.com/github/spec-kit): a IA escreve a feature etapa por etapa. Abas Lançador (com a Entrega: commit, push e PR), Avaliação, Telemetria e Rádio. |
 
 Os dois ficam num painel só, **IronHawk IA**. No título dele, **Defesa** e **Ataque** trocam as abas do sistema, e o
 **Arsenal** fica sempre no fim, o mesmo para os dois: a configuração da IA (o CLI, onde ele está, o modelo, a chave e o
-teste), onde rodar a IA, as proteções, o que a IA libera e as execuções recentes. O que vale só para um sistema leva a
-etiqueta Defesa ou Ataque.
+teste), onde rodar a IA, a segurança, as skills extras, o Spec Kit e as execuções recentes. O que vale só para um sistema
+leva a etiqueta Defesa ou Ataque.
+
+A IA roda pelo CLI do **Cursor**, do **Claude Code** ou do **Codex**, na aba (no devcontainer do projeto) ou no terminal
+da IDE, e pelo do **Antigravity**, só no terminal. Problemas com o plugin: **Help > IronHawk IA: Diagnóstico** e
+**Help > Reportar Bug do IronHawk IA**.
 
 Desligado, o sistema sai do painel e perde as ações e os avisos. O que já está nos editores abertos sai ao reiniciar a
 IDE, e a página de configurações oferece reiniciar na hora.
 
 ## Documentação
 
-- [Defesa: Iron Dome](docs/ironhawk.md)
+- [Defesa: Iron Dome](docs/defesa.md): marcar e disparar alvos, ver o que mudou, medir o impacto, rodar e padronizar
+  testes, revisar um PR.
+- [Ataque: Tomahawk](docs/ataque.md): preparar o projeto, lançar as etapas, entregar num PR, revisar o que foi gerado,
+  acompanhar a missão e responder aos comentários dos seus PRs.
+- [Arsenal](docs/arsenal.md): a IA comum aos dois sistemas, onde ela roda, a segurança, as Settings, o Diagnóstico e o
+  Reportar Bug.
+- [Escudo: critérios de aceite](docs/escudo-criterios.md): o contrato que liga os testes aos critérios.
 
 ## Instalação
 

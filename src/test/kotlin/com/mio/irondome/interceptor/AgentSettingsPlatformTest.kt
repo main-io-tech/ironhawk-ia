@@ -1,5 +1,8 @@
 package com.mio.irondome.interceptor
 
+import com.intellij.ui.components.ActionLink
+import com.intellij.ui.components.JBCheckBox
+import com.intellij.util.ui.UIUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.testFramework.PlatformTestUtil
 import com.mio.ironhawk.ArsenalPanel
@@ -70,19 +73,26 @@ class AgentSettingsPlatformTest : BasePlatformTestCase() {
         IronHawkSystem.ATTACK.enabled = false
         val tab = ArsenalPanel(project)
         try {
+            PlatformTestUtil.waitWithEventsDispatching("o Arsenal não terminou de ler o disco", { tab.probed }, 30)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
             val html = allTabsText(tab)
             AgentProvider.entries.forEach { assertTrue("${it.title} no seletor", it.title in html) }
             assertTrue("Configuração automática" in html)
             assertTrue("tempo máximo e argumentos ficam recolhidos", "Opções avançadas" in html && "Argumentos extras" !in html)
-            assertTrue("O que a IA libera" in html)
-            assertTrue("sem o Ataque, nada de permissão total", "acceptEdits" in html && "bypassPermissions" !in html)
-            assertTrue("pergunta antes de cada uma" in html)
+            assertTrue("sem o texto de divulgação", "O que a IA libera" !in html)
+            assertTrue("as flags ficam recolhidas", "acceptEdits" !in html)
             assertTrue("a contenção aparece no Arsenal", "Contenção da IA" in html && "Desfazer Alterações da IA" in html)
+            val ask = UIUtil.findComponentsOfType(tab, JBCheckBox::class.java).single { it.text.startsWith("Perguntar antes de cada tarefa") }
+            assertTrue(ask.isSelected)
+
+            UIUtil.findComponentsOfType(tab, ActionLink::class.java).single { it.text == ArsenalPanel.DETAILS_CLOSED }.doClick()
+            val details = allTabsText(tab)
+            assertTrue("sem o Ataque, nada de permissão total", "acceptEdits" in details && "bypassPermissions" !in details)
 
             AgentSettings.confirmWrites = false
             PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-            val off = allTabsText(tab)
-            assertTrue("dá para voltar a perguntar", "Voltar a perguntar antes de alterar arquivos" in off)
+            assertFalse("dá para voltar a perguntar pela mesma caixa",
+                UIUtil.findComponentsOfType(tab, JBCheckBox::class.java).single { it.text.startsWith("Perguntar antes de cada tarefa") }.isSelected)
         } finally {
             AgentSettings.confirmWrites = true
             IronHawkSystem.ATTACK.enabled = true

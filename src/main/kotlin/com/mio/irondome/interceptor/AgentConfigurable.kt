@@ -11,6 +11,7 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.TitledSeparator
+import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.components.JBTextField
@@ -49,14 +50,22 @@ class AgentConfigurable : Configurable {
     private val model = JBTextField().apply { emptyText.text = "Padrão do CLI" }
     private val timeout = JSpinner(SpinnerNumberModel(AgentSettings.DEFAULT_TIMEOUT_MINUTES, 1, AgentSettings.MAX_TIMEOUT_MINUTES, 5))
     private val extraArgs = JBTextField().apply { emptyText.text = "Ex.: --approve-mcps" }
+    /** Vazio mantém a chave salva; só o Remover a apaga, como na aba Arsenal. */
     private val cursorKey = JBPasswordField()
+    private val keyState = JBLabel()
+    private val removeKey = ActionLink("Remover a chave salva") {
+        ApplicationManager.getApplication().executeOnPooledThread { AgentSettings.cursorApiKey = null }
+        cursorKey.text = ""
+        updateKeyState(saved = false)
+    }
+    /** O CLI achado nesta máquina, por `provedor|caminho`: procurar lê o PATH e o disco, fora da EDT. */
+    private val localFound = mutableMapOf<String, String?>()
     private val runMode = ComboBox(AgentRunMode.entries.toTypedArray()).apply {
         renderer = SimpleListCellRenderer.create("") { it.label }
     }
     private val found = JBLabel()
     private val status = JBLabel()
     private val warning = JBLabel().apply { foreground = JBColor(0x9A6700, 0xD29922) }
-    private var savedKey = ""
     private val autoStatus = JBLabel()
     private val terminalStatus = JBLabel()
     private val autoFailure = NoticeBox(AllIcons.General.Warning, Tone.YELLOW).apply { isVisible = false }
@@ -64,7 +73,7 @@ class AgentConfigurable : Configurable {
     override fun getDisplayName() = "Arsenal (IA)"
 
     override fun createComponent(): JComponent {
-        val test = JButton("Salvar e Testar").apply { addActionListener { test() } }
+        val test = JButton("Salvar e Testar", AllIcons.Actions.Execute).apply { addActionListener { test() } }
         val auto = JButton("Configurar Automaticamente", IronDomeIcons.ia)
         auto.addActionListener { autoSetup(auto, test) }
         if (AgentLaunch.wslSupported) {
@@ -84,13 +93,14 @@ class AgentConfigurable : Configurable {
                 add(auto)
                 add(autoStatus)
             })
-            .addComponent(comment("Procura o ${AgentProvider.entries.joinToString(", ") { "${it.title} CLI" }} instalados e testa cada um, com o modelo padrão, até um responder. Se nenhum responder, termine abaixo."))
+            .addComponent(comment(ArsenalPanel.AUTO_SETUP_HINT))
             .addComponent(autoFailure)
             .addComponent(TitledSeparator("CLI de IA"))
             .addLabeledComponent("CLI:", provider)
             .addComponentToRightColumn(warning)
         if (AgentLaunch.wslSupported) {
             builder.addLabeledComponent("Onde está o CLI:", host)
+                .addComponentToRightColumn(comment(ArsenalPanel.HOST_HINT))
                 .addLabeledComponent("Distribuição do WSL:", distro)
         }
         return builder
@@ -103,13 +113,14 @@ class AgentConfigurable : Configurable {
             .addLabeledComponent("Argumentos extras:", extraArgs)
             .addComponentToRightColumn(comment("Vão para o CLI antes do pedido, separados por espaço; aspas agrupam."))
             .addLabeledComponent("Onde rodar a IA:", runMode)
-            .addComponentToRightColumn(JBLabel("<html>${ArsenalPanel.RUN_MODE_HINT}<br>${ArsenalPanel.ATTACK_RUN_MODE_HINT}</html>").apply {
-                componentStyle = UIUtil.ComponentStyle.SMALL
-                foreground = UIUtil.getContextHelpForeground()
-            })
+            .addComponentToRightColumn(comment(ArsenalPanel.RUN_MODE_HINT))
             .addComponent(TitledSeparator("Cursor"))
             .addLabeledComponent("Chave de API do Cursor:", cursorKey)
-            .addComponentToRightColumn(comment("Opcional: sem ela, vale o login do agent login. Crie em cursor.com/dashboard > Integrations. Fica no cofre de senhas."))
+            .addComponentToRightColumn(comment(ArsenalPanel.CURSOR_KEY_HINT))
+            .addComponentToRightColumn(JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0)).apply {
+                add(keyState)
+                add(removeKey)
+            })
             .addComponentToRightColumn(JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0)).apply {
                 add(test)
                 add(status)
@@ -136,9 +147,12 @@ class AgentConfigurable : Configurable {
             (timeout.value as Int) != AgentSettings.timeoutMinutes ||
             extraArgs.text.trim() != AgentSettings.extraArgs.orEmpty() ||
             runMode.selectedItem != AgentSettings.runMode ||
-            String(cursorKey.password).trim() != savedKey
+            String(cursorKey.password).isNotBlank()
 
-    override fun apply() {
+    override fun apply() = saveFields()
+
+    /** Grava os campos; a chave, se o campo tiver uma, vai para o cofre fora da EDT, e só depois roda [then], na EDT. */
+    private fun saveFields(then: (() -> Unit)? = null) {
         AgentSettings.provider = provider.selectedItem as AgentProvider
         AgentSettings.host = host.selectedItem as? AgentHost ?: AgentHost.LOCAL
         if (host.selectedItem == AgentHost.WSL) AgentSettings.wslDistro = selectedDistro()
@@ -147,9 +161,15 @@ class AgentConfigurable : Configurable {
         AgentSettings.timeoutMinutes = timeout.value as Int
         AgentSettings.extraArgs = extraArgs.text
         AgentSettings.runMode = runMode.selectedItem as AgentRunMode
-        AgentSettings.cursorApiKey = String(cursorKey.password)
-        savedKey = AgentSettings.cursorApiKey.orEmpty()
+        val key = String(cursorKey.password).trim()
+        cursorKey.text = ""
+        if (key.isNotEmpty()) updateKeyState(saved = true)
         updateHints()
+        if (key.isEmpty() && then == null) return
+        ApplicationManager.getApplication().executeOnPooledThread {
+            if (key.isNotEmpty()) AgentSettings.cursorApiKey = key
+            then?.let { ApplicationManager.getApplication().invokeLater(it, ModalityState.any()) }
+        }
     }
 
     override fun reset() {
@@ -161,12 +181,24 @@ class AgentConfigurable : Configurable {
         timeout.value = AgentSettings.timeoutMinutes
         extraArgs.text = AgentSettings.extraArgs.orEmpty()
         runMode.selectedItem = AgentSettings.runMode
-        savedKey = AgentSettings.cursorApiKey.orEmpty()
-        cursorKey.text = savedKey
+        cursorKey.text = ""
+        updateKeyState(AgentSettings.hasCursorApiKey)
         updateHints()
-        if (AgentSettings.verified) show("Testada em ${AgentSettings.verifiedAt}${AgentSettings.launch()?.where.orEmpty()}.", ok = true)
-        else show("Ainda não testada: os botões de IA ficam desligados até o teste passar.", ok = false)
-        AgentSettings.terminalVerifiedAt?.let { showTerminal("Terminal testado em $it.", ok = true) }
+        // O teste vale para a configuração de agora, e conferi-la procura o CLI no PATH: fora da EDT.
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val tested = AgentSettings.verifiedAt?.let { "Testada em $it${AgentSettings.launch()?.where.orEmpty()}." }
+            val terminal = AgentSettings.terminalVerifiedAt
+            ApplicationManager.getApplication().invokeLater({
+                if (tested != null) show(tested, ok = true) else show("Ainda não testada: os botões de IA ficam desligados até o teste passar.", ok = false)
+                terminal?.let { showTerminal("Terminal testado em $it.", ok = true) }
+            }, ModalityState.any())
+        }
+    }
+
+    private fun updateKeyState(saved: Boolean) {
+        keyState.text = if (saved) "Há uma chave salva; deixe o campo vazio para mantê-la." else "Nenhuma chave salva."
+        keyState.foreground = UIUtil.getContextHelpForeground()
+        removeKey.isVisible = saved
     }
 
     private fun selectedDistro(): String? = ((distro.selectedItem as? String) ?: distro.editor.item?.toString())?.trim()?.ifEmpty { null }
@@ -180,15 +212,25 @@ class AgentConfigurable : Configurable {
                 ?: "Escolha a distribuição do WSL."
             found.foreground = if (selectedDistro() != null) UIUtil.getContextHelpForeground() else JBColor.RED
         } else {
-            val path = AgentSettings.resolveExecutable(chosen, executable.text.trim().ifEmpty { null })
-            found.text = path?.let { "Encontrado: $it" } ?: "Não encontrado. ${chosen.installHint}"
-            found.foreground = if (path != null) UIUtil.getContextHelpForeground() else JBColor.RED
+            val configured = executable.text.trim().ifEmpty { null }
+            val key = "${chosen.name}|${configured.orEmpty()}"
+            if (key in localFound) {
+                val path = localFound[key]
+                found.text = path?.let { "Encontrado: $it" } ?: "Não encontrado. ${chosen.installHint}"
+                found.foreground = if (path != null) UIUtil.getContextHelpForeground() else JBColor.RED
+            } else {
+                found.text = "Procurando o ${chosen.title} CLI…"
+                found.foreground = UIUtil.getContextHelpForeground()
+                ApplicationManager.getApplication().executeOnPooledThread {
+                    val path = AgentSettings.resolveExecutable(chosen, configured)?.toString()
+                    ApplicationManager.getApplication().invokeLater({
+                        localFound[key] = path
+                        updateHints()
+                    }, ModalityState.any())
+                }
+            }
         }
-        warning.text = if (chosen == AgentProvider.ANTIGRAVITY) {
-            "<html>O agy -p pode travar quando chamado por outro programa (issue 318 do antigravity-cli); o tempo máximo interrompe.</html>"
-        } else {
-            ""
-        }
+        warning.text = if (chosen == AgentProvider.ANTIGRAVITY) "<html>${ArsenalPanel.antigravityHint()}</html>" else ""
     }
 
     private fun autoSetup(auto: JButton, test: JButton) {
@@ -219,12 +261,13 @@ class AgentConfigurable : Configurable {
             showTerminal("Abra um projeto: o teste usa o terminal dele.", ok = false)
             return
         }
-        apply()
         button.isEnabled = false
         showTerminal("Abrindo o terminal de ${project.name} e esperando a IA gravar OK…", ok = null)
-        AgentVerifier.testTerminal(project) { outcome ->
-            button.isEnabled = true
-            showTerminal(outcome.message, outcome.ok)
+        saveFields {
+            AgentVerifier.testTerminal(project) { outcome ->
+                button.isEnabled = true
+                showTerminal(outcome.message, outcome.ok)
+            }
         }
     }
 
@@ -239,9 +282,8 @@ class AgentConfigurable : Configurable {
 
     /** Salva e testa: só com o teste passando os botões de IA se habilitam. */
     private fun test() {
-        apply()
-        show("Testando ${AgentSettings.provider.title}…", ok = null)
-        AgentVerifier.test { outcome -> show(outcome.message, ok = outcome.ok) }
+        show("Testando ${(provider.selectedItem as AgentProvider).title}…", ok = null)
+        saveFields { AgentVerifier.test { outcome -> show(outcome.message, ok = outcome.ok) } }
     }
 
     private fun show(text: String, ok: Boolean?) {

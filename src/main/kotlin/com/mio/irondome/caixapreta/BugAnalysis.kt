@@ -22,7 +22,7 @@ object BugAnalysis {
     fun instructions(subject: String, content: String): String = buildString {
         appendLine("# $subject")
         appendLine()
-        appendLine("Analise o problema abaixo, do plugin Iron Dome IA para IntelliJ (pacote `${Mechanism.ROOT_PACKAGE}`). Se o código")
+        appendLine("Analise o problema abaixo, do plugin IronHawk IA para IntelliJ (pacotes ${Mechanism.PACKAGES.joinToString { "`$it`" }}). Se o código")
         appendLine("do plugin estiver neste projeto, leia os arquivos da pilha e do mecanismo indicado; se não estiver, use a pilha e")
         appendLine("o que se sabe da API do IntelliJ. Responda em português, em Markdown:")
         appendLine()

@@ -10,8 +10,10 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.actionSystem.UiDataProvider
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -37,6 +39,7 @@ import com.mio.irondome.base.RichTreeCellRenderer
 import com.mio.irondome.base.Segment
 import com.mio.irondome.base.Stat
 import com.mio.irondome.base.SummaryHeader
+import com.mio.irondome.base.moreActions
 import com.mio.irondome.base.Tone
 import com.mio.irondome.base.plural
 import com.mio.irondome.base.refreshAction
@@ -45,7 +48,6 @@ import com.mio.irondome.comando.ReviewArchive
 import com.mio.irondome.comando.ReviewMarkdown
 import com.mio.irondome.interceptor.AgentProgressPanel
 import com.mio.irondome.interceptor.AgentRunner
-import com.mio.irondome.interceptor.AgentSettings
 import com.mio.irondome.interceptor.FireWithAiAction
 import java.awt.BorderLayout
 import java.awt.event.KeyAdapter
@@ -69,11 +71,17 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
 
     private val service = project.service<ReviewCommentService>()
     private val model = DefaultTreeModel(DefaultMutableTreeNode())
-    private val tree = MechanismTree(model, IronDomeIcons.radar, Tone.GREEN).apply {
+    /** Fornece a seleção para o Disparar com IA, que dispara só os alvos selecionados. */
+    private val tree = object : MechanismTree(model, IronDomeIcons.radar, Tone.GREEN), UiDataProvider {
+        override fun uiDataSnapshot(sink: DataSink) {
+            sink[FireWithAiAction.RADAR_SELECTION] = selectedLiveComments()
+        }
+    }.apply {
         cellRenderer = Renderer()
-        emptyText.text = "Céu limpo: nenhum alvo no radar"
-        emptyText.appendSecondaryText("Clique no + da margem do editor para marcar um alvo", SimpleTextAttributes.GRAYED_ATTRIBUTES, null)
-        emptyText.appendLine("ou clique com o botão direito num arquivo ou pacote", SimpleTextAttributes.GRAYED_ATTRIBUTES, null)
+        emptyText.text = "Céu limpo: marque alvos pelo + da margem do editor"
+        emptyText.appendSecondaryText("Comentário Geral", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) {
+            if (service.activePullRequest == 0) TargetComments.markProject(project)
+        }
     }
     private val header = SummaryHeader(IronDomeIcons.radar, Tone.GREEN)
     private val knownKeys = mutableSetOf<String>()
@@ -106,34 +114,40 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
 
     override fun dispose() = Unit
 
+    /**
+     * À vista, o fluxo principal: Comentário Geral, Disparar com IA, Expandir e Recolher. No ⋮, por assunto: as regras
+     * de IA, o histórico, os interceptados no editor e Atualizar.
+     */
     private fun createToolbar() = ActionManager.getInstance().createActionToolbar(
         "IronDome.CommentsToolbar",
         DefaultActionGroup(
-            refreshAction { refresh() },
             projectCommentAction(),
-            rulesCheckAction(),
-            lastRulesCheckAction(),
-            ActionManager.getInstance().getAction("IronDome.SaveReview"),
             ActionManager.getInstance().getAction("IronDome.FireWithAi"),
-            fireSelectedAction(),
+            Separator.getInstance(),
             CommonActionsManager.getInstance().createExpandAllAction(DefaultTreeExpander(tree), tree),
             CommonActionsManager.getInstance().createCollapseAllAction(DefaultTreeExpander(tree), tree),
-            Separator.getInstance(),
-            ActionManager.getInstance().getAction("IronDome.ShowResolved"),
-            ActionManager.getInstance().getAction("IronDome.RemoveResolved"),
-            Separator.getInstance(),
-            historyAction(
-                "Consolidar Histórico",
-                "Junta as revisões encerradas em ${archivePath()} e apaga os .md avulsos; a revisão aberta continua",
-                AllIcons.Vcs.Merge,
-                enabled = { historyCount > 0 },
-            ) { consolidate(confirm = true) },
-            historyAction(
-                "Limpar Histórico",
-                "Apaga os .md das revisões encerradas e o histórico consolidado; a revisão aberta continua",
-                AllIcons.Actions.GC,
-                enabled = { historyCount > 0 || hasArchive },
-            ) { clear() },
+            moreActions(
+                rulesCheckAction(),
+                lastRulesCheckAction(),
+                null,
+                historyAction(
+                    "Consolidar Histórico",
+                    "Junta as revisões encerradas em ${ReviewArchive.FILE_NAME} e apaga os .md avulsos",
+                    AllIcons.Vcs.Merge,
+                    enabled = { historyCount > 0 },
+                ) { consolidate(confirm = true) },
+                historyAction(
+                    "Limpar Histórico",
+                    "Apaga os .md das revisões encerradas e o histórico consolidado",
+                    AllIcons.Actions.GC,
+                    enabled = { historyCount > 0 || hasArchive },
+                ) { clear() },
+                null,
+                ShowResolvedCommentsAction(),
+                RemoveResolvedCommentsAction(),
+                null,
+                refreshAction { refresh() },
+            ),
         ),
         true,
     ).apply { targetComponent = tree }.wrapping().component
@@ -141,7 +155,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     /** Comentário sobre o projeto todo, sem depender de arquivo aberto; não vale durante a revisão de um PR. */
     private fun projectCommentAction() = object : DumbAwareAction(
         "Comentário Geral",
-        "Marca um alvo sobre o projeto como um todo, sem arquivo nem linha",
+        PROJECT_COMMENT_HINT,
         ReviewIcons.addComment,
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
@@ -149,11 +163,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         override fun update(e: AnActionEvent) {
             val reviewing = service.activePullRequest != 0
             e.presentation.isEnabled = !reviewing
-            e.presentation.description = if (reviewing) {
-                "Durante a revisão de um PR, os comentários vão para ele; saia da revisão na aba Patrulha para comentar o projeto"
-            } else {
-                "Marca um alvo sobre o projeto como um todo, sem arquivo nem linha"
-            }
+            e.presentation.description = if (reviewing) "Saia da revisão do PR, na aba Patrulha, para comentar o projeto" else PROJECT_COMMENT_HINT
         }
 
         override fun actionPerformed(e: AnActionEvent) = TargetComments.markProject(project)
@@ -162,7 +172,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     /** A IA, só lendo, confere se as alterações cumprem as regras de IA do projeto; o resultado abre num diálogo. */
     private fun rulesCheckAction() = object : DumbAwareAction(
         "Verificar Regras de IA",
-        "A IA confere se as alterações do projeto cumprem CLAUDE.md, AGENTS.md e as outras regras de IA, sem alterar nada",
+        RULES_CHECK_HINT,
         IronDomeIcons.ia,
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
@@ -173,7 +183,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             e.presentation.description = when {
                 !runner.available() -> FireWithAiAction.NOT_READY
                 runner.running != null -> "A IA já está trabalhando"
-                else -> "A IA confere se as alterações do projeto cumprem CLAUDE.md, AGENTS.md e as outras regras de IA, sem alterar nada"
+                else -> RULES_CHECK_HINT
             }
         }
 
@@ -183,8 +193,8 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     /** Reabre o resultado da última verificação das regras de IA. */
     private fun lastRulesCheckAction() = object : DumbAwareAction(
         "Última Verificação das Regras de IA",
-        "Abre de novo o resultado da última verificação das regras de IA",
-        AllIcons.Actions.Show,
+        "Reabre o resultado da última verificação das regras de IA",
+        AllIcons.Vcs.History,
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
@@ -296,7 +306,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         val archived = service.archivedReviews()
         historyCount = history.size
         hasArchive = service.archiveFile()?.let(Files::exists) == true
-        updateHeader(history.size, archived.size)
+        updateHeader()
         history
             .forEach { (id, path) ->
                 val comments = commentsIn(path)
@@ -315,37 +325,24 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         }
     }
 
-    /** A revisão aberta em números: quantos alvos em cada status e quantos pedem discussão. */
-    private fun updateHeader(historySize: Int, archivedSize: Int) {
-        val history = listOfNotNull(
-            plural(historySize, "revisão no histórico", "revisões no histórico").takeIf { historySize > 0 },
-            plural(archivedSize, "consolidada", "consolidadas").takeIf { archivedSize > 0 },
-        ).joinToString(" · ").ifEmpty { null }
+    /** A revisão aberta em números: quantos alvos em cada status e quantos pedem discussão; os cancelados ficam na barra. */
+    private fun updateHeader() {
         val comments = service.activeComments()
         if (comments.isEmpty()) {
-            header.update(
-                "Céu limpo",
-                CommentStatus.RESOLVED.accent,
-                listOfNotNull("Nenhum alvo na mira", history).joinToString(" · "),
-            )
+            header.update("Céu limpo", CommentStatus.RESOLVED.accent, "Nenhum alvo marcado")
             return
         }
         val statuses = comments.map(service::statusOf)
         fun count(status: CommentStatus) = statuses.count { it == status }
         val files = comments.filter { it.target != CommentTarget.PROJECT }.map { it.filePath }.distinct().size
-        val open = statuses.count { it != CommentStatus.RESOLVED }
+        val where = if (files == 0) "no projeto" else "em ${plural(files, "arquivo", "arquivos")}"
         header.update(
             title = ReviewCommentService.reviewName(service.activeReviewId),
-            subtitle = listOfNotNull(
-                if (open == 0) "todos interceptados" else "em operação",
-                "${plural(comments.size, "alvo", "alvos")} em ${plural(files, "arquivo", "arquivos")}",
-                history,
-            ).joinToString(" · "),
+            subtitle = "${plural(comments.size, "alvo", "alvos")} $where",
             stats = listOf(
                 Stat(count(CommentStatus.UNSAVED), if (count(CommentStatus.UNSAVED) == 1) "não disparado" else "não disparados", CommentStatus.UNSAVED.tone),
                 Stat(count(CommentStatus.PENDING), "na mira", CommentStatus.PENDING.tone),
                 Stat(count(CommentStatus.RESOLVED), if (count(CommentStatus.RESOLVED) == 1) "interceptado" else "interceptados", CommentStatus.RESOLVED.tone),
-                Stat(count(CommentStatus.REMOVING), if (count(CommentStatus.REMOVING) == 1) "cancelado" else "cancelados", CommentStatus.REMOVING.tone),
                 Stat(comments.count { it.discuss && !it.resolved }, "para discutir", ReviewColors.discussTone),
             ),
             bar = listOf(CommentStatus.RESOLVED, CommentStatus.PENDING, CommentStatus.UNSAVED, CommentStatus.REMOVING)
@@ -492,7 +489,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         PopupHandler.installPopupMenu(
             tree,
             DefaultActionGroup(
-                fireSelectedAction(),
+                ActionManager.getInstance().getAction("IronDome.FireWithAi"),
                 Separator.getInstance(),
                 liveAction("Editar", AllIcons.Actions.Edit, service::isEditable) { TargetComments.edit(project, it) },
                 liveAction("Cancelar Alvo", AllIcons.General.Remove, { !it.resolved && !it.removing }) { service.markForRemoval(listOf(it)) },
@@ -503,36 +500,6 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             ),
             "IronDome.CommentsPopup",
         )
-    }
-
-    /**
-     * Dispara só os alvos selecionados: um comentário, vários (Ctrl+clique) ou todos de um arquivo ou da revisão.
-     * Com a IA pronta, ela executa só eles; sem ela, o pedido vai para a área de transferência.
-     */
-    private fun fireSelectedAction() = object : DumbAwareAction("Disparar Selecionados", null, IronDomeIcons.interceptador) {
-        override fun getActionUpdateThread() = ActionUpdateThread.EDT
-
-        override fun update(e: AnActionEvent) {
-            val targets = FireWithAiAction.fireable(selectedLiveComments())
-            val runner = AgentRunner.getInstance(project)
-            val reviewing = runner.reviewingPullRequest()
-            e.presentation.isEnabled = targets.isNotEmpty() && runner.running == null && reviewing == 0
-            e.presentation.text = when (targets.size) {
-                0 -> "Disparar Selecionados"
-                1 -> "Disparar ${targets.single().id}"
-                else -> "Disparar Selecionados (${targets.size})"
-            }
-            e.presentation.description = when {
-                reviewing != 0 -> FireWithAiAction.reviewingHint(reviewing)
-                targets.isEmpty() -> "Selecione um ou mais alvos pendentes (Ctrl+clique), um arquivo ou a revisão para disparar só eles"
-                AgentSettings.ready -> "Grava no .md e pede à IA (${AgentSettings.provider.title}) que execute só os alvos selecionados"
-                else -> "Grava no .md e copia o pedido para você colar na sua IA, para executar só os alvos selecionados"
-            }
-        }
-
-        override fun actionPerformed(e: AnActionEvent) {
-            FireWithAiAction.fireTargets(project, selectedLiveComments())
-        }
     }
 
     /** Os comentários da revisão aberta em todos os nós selecionados, com os de baixo de arquivos e revisões. */
@@ -629,7 +596,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                     row.text(item.name, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                     when {
                         item.pending == 0 -> row.pill("Concluída", CommentStatus.RESOLVED.tone, bold = true)
-                        item.active -> row.pill("Em operação", CommentStatus.UNSAVED.tone, bold = true)
+                        item.active -> row.pill("Aberta", CommentStatus.UNSAVED.tone, bold = true)
                         item.archived -> row.pill("Consolidada", Tone.GRAY)
                         else -> row.pill("Histórico", Tone.GRAY)
                     }
@@ -691,5 +658,7 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
 
     private companion object {
         const val ARCHIVE_KEY = "archive"
+        const val PROJECT_COMMENT_HINT = "Marca um alvo sobre o projeto todo, sem arquivo nem linha"
+        const val RULES_CHECK_HINT = "A IA confere, sem alterar nada, se as alterações cumprem as regras de IA do projeto"
     }
 }

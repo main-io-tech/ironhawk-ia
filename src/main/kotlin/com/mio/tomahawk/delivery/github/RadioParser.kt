@@ -7,7 +7,7 @@ import com.mio.tomahawk.delivery.PrThread
 import com.mio.tomahawk.delivery.ThreadKind
 
 /** As conversas do PR a partir do GraphQL do GitHub, da mais recente para a mais antiga. */
-internal object RadarParser {
+internal object RadioParser {
 
     private const val COMMENT = "databaseId body createdAt url author { login }"
 

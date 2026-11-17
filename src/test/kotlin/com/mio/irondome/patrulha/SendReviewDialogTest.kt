@@ -53,6 +53,12 @@ class SendReviewDialogTest : BasePlatformTestCase() {
         assertTrue(dialog.isOKActionEnabled)
     }
 
+    fun testSendingAlwaysGoesToTheDraftWithoutAVerdict() = withDialog { dialog ->
+        val options = UIUtil.findComponentsOfType(root(dialog), JBRadioButton::class.java).map { it.text }.toSet()
+
+        assertEquals("o veredito fica só no Concluir Revisão", SendChoice.entries.map { it.label }.toSet(), options)
+    }
+
     private fun withDialog(test: (SendReviewDialog) -> Unit) {
         val planned = listOf(first, second, third).map { PlannedRequest(it, Placement.INLINE, it.text, null, it.startLine + 1) }
         val dialog = SendReviewDialog(project, pr, planned, warning = null)
@@ -73,7 +79,7 @@ class SendReviewDialogTest : BasePlatformTestCase() {
     private fun hasLabel(dialog: SendReviewDialog, text: String) =
         UIUtil.findComponentsOfType(root(dialog), JBLabel::class.java).any { it.text == text }
 
-    /** Sem janela no modo headless, o painel do diálogo é o topo da hierarquia do campo de texto geral. */
+    /** Sem janela no modo headless, o painel do diálogo é o topo da hierarquia do Enviar do primeiro comentário. */
     private fun root(dialog: SendReviewDialog): JComponent =
         generateSequence(dialog.preferredFocusedComponent as Component) { it.parent }.last() as JComponent
 }

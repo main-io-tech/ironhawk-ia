@@ -1,7 +1,7 @@
 package com.mio.tomahawk.delivery
 
 import com.google.gson.JsonParser
-import com.mio.tomahawk.delivery.github.RadarParser
+import com.mio.tomahawk.delivery.github.RadioParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -33,7 +33,7 @@ class RadioTest {
         }
     """.trimIndent()
 
-    private val threads = RadarParser.threads(JsonParser.parseString(graphQl).asJsonObject)
+    private val threads = RadioParser.threads(JsonParser.parseString(graphQl).asJsonObject)
 
     @Test
     fun `le as conversas de codigo, da conversa geral e das revisoes`() {

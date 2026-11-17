@@ -35,7 +35,7 @@ object PullRequestDraft {
 
     fun body(feature: FeatureReport?, specTitle: String?, relative: (Path) -> String): String = buildString {
         if (feature == null) {
-            append("_Aberto pelo Tomahawk IA._\n")
+            append("_Aberto pelo IronHawk IA._\n")
             return@buildString
         }
         append("## ").append(specTitle ?: humanize(feature.name)).append("\n\n")
@@ -59,7 +59,7 @@ object PullRequestDraft {
             append("\n### Artefatos\n\n")
             artifacts.forEach { append("- `").append(relative(it)).append("`\n") }
         }
-        append("\n---\n_Aberto pelo Tomahawk IA._\n")
+        append("\n---\n_Aberto pelo IronHawk IA._\n")
     }
 
     /** `001-photo-albums` vira `Photo albums`. */

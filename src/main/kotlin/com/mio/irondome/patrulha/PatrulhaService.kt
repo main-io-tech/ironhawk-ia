@@ -268,25 +268,20 @@ class PatrulhaService(private val project: Project) : PersistentStateComponent<P
         discussionsChanged(number)
     }
 
-    /** Os cartões do PR [number] ocultados um a um no editor: pedidos enviados e conversas. */
-    fun hiddenInEditor(number: Int): Int =
-        record(number)?.requests.orEmpty().count { isRequestHidden(number, it.id) } +
-            editorDiscussions(number).count { isDiscussionHidden(number, it) }
-
-    /** Traz de volta ao editor os cartões do PR [number] ocultados um a um, ligando os pedidos e as conversas. */
-    fun showHiddenInEditor(number: Int) {
-        val prefix = "$number:"
-        state.hiddenRequests.removeAll { it.startsWith(prefix) }
-        state.hiddenDiscussions.removeAll { it.startsWith(prefix) }
-        setShownInEditor(number, true)
-    }
-
     /** Os comentários do PR [number] aparecem no editor: pedidos enviados, conversas ou os não enviados. */
     fun isAnyShownInEditor(number: Int): Boolean =
         isHistoryShown(number) || isDiscussionsShown(number) || !project.service<ReviewCommentService>().pullRequestDraftsHidden
 
-    /** Tira do editor, ou traz de volta, todos os comentários do PR [number], sem mexer nos ocultados um a um. */
+    /**
+     * Tira do editor, ou traz de volta, todos os comentários do PR [number]: os não enviados, os pedidos enviados e as
+     * conversas. Mostrar traz também os cartões ocultados um a um pelo Ocultar do cartão.
+     */
     fun setAllShownInEditor(number: Int, shown: Boolean) {
+        if (shown) {
+            val prefix = "$number:"
+            state.hiddenRequests.removeAll { it.startsWith(prefix) }
+            state.hiddenDiscussions.removeAll { it.startsWith(prefix) }
+        }
         setShownInEditor(number, shown)
         project.service<ReviewCommentService>().setPullRequestDraftsHidden(!shown)
     }
@@ -552,57 +547,31 @@ class PatrulhaService(private val project: Project) : PersistentStateComponent<P
     }
 
     /**
-     * Envia os rascunhos ao PR e grava os pedidos no `.md`. Com [asDraft], eles vão para a revisão pendente do
-     * GitHub (só quem revisa vê, até [publishDraft]), acrescentados à que já existir; senão, numa revisão
-     * publicada com [event], o [ReviewVerdict.event]. Não tira os rascunhos do Radar: isso é com quem
-     * chama, na EDT.
+     * Envia os rascunhos ao PR, sempre na revisão pendente do GitHub (só quem revisa vê, até [submitVerdict]),
+     * acrescentados à que já existir, e grava os pedidos no `.md`. Publicar com veredito é só pelo [submitVerdict].
+     * Não tira os rascunhos do Radar: isso é com quem chama, na EDT.
      */
-    fun send(context: RepoContext, pr: PullRequest, drafts: List<ReviewComment>, general: String, event: String, asDraft: Boolean): SendResult {
+    fun send(context: RepoContext, pr: PullRequest, drafts: List<ReviewComment>): SendResult {
         val client = client(context)
         val planned = ReviewPlan.plan(drafts, client.files(context.repo, pr.number))
         var existing = record(pr.number)?.let { reconcileDraft(client, context, it).record }
         val sentAt = LocalDateTime.now().toString()
         val posted = mutableListOf<GitHubClient.PostedComment>()
-        val reviewUrl: String
-        if (asDraft) {
-            val (url, pending) = sendToDraft(client, context, pr, planned, general, existing, posted)
-            reviewUrl = url
-            existing = (existing ?: PullRequestRecord(pr.number, pr.title, pr.url, pr.headRef, pr.baseRef, emptyList()))
-                .copy(pendingReviewId = pending.id, pendingReviewNodeId = pending.nodeId)
-        } else {
-            val inline = planned.filter { it.placement == Placement.INLINE }
-            val review = try {
-                client.createReview(
-                    context.repo, pr.number, pr.headSha,
-                    ReviewPlan.reviewBody(general, planned).ifBlank { if (event == ReviewVerdict.APPROVE.event) "" else DEFAULT_BODY }, event,
-                    inline.map { GitHubClient.InlineComment(it.comment.filePath, it.startLine, it.line!!, it.body) },
-                )
-            } catch (e: GitHubException) {
-                throw when {
-                    e.status == 422 && existing?.pendingReviewId != null ->
-                        PatrulhaException("Há um rascunho deste PR no GitHub: publique ou descarte o rascunho antes de publicar outra revisão.")
-                    e.status == 422 -> refused(e)
-                    else -> e
-                }
-            }
-            reviewUrl = review.url
-            posted += client.reviewComments(context.repo, pr.number, review.id)
-            planned.filter { it.placement == Placement.FILE }.forEach { request ->
-                posted += client.createFileComment(context.repo, pr.number, pr.headSha, request.comment.filePath, request.body)
-            }
-        }
+        val (reviewUrl, pending) = sendToDraft(client, context, pr, planned, existing, posted)
+        existing = (existing ?: PullRequestRecord(pr.number, pr.title, pr.url, pr.headRef, pr.baseRef, emptyList()))
+            .copy(pendingReviewId = pending.id, pendingReviewNodeId = pending.nodeId)
         val requests = planned.map { request ->
             val comment = posted.firstOrNull { ReviewPlan.marker(request.comment.id) in it.body }
-            changeRequest(request.comment, pr.headSha, comment, reviewUrl, sentAt, pending = asDraft)
+            changeRequest(request.comment, pr.headSha, comment, reviewUrl, sentAt, pending = true)
         }
-        val known = existing?.requests.orEmpty()
+        val known = existing.requests
         write(
             PullRequestRecord(
                 pr.number, pr.title, pr.url, pr.headRef, pr.baseRef,
                 known + requests.map { request -> if (known.any { it.id == request.id }) request.copy(id = uniqueId(request.id, known)) else request },
-                existing?.checkedAt,
-                existing?.pendingReviewId,
-                existing?.pendingReviewNodeId,
+                existing.checkedAt,
+                existing.pendingReviewId,
+                existing.pendingReviewNodeId,
             ),
         )
         return SendResult(reviewUrl, requests)
@@ -617,7 +586,6 @@ class PatrulhaService(private val project: Project) : PersistentStateComponent<P
         context: RepoContext,
         pr: PullRequest,
         planned: List<PlannedRequest>,
-        general: String,
         existing: PullRequestRecord?,
         posted: MutableList<GitHubClient.PostedComment>,
     ): Pair<String, GitHubClient.Review> {
@@ -627,7 +595,7 @@ class PatrulhaService(private val project: Project) : PersistentStateComponent<P
         val review = if (current == null) {
             try {
                 client.createReview(
-                    context.repo, pr.number, pr.headSha, ReviewPlan.reviewBody(general, inBody), null,
+                    context.repo, pr.number, pr.headSha, ReviewPlan.reviewBody("", inBody), null,
                     inline.map { GitHubClient.InlineComment(it.comment.filePath, it.startLine, it.line!!, it.body) },
                 ).also { posted += client.reviewComments(context.repo, pr.number, it.id) }
             } catch (e: GitHubException) {
@@ -645,8 +613,8 @@ class PatrulhaService(private val project: Project) : PersistentStateComponent<P
                 .exceptionOrNull()
                 ?.let { PlannedRequest(request.comment, Placement.BODY, ReviewPlan.bodyFor(request.comment, Placement.BODY), null, null) }
         }
-        // Num rascunho novo, o texto geral e os pedidos de texto já foram na criação; falta só o que não coube no arquivo.
-        val extra = if (current == null) ReviewPlan.reviewBody("", fallback) else ReviewPlan.reviewBody(general, inBody + fallback)
+        // Num rascunho novo, os pedidos de texto já foram na criação; falta só o que não coube no arquivo.
+        val extra = ReviewPlan.reviewBody("", if (current == null) fallback else inBody + fallback)
         if (extra.isNotBlank()) {
             val body = client.review(context.repo, pr.number, review.id)?.body.orEmpty()
             client.updateReviewBody(context.repo, pr.number, review.id, listOf(body.trim(), extra).filter { it.isNotBlank() }.joinToString("\n\n"))
@@ -716,16 +684,6 @@ class PatrulhaService(private val project: Project) : PersistentStateComponent<P
         "O GitHub recusou a revisão (${e.message}). Ele não deixa aprovar nem solicitar alterações no próprio PR, " +
             "nem publicar outra revisão com um rascunho seu aberto pelo GitHub.",
     )
-
-    /** Descarta o rascunho no GitHub, com todos os comentários dele, e tira os pedidos dele do `.md`. Devolve quantos saíram. */
-    fun discardDraft(context: RepoContext, number: Int): Int {
-        val record = record(number) ?: return 0
-        val id = record.pendingReviewId ?: return 0
-        client(context).deletePendingReview(context.repo, number, id)
-        val removed = record.drafts.size
-        write(record.withoutDraft(published = false))
-        return removed
-    }
 
     /**
      * Apaga todos os pedidos do PR: descarta o rascunho no GitHub e, com [publishedOnGitHub], apaga também os
@@ -936,7 +894,7 @@ class PatrulhaService(private val project: Project) : PersistentStateComponent<P
         @Topic.ProjectLevel
         val TOPIC = Topic(Listener::class.java, Topic.BroadcastDirection.NONE)
 
-        const val DEFAULT_BODY = "Pedidos de alteração enviados pelo Iron Dome IA."
+        const val DEFAULT_BODY = "Pedidos de alteração enviados pelo IronHawk IA."
 
         fun branchName(number: Int) = "pr-$number"
 

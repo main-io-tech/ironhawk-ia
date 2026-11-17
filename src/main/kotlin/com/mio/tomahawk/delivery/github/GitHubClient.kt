@@ -78,8 +78,8 @@ class GitHubClient(private val apiUrl: String, private val token: String, privat
             addProperty("name", repo.name)
             addProperty("number", number)
         }
-        val pullRequest = graphQl(RadarParser.QUERY, variables).getAsJsonObject("repository")?.getAsJsonObject("pullRequest") ?: return emptyList()
-        return RadarParser.threads(pullRequest)
+        val pullRequest = graphQl(RadioParser.QUERY, variables).getAsJsonObject("repository")?.getAsJsonObject("pullRequest") ?: return emptyList()
+        return RadioParser.threads(pullRequest)
     }
 
     /** Resposta publicada na conversa da linha que começa no comentário [commentId]. */

@@ -48,6 +48,8 @@ data class PullRequest(
     val createdAt: String = "",
     /** Dono do repositório da branch do PR: outro que o do repositório quando o PR vem de um fork. */
     val headOwner: String = "",
+    /** Aberto no GitHub; fechado ou com merge, false. */
+    val open: Boolean = true,
 )
 
 /**

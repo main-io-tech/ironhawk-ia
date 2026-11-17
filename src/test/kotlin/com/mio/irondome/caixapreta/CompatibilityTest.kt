@@ -44,6 +44,30 @@ class CompatibilityTest {
     }
 
     @Test
+    fun withTheDefenseOffOnlyTheSharedMechanismsWarn() {
+        val env = healthy.copy(javaPlugin = false, extraTabs = setOf("Escudo", "Patrulha"), agentCli = null)
+
+        val attackOnly = Compatibility.relevant(Compatibility.evaluate(env), defense = false)
+
+        assertTrue(attackOnly.none { it.mechanism == Mechanism.IMPACTO || it.mechanism == Mechanism.RADAR })
+        assertTrue(attackOnly.any { it.mechanism == Mechanism.INTERCEPTOR } && attackOnly.any { it.mechanism == Mechanism.CAIXA_PRETA })
+        assertTrue(Compatibility.problems(attackOnly).isEmpty())
+        assertEquals(Compatibility.evaluate(env), Compatibility.relevant(Compatibility.evaluate(env), defense = true))
+    }
+
+    @Test
+    fun theFailedTabOpensTheDiagnosticsOnTheErrorLog() {
+        assertEquals(DiagnosticsTab.ERROR_LOG.name, com.mio.irondome.base.TabErrorPanel.ERROR_LOG_TAB)
+    }
+
+    @Test
+    fun theCliHintPointsToTheIronHawkSettings() {
+        val hint = check(healthy.copy(agentCli = null), Mechanism.INTERCEPTOR).fix.orEmpty()
+
+        assertTrue(hint, "IronHawk IA > Arsenal (IA)" in hint && "Iron Dome" !in hint)
+    }
+
+    @Test
     fun pluginActiveButTabNotRegisteredMeansThePartDidNotLoad() {
         val env = healthy.copy(extraTabs = setOf("Escudo", "Patrulha"))
 

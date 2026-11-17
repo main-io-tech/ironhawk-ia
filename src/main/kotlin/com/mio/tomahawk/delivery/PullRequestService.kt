@@ -126,9 +126,9 @@ class PullRequestService(private val project: Project) : Disposable {
         lastError = null
         publish()
         val title = when (request.mode) {
-            DeliveryMode.COMMIT -> "Tomahawk IA: commitando"
-            DeliveryMode.PUSH -> "Tomahawk IA: commitando e enviando"
-            DeliveryMode.PULL_REQUEST -> "Tomahawk IA: abrindo o pull request"
+            DeliveryMode.COMMIT -> "IronHawk IA: commitando"
+            DeliveryMode.PUSH -> "IronHawk IA: commitando e enviando"
+            DeliveryMode.PULL_REQUEST -> "IronHawk IA: abrindo o pull request"
         }
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, title, false) {
             override fun run(indicator: ProgressIndicator) {
@@ -151,7 +151,7 @@ class PullRequestService(private val project: Project) : Disposable {
                 } finally {
                     step = null
                     refresh(remote = true, delayMs = 0)
-                    if (request.mode == DeliveryMode.PULL_REQUEST) PrRadarService.getInstance(project).refresh(delayMs = 1_000)
+                    if (request.mode == DeliveryMode.PULL_REQUEST) PrRadioService.getInstance(project).refresh(delayMs = 1_000)
                 }
             }
         })
@@ -174,7 +174,7 @@ class PullRequestService(private val project: Project) : Disposable {
         writing = target
         lastError = null
         publish()
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Tomahawk IA: escrevendo ${target.label}", false) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "IronHawk IA: escrevendo ${target.label}", false) {
             override fun run(indicator: ProgressIndicator) {
                 var context: Path? = null
                 try {

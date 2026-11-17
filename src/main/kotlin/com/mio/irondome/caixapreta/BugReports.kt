@@ -70,7 +70,7 @@ internal class BugContext(val activeTab: Mechanism?, val entries: List<Pair<Stri
                     "Abas que não abriram" to TabFailures.all.entries.joinToString("; ") { (title, error) -> "$title ($error)" }.ifEmpty { "nenhuma" },
                     "Controle de versão" to ProjectLevelVcsManager.getInstance(project).allActiveVcss
                         .joinToString { it.displayName }.ifEmpty { "nenhum" },
-                    "Aba ativa do Iron Dome IA" to (tab ?: "painel fechado"),
+                    "Aba ativa do IronHawk IA" to (tab ?: "painel fechado"),
                     "Arquivo aberto" to openFile,
                 ),
             )
@@ -93,8 +93,8 @@ object BugReports {
     /** O texto da issue, como será publicado. */
     fun issueBody(report: BugReport) = BugReportMarkdown.render(report, inline = false)
 
-    /** [recording] é um arquivo temporário, movido para a pasta do relatório. */
-    fun submit(project: Project, report: BugReport, screenshot: BufferedImage?, recording: Path?) {
+    /** [recording] é um arquivo temporário, movido para a pasta do relatório. [onPublished] roda na EDT se a issue for criada. */
+    fun submit(project: Project, report: BugReport, screenshot: BufferedImage?, recording: Path?, onPublished: ((BugIssue) -> Unit)? = null) {
         object : Task.Backgroundable(project, "Reportando o bug", false) {
             private var dir: Path? = null
             private var issue: BugIssue? = null
@@ -102,7 +102,7 @@ object BugReports {
 
             override fun run(indicator: ProgressIndicator) {
                 indicator.text = "Salvando os anexos"
-                val dir = Files.createTempDirectory("iron-dome-bug-${report.createdAt.format(STAMP)}-")
+                val dir = Files.createTempDirectory("ironhawk-bug-${report.createdAt.format(STAMP)}-")
                 this.dir = dir
                 screenshot?.let { ImageIO.write(it, "png", dir.resolve(BugReportMarkdown.SCREENSHOT).toFile()) }
                 recording?.let { Files.move(it, dir.resolve(BugReportMarkdown.RECORDING), StandardCopyOption.REPLACE_EXISTING) }
@@ -121,7 +121,7 @@ object BugReports {
 
             override fun onSuccess() {
                 val dir = dir ?: return
-                notifyResult(project, report, dir, issue, failure)
+                notifyResult(project, report, dir, issue, failure, onPublished)
             }
 
             override fun onThrowable(error: Throwable) {
@@ -134,7 +134,7 @@ object BugReports {
         }.queue()
     }
 
-    private fun retry(project: Project, report: BugReport, dir: Path) {
+    private fun retry(project: Project, report: BugReport, dir: Path, onPublished: ((BugIssue) -> Unit)?) {
         object : Task.Backgroundable(project, "Criando a issue no GitHub", false) {
             private var issue: BugIssue? = null
             private var failure: BugReportException? = null
@@ -147,15 +147,23 @@ object BugReports {
                 }
             }
 
-            override fun onSuccess() = notifyResult(project, report, dir, issue, failure)
+            override fun onSuccess() = notifyResult(project, report, dir, issue, failure, onPublished)
         }.queue()
     }
 
-    private fun notifyResult(project: Project, report: BugReport, dir: Path, issue: BugIssue?, failure: BugReportException?) {
+    private fun notifyResult(
+        project: Project,
+        report: BugReport,
+        dir: Path,
+        issue: BugIssue?,
+        failure: BugReportException?,
+        onPublished: ((BugIssue) -> Unit)?,
+    ) {
         val captures = report.screenshot || report.recording
         val files = listOfNotNull(BugReportMarkdown.SCREENSHOT.takeIf { report.screenshot }, BugReportMarkdown.RECORDING.takeIf { report.recording })
         val notification = when {
             issue != null -> {
+                onPublished?.invoke(issue)
                 BrowserUtil.browse(issue.url)
                 if (captures) RevealFileAction.openDirectory(dir.toFile())
                 val attach = if (captures) "Arraste ${files.joinToString(" e ")} da pasta que abri para a issue, no navegador: o GitHub só aceita anexos pela página." else "Aberta no navegador."
@@ -173,7 +181,7 @@ object BugReports {
                 )
             }
             else -> group().createNotification("O bug não foi enviado ao GitHub", failure?.message.orEmpty(), NotificationType.WARNING)
-                .addAction(NotificationAction.createSimpleExpiring("Tentar de Novo") { retry(project, report, dir) })
+                .addAction(NotificationAction.createSimpleExpiring("Tentar de Novo") { retry(project, report, dir, onPublished) })
                 .apply {
                     if (failure?.needsAccount == true) {
                         addAction(NotificationAction.createSimple("Abrir as Configurações do GitHub") {

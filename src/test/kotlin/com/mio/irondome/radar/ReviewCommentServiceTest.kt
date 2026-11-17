@@ -186,6 +186,7 @@ class ReviewCommentServiceTest : HeavyPlatformTestCase() {
         assertEquals(listOf(inFirst, inSecond), FireWithAiAction.fireable(listOf(inFirst, inSecond, inFirst)))
         service.markForRemoval(listOf(inFirst))
         assertEquals(listOf(inSecond), FireWithAiAction.fireable(listOf(inFirst, inSecond)))
+        assertEquals("cancelado não conta como alvo aberto", mapOf("src/Second.kt" to 1), service.openCounts)
     }
 
     fun testEscudoTargetsGoToTheRadarMarkedAsEscudoEvenDuringPullRequestReview() {

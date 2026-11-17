@@ -25,8 +25,6 @@ object TomahawkSettings {
     private const val SPECIFY_SHELL_KEY = "Tomahawk.Specify.Shell"
     private const val GUARDRAILS_KEY = "Tomahawk.Agent.Guardrails"
 
-    const val DEFAULT_TIMEOUT_MINUTES = AgentSettings.DEFAULT_TIMEOUT_MINUTES
-
     fun interface Listener {
         fun changed()
 
@@ -109,14 +107,6 @@ object TomahawkSettings {
         get() = props.getBoolean(GUARDRAILS_KEY, true)
         set(value) = change { props.setValue(GUARDRAILS_KEY, value, true) }
 
-    var autoSetupTried: Boolean
-        get() = AgentSettings.autoSetupTried
-        set(value) {
-            AgentSettings.autoSetupTried = value
-        }
-
-    val untouched: Boolean get() = AgentSettings.untouched
-
     /** Opcional: sem ela, o Cursor CLI usa o login do `agent login`. Fora da EDT. */
     var cursorApiKey: String?
         get() = AgentSettings.cursorApiKey
@@ -133,22 +123,8 @@ object TomahawkSettings {
     val ready: Boolean
         get() = readyCache ?: (launch() != null && verified).also { readyCache = it }
 
+    /** O teste do Arsenal, que vale para os dois sistemas, passou com a configuração de agora e um CLI que o Spec Kit conhece. */
     val verified: Boolean get() = supported && AgentSettings.verified
-
-    val verifiedAt: String? get() = AgentSettings.verifiedAt?.takeIf { supported }
-
-    fun fingerprint(): String = AgentSettings.fingerprint()
-
-    fun markVerified(at: String) = AgentSettings.markVerified(at)
-
-    fun clearVerified() = AgentSettings.clearVerified()
-
-    /** Quando o teste pelo terminal passou com a configuração de agora; nulo se nunca, ou se ela mudou. */
-    var terminalVerifiedAt: String?
-        get() = AgentSettings.terminalVerifiedAt
-        set(value) {
-            AgentSettings.terminalVerifiedAt = value
-        }
 
     /** O Arsenal mudou: as telas do Tomahawk se atualizam como se a mudança fosse daqui. */
     fun sharedChanged() {

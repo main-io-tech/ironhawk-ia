@@ -10,7 +10,7 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SimpleListCellRenderer
-import com.intellij.ui.TitledSeparator
+import com.mio.irondome.base.Collapsible
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
@@ -29,11 +29,12 @@ import com.mio.tomahawk.base.AttackTabs
 import com.mio.tomahawk.delivery.DeliveryMode
 import com.mio.tomahawk.delivery.DeliveryRequest
 import com.mio.tomahawk.delivery.DeliveryWriter
-import com.mio.tomahawk.delivery.PrRadarService
+import com.mio.tomahawk.delivery.PrRadioService
 import com.mio.tomahawk.delivery.PullRequestDraft
 import com.mio.tomahawk.delivery.PullRequestService
 import com.mio.tomahawk.delivery.WriteTarget
 import com.mio.tomahawk.run.TomahawkSettings
+import com.mio.tomahawk.speckit.FeatureReport
 import com.mio.tomahawk.speckit.SddStep
 import com.mio.tomahawk.speckit.SpecKitLayout
 import com.mio.tomahawk.speckit.SpecKitService
@@ -50,10 +51,15 @@ import javax.swing.event.DocumentEvent
 import javax.swing.text.JTextComponent
 
 /**
- * A Extração: commit, push e pull request da feature ativa, quando o projeto está num repositório do GitHub. Os
- * campos começam com o que sai da spec e das tarefas; o que o usuário escreve fica até a entrega dar certo.
+ * A Entrega (a Extração): commit, push e pull request, quando o projeto está num repositório do GitHub. Os campos
+ * começam com o que sai da spec e das tarefas da feature que [featureOf] devolve (a escolhida no Lançador); o que o
+ * usuário escreve fica até a entrega dar certo. A seção começa recolhida, com o resumo no título.
  */
-class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)) {
+class DeliveryPanel(
+    private val project: Project,
+    parent: Disposable,
+    private val featureOf: () -> FeatureReport? = { SpecKitService.getInstance(project).snapshot.active },
+) : JPanel(BorderLayout()) {
 
     private val pr = PullRequestService.getInstance(project)
     private val service = SpecKitService.getInstance(project)
@@ -78,7 +84,7 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
         isOpaque = false
         add(titleRow("Mensagem do commit", commitAi))
         add(ScrollPaneFactory.createScrollPane(commit))
-        add(hint("A primeira linha é o título do commit; depois de uma linha em branco, o corpo com os detalhes."))
+        add(hint("A primeira linha é o título; o corpo vem depois de uma linha em branco."))
         add(changesLink)
         add(changesList)
     }
@@ -90,7 +96,6 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
         add(labeled("Título do PR", title))
         add(titleRow("Descrição do PR", bodyAi))
         add(ScrollPaneFactory.createScrollPane(body))
-        add(hint("Gerar com IA escreve o título e a descrição a partir dos commits e do diff contra a base."))
     }
     private val draft = JBCheckBox("Abrir como rascunho")
     private val deliver = JButton("Commitar, enviar e abrir PR", AllIcons.Vcs.Push).apply {
@@ -121,12 +126,19 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
     private var busy = false
     private var sentMode = DeliveryMode.PULL_REQUEST
 
+    private val content = JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)).apply {
+        isOpaque = false
+        border = JBUI.Borders.emptyTop(4)
+    }
+    private val section = Collapsible(this, TITLE_TEXT, false)
+
     init {
         isOpaque = false
-        add(TitledSeparator("Extração · Pull Request"))
-        add(pills)
-        add(notices)
-        add(form)
+        content.add(pills)
+        content.add(notices)
+        content.add(form)
+        section.setContentComponent(content)
+        section.setOn(false)
         track(branch, BRANCH)
         track(commit, COMMIT)
         track(title, TITLE)
@@ -134,7 +146,7 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
         project.messageBus.connect(parent).subscribe(PullRequestService.CHANGED, PullRequestService.Listener {
             ApplicationManager.getApplication().invokeLater({ onDelivery() }, project.disposed)
         })
-        project.messageBus.connect(parent).subscribe(PrRadarService.CHANGED, PrRadarService.Listener {
+        project.messageBus.connect(parent).subscribe(PrRadioService.CHANGED, PrRadioService.Listener {
             ApplicationManager.getApplication().invokeLater({ update() }, project.disposed)
         })
         pr.refresh()
@@ -161,7 +173,7 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
         val local = state?.local
         isVisible = pr.gateway != null && (state == null || local != null)
         if (!isVisible) return
-        val active = service.snapshot.active
+        val active = featureOf()
         if (active?.dir != feature) {
             edited.clear()
             feature = active?.dir
@@ -169,6 +181,7 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
         pills.removeAll()
         notices.removeAll()
         if (local == null) {
+            section.setTitle(TITLE_TEXT)
             notices.add(WrapText("Lendo o repositório Git…", JBFont.label(), UIUtil.getContextHelpForeground()))
             form.isVisible = false
             revalidate()
@@ -178,6 +191,13 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
         form.isVisible = true
         val remote = state.remote
         val open = remote?.openPr
+        section.setTitle(
+            listOfNotNull(
+                TITLE_TEXT,
+                "${local.changes.size} alteração(ões)".takeIf { local.changes.isNotEmpty() },
+                "PR #${open?.number} aberto".takeIf { open != null },
+            ).joinToString("  ·  "),
+        )
         pills.add(Pill(local.repo, Tone.GRAY, bold = true))
         pills.add(Pill(local.branch ?: "sem branch", Tone.BLUE))
         pills.add(Pill("${local.changes.size} alteração(ões)", if (local.changes.isNotEmpty()) Tone.YELLOW else Tone.GRAY))
@@ -187,7 +207,7 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
         val chosen = mode.selectedItem as? DeliveryMode ?: DeliveryMode.PULL_REQUEST
         val opensPr = chosen == DeliveryMode.PULL_REQUEST
         if (local.account == null) {
-            notices.add(notice(AllIcons.General.User, Tone.YELLOW, "Para abrir pull requests, entre na conta do GitHub da IDE em ${local.host}. Commitar e enviar já funcionam.",
+            notices.add(notice(AllIcons.General.User, Tone.YELLOW, "Entre na conta do GitHub da IDE (${local.host}) para abrir PRs; commitar e enviar já funcionam.",
                 button("Entrar no GitHub") { pr.login() }))
         } else {
             state.problem?.let { notices.add(notice(AllIcons.General.Error, Tone.RED, "O GitHub não respondeu: $it", button("Tentar de Novo") { pr.refresh(remote = true, delayMs = 0) })) }
@@ -199,7 +219,7 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
         writing?.let { notices.add(notice(AllIcons.Actions.Lightning, Tone.BLUE, "A IA está escrevendo ${it.label}…")) }
         pr.lastError?.takeIf { step == null && writing == null }?.let { notices.add(notice(AllIcons.General.Error, Tone.RED, it)) }
         if (open != null) {
-            val waiting = PrRadarService.getInstance(project).pendingCount(open.number)
+            val waiting = PrRadioService.getInstance(project).pendingCount(open.number)
             val text = "PR #${open.number} aberto: ${open.title} → ${open.base}" + (if (open.draft) " (rascunho)" else "") +
                 if (waiting > 0) ". $waiting conversa(s) aguardando sua resposta." else ""
             notices.add(notice(AllIcons.General.InspectionsOK, Tone.GREEN, text, wrapRow().apply {
@@ -207,9 +227,9 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
                 add(button(if (waiting > 0) "Ver os Comentários ($waiting)" else "Ver os Comentários") { AttackTabs.showTab(project, AttackTabs.RADIO) })
             }))
         }
-        val converged = service.snapshot.statuses(active).any { it.step == SddStep.CONVERGE && it.state == StepState.DONE }
+        val converged = active != null && service.snapshot.statuses(active).any { it.step == SddStep.CONVERGE && it.state == StepState.DONE }
         if (opensPr && open == null && !converged) {
-            notices.add(WrapText("A Avaliação de Danos ainda não convergiu: dá para abrir o PR já, como rascunho, e completar depois.", JBFont.small(), UIUtil.getContextHelpForeground()))
+            notices.add(WrapText("A Avaliação de Danos ainda não convergiu: dá para abrir o PR como rascunho.", JBFont.small(), UIUtil.getContextHelpForeground()))
         }
         notices.isVisible = notices.componentCount > 0
 
@@ -301,7 +321,7 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
     }
 
     private fun write(target: WriteTarget) {
-        val active = service.snapshot.active?.let { service.snapshot.relative(it.dir) }
+        val active = featureOf()?.let { service.snapshot.relative(it.dir) }
         pr.write(target, selectedBase(), active) { text ->
             when (target) {
                 WriteTarget.COMMIT -> {
@@ -323,7 +343,7 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
     private fun aiState(link: ActionLink, target: WriteTarget, writing: WriteTarget?, why: String?) {
         link.text = if (writing == target) "Gerando…" else "Gerar com IA"
         link.isEnabled = why == null
-        link.toolTipText = why ?: "A IA do Arsenal (${TomahawkSettings.provider.title}) escreve ${target.label} a partir das alterações"
+        link.toolTipText = why ?: "A IA do Arsenal escreve ${target.label} a partir das alterações e do diff"
     }
 
     private fun track(field: JTextComponent, key: String) {
@@ -370,6 +390,7 @@ class DeliveryPanel(private val project: Project, parent: Disposable) : JPanel(V
     private fun wrapRow() = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(3))).apply { isOpaque = false }
 
     private companion object {
+        const val TITLE_TEXT = "Entrega (commit, push e PR)"
         const val MAX_FILES = 40
         const val BRANCH = "branch"
         const val BASE = "base"

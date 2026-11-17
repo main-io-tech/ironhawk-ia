@@ -32,9 +32,6 @@ class AgentLaunch private constructor(val executable: String, val distro: String
     /** Um caminho desta máquina como o CLI o enxerga: igual, ou `/mnt/c/...` no WSL. */
     fun workspace(path: String): String = wsl?.getWslPath(Path.of(path)) ?: path
 
-    /** O sandbox do Cursor CLI só existe no macOS e no Linux: aqui, fora do Windows ou no WSL. */
-    val sandboxAvailable: Boolean get() = distro != null || !SystemInfo.isWindows
-
     /**
      * O processo de [command] (que começa pelo [executable]) em [workDir], com a chave do Cursor e a contenção de
      * [AgentGuard] no ambiente: sem `git push` e, nesta máquina, sem os segredos que o CLI de [provider] não usa. No

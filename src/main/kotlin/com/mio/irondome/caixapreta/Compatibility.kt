@@ -93,13 +93,19 @@ object Compatibility {
         null -> CompatibilityCheck(
             Mechanism.INTERCEPTOR, CheckStatus.INFO,
             "${env.agentProvider} CLI não encontrado: as ações com IA ficam indisponíveis ou só copiam o pedido.",
-            "Instale o CLI ou informe o caminho em Settings > Tools > Iron Dome IA > Arsenal (IA).",
+            "Instale o CLI ou informe o caminho na aba Arsenal do painel ou em Settings > Tools > IronHawk IA > Arsenal (IA).",
         )
         else -> CompatibilityCheck(Mechanism.INTERCEPTOR, CheckStatus.OK, "${env.agentProvider} CLI em $cli.")
     }
 
     /** Os que merecem aviso ao abrir o projeto. */
     fun problems(checks: List<CompatibilityCheck>) = checks.filter { it.status == CheckStatus.WARNING || it.status == CheckStatus.ERROR }
+
+    /** Os mecanismos que só existem na Defesa; com ela desligada, eles não contam. */
+    private val DEFENSE_ONLY = setOf(Mechanism.RADAR, Mechanism.COMANDO, Mechanism.SENTINELA, Mechanism.IMPACTO, Mechanism.ESCUDO, Mechanism.PATRULHA)
+
+    /** O que vale com os sistemas ligados agora: sem a Defesa, ficam a IA e a Caixa-Preta, comuns aos dois. */
+    fun relevant(checks: List<CompatibilityCheck>, defense: Boolean) = if (defense) checks else checks.filter { it.mechanism !in DEFENSE_ONLY }
 
     private fun radar(env: Environment): CompatibilityCheck {
         val failure = env.tabFailures[Mechanism.RADAR.title]
@@ -194,18 +200,18 @@ object Compatibility {
     private fun failed(mechanism: Mechanism, tab: String, failure: String) = CompatibilityCheck(
         mechanism, CheckStatus.ERROR,
         "A aba $tab não abriu: $failure",
-        "Veja o erro completo no log, abaixo, e use Reportar Bug para enviá-lo.",
+        "Veja o erro na aba Logs de erro e use Reportar Bug para enviá-lo.",
     )
 
     private fun notLoaded(mechanism: Mechanism, plugin: String) = CompatibilityCheck(
         mechanism, CheckStatus.ERROR,
-        "O plugin $plugin está ativo, mas a parte do Iron Dome IA que depende dele não carregou.",
-        "Reinicie a IDE. Se continuar, veja o log abaixo e use Reportar Bug.",
+        "O plugin $plugin está ativo, mas a parte do IronHawk IA que depende dele não carregou.",
+        "Reinicie a IDE. Se continuar, veja a aba Logs de erro e use Reportar Bug.",
     )
 
     /** Texto para colar numa conversa ou issue. */
     fun markdown(env: Environment, checks: List<CompatibilityCheck>, errors: List<PluginError>): String = buildString {
-        appendLine("# Compatibilidade do Iron Dome IA")
+        appendLine("# Compatibilidade do IronHawk IA")
         appendLine()
         appendLine("- **Plugin:** ${env.pluginVersion}")
         appendLine("- **IDE:** ${env.ide}")

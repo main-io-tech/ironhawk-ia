@@ -33,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 @Service(Service.Level.PROJECT)
 @State(name = "TomahawkRadio", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
-class PrRadarService(private val project: Project) : PersistentStateComponent<PrRadarService.RadioState>, Disposable {
+class PrRadioService(private val project: Project) : PersistentStateComponent<PrRadioService.RadioState>, Disposable {
 
     class RadioState {
         var seen: MutableSet<String> = mutableSetOf()
@@ -43,7 +43,7 @@ class PrRadarService(private val project: Project) : PersistentStateComponent<Pr
     private var saved = RadioState()
 
     @Volatile
-    var snapshot: RadarSnapshot? = null
+    var snapshot: RadioSnapshot? = null
         private set
 
     @Volatile
@@ -92,13 +92,13 @@ class PrRadarService(private val project: Project) : PersistentStateComponent<Pr
             loading = true
             publish()
             try {
-                val radar = gateway.radar(project)
-                snapshot = radar
+                val radio = gateway.radio(project)
+                snapshot = radio
                 problem = null
                 checkedAt = System.currentTimeMillis()
-                radar?.let(::announce)
+                radio?.let(::announce)
             } catch (e: Exception) {
-                LOG.info("O Rádio do Tomahawk não leu os PRs", e)
+                LOG.info("O Rádio do Ataque não leu os PRs", e)
                 problem = e.message ?: e.javaClass.simpleName
             } finally {
                 loading = false
@@ -109,9 +109,9 @@ class PrRadarService(private val project: Project) : PersistentStateComponent<Pr
     }
 
     /** Um aviso por PR com comentários de outras pessoas que ainda não foram avisados. */
-    private fun announce(radar: RadarSnapshot) {
-        radar.prs.forEach { pr ->
-            val fresh = pr.threads.flatMap { it.fromOthers(radar.me) }.filter { it.key !in saved.notified && it.key !in saved.seen }
+    private fun announce(radio: RadioSnapshot) {
+        radio.prs.forEach { pr ->
+            val fresh = pr.threads.flatMap { it.fromOthers(radio.me) }.filter { it.key !in saved.notified && it.key !in saved.seen }
             if (fresh.isEmpty()) return@forEach
             saved.notified += fresh.map { it.key }
             val authors = fresh.map { "@${it.author}" }.distinct().joinToString(", ")
@@ -133,13 +133,13 @@ class PrRadarService(private val project: Project) : PersistentStateComponent<Pr
 
     /** As conversas que esperam a resposta do usuário, em todos os PRs. */
     fun pendingCount(): Int {
-        val radar = snapshot ?: return 0
-        return radar.prs.sumOf { pr -> pr.threads.count { it.awaitsReply(radar.me) } }
+        val radio = snapshot ?: return 0
+        return radio.prs.sumOf { pr -> pr.threads.count { it.awaitsReply(radio.me) } }
     }
 
     fun pendingCount(number: Int): Int {
-        val radar = snapshot ?: return 0
-        return radar.prs.firstOrNull { it.ref.number == number }?.threads?.count { it.awaitsReply(radar.me) } ?: 0
+        val radio = snapshot ?: return 0
+        return radio.prs.firstOrNull { it.ref.number == number }?.threads?.count { it.awaitsReply(radio.me) } ?: 0
     }
 
     fun markSeen(threads: Collection<PrThread>) {
@@ -153,24 +153,24 @@ class PrRadarService(private val project: Project) : PersistentStateComponent<Pr
      * recebe o texto na EDT.
      */
     fun draftReply(number: Int, threadKey: String, notes: String, onDone: (String) -> Unit) {
-        val radar = snapshot ?: return
-        val pr = radar.prs.firstOrNull { it.ref.number == number } ?: return
+        val radio = snapshot ?: return
+        val pr = radio.prs.firstOrNull { it.ref.number == number } ?: return
         val thread = pr.threads.firstOrNull { it.key == threadKey } ?: return
         val root = project.basePath?.let { Path.of(it) } ?: return
         if (!drafting.add(threadKey)) return
         errors.remove(threadKey)
         publish()
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Tomahawk IA: escrevendo a resposta no PR #$number", false) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "IronHawk IA: escrevendo a resposta no PR #$number", false) {
             override fun run(indicator: ProgressIndicator) {
                 var file: Path? = null
                 try {
-                    val relative = RunStore.writeInput(root, "${System.currentTimeMillis()}-resposta-pr$number.md", ReplyContext.render(pr, thread, radar.me, notes))
+                    val relative = RunStore.writeInput(root, "${System.currentTimeMillis()}-resposta-pr$number.md", ReplyContext.render(pr, thread, radio.me, notes))
                     file = root.resolve(relative)
                     indicator.text = "A IA está lendo a conversa e o código…"
-                    val answer = DeliveryWriter.ask(root, DeliveryWriter.replyPrompt(relative, radar.me, number, pr.head, notes.isNotBlank()))
+                    val answer = DeliveryWriter.ask(root, DeliveryWriter.replyPrompt(relative, radio.me, number, pr.head, notes.isNotBlank()))
                     ApplicationManager.getApplication().invokeLater({ onDone(answer) }, project.disposed)
                 } catch (e: Exception) {
-                    if (e !is DeliveryException) LOG.warn("A IA do Tomahawk não escreveu a resposta", e)
+                    if (e !is DeliveryException) LOG.warn("A IA do Ataque não escreveu a resposta", e)
                     errors[threadKey] = e.message ?: e.javaClass.simpleName
                 } finally {
                     file?.let { runCatching { Files.deleteIfExists(it) } }
@@ -194,7 +194,7 @@ class PrRadarService(private val project: Project) : PersistentStateComponent<Pr
         if (!sending.add(threadKey)) return
         errors.remove(threadKey)
         publish()
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Tomahawk IA: respondendo no PR #$number", false) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "IronHawk IA: respondendo no PR #$number", false) {
             override fun run(indicator: ProgressIndicator) {
                 try {
                     val posted = gateway.reply(project, number, thread, body)
@@ -202,7 +202,7 @@ class PrRadarService(private val project: Project) : PersistentStateComponent<Pr
                     ApplicationManager.getApplication().invokeLater({ onDone() }, project.disposed)
                     notify("Resposta enviada ao PR #$number", posted.body.lineSequence().firstOrNull().orEmpty().take(140), NotificationType.INFORMATION, posted.url)
                 } catch (e: Exception) {
-                    if (e !is DeliveryException) LOG.warn("A resposta do Tomahawk não foi enviada", e)
+                    if (e !is DeliveryException) LOG.warn("A resposta do Rádio não foi enviada", e)
                     errors[threadKey] = e.message ?: e.javaClass.simpleName
                 } finally {
                     sending.remove(threadKey)
@@ -248,11 +248,11 @@ class PrRadarService(private val project: Project) : PersistentStateComponent<Pr
     companion object {
         private const val POLL_MS = 180_000
         private const val MAX_KEYS = 5_000
-        private val LOG = logger<PrRadarService>()
+        private val LOG = logger<PrRadioService>()
 
         @Topic.ProjectLevel
         val CHANGED = Topic(Listener::class.java, Topic.BroadcastDirection.NONE)
 
-        fun getInstance(project: Project): PrRadarService = project.service()
+        fun getInstance(project: Project): PrRadioService = project.service()
     }
 }

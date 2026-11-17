@@ -47,7 +47,10 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
 
     private var state = ReviewState()
 
-    /** Comentários não resolvidos da revisão aberta por caminho, lido fora da EDT pela árvore do projeto. */
+    /**
+     * Alvos abertos da revisão aberta por caminho (nem interceptados nem cancelados), lido fora da EDT pela árvore do
+     * projeto. A Sentinela conta pela mesma regra.
+     */
     @Volatile
     var openCounts: Map<String, Int> = emptyMap()
         private set
@@ -767,7 +770,7 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
     }
 
     private fun countOpen(): Map<String, Int> =
-        activeComments().filterNot { it.resolved || it.target == CommentTarget.PROJECT }.groupingBy { it.filePath }.eachCount()
+        activeComments().filterNot { it.resolved || it.removing || it.target == CommentTarget.PROJECT }.groupingBy { it.filePath }.eachCount()
 
     private fun pathOf(document: Document): String? =
         FileDocumentManager.getInstance().getFile(document)?.let(::relativePath)

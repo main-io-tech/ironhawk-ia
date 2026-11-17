@@ -129,7 +129,7 @@ class AutoReplyService(private val project: Project) : PersistentStateComponent<
                 numbers.forEach { blocked(it, "A IA não está configurada ou testada no Arsenal: configure para as respostas voltarem.") }
                 return
             }
-            numbers.forEach { number -> update(number) { it.copy(step = "Lendo os PRs abertos no GitHub…") } }
+            numbers.forEach { number -> update(number) { it.copy(step = "Lendo os PRs no GitHub…") } }
             val patrulha = PatrulhaService.getInstance(project)
             val context = patrulha.context()?.takeIf { it.account != null }
             if (context == null) {
@@ -137,17 +137,17 @@ class AutoReplyService(private val project: Project) : PersistentStateComponent<
                 return
             }
             val client = patrulha.client(context)
-            val open = client.openPullRequests(context.repo).associateBy { it.number }
             for (number in numbers) {
                 if (project.isDisposed || !isOn(number)) continue
-                val pr = open[number]
-                if (pr == null) {
-                    event(number, AutoEventKind.BLOCKED, "O PR foi fechado ou saiu da lista de abertos: respostas da IA desligadas.")
-                    setOn(number, false)
-                    notify("Respostas da IA desligadas no PR #$number", "O PR foi fechado ou saiu da lista de abertos.", NotificationType.INFORMATION)
-                    continue
-                }
                 try {
+                    // Cada PR ligado é lido sozinho: a lista de abertos tem páginas, e um PR fora da primeira não está fechado.
+                    val pr = client.pullRequest(context.repo, number)
+                    if (!pr.open) {
+                        event(number, AutoEventKind.BLOCKED, "O PR foi fechado: respostas da IA desligadas.")
+                        setOn(number, false)
+                        notify("Respostas da IA desligadas no PR #$number", "O PR foi fechado.", NotificationType.INFORMATION)
+                        continue
+                    }
                     if (!check(context, client, pr)) {
                         blocked(number, "A IA está ocupada com outra tarefa: tento de novo na próxima conferência.")
                         break
@@ -305,7 +305,7 @@ class AutoReplyService(private val project: Project) : PersistentStateComponent<
             if (concluded) "Concluiu a conversa com @${to.author} em ${where(discussion)}" + (if (resolveError == null) " e a resolveu." else ".")
             else "Respondeu @${to.author} em ${where(discussion)} (rodada $round de ${AutoReply.MAX_ROUNDS}).",
             answer.reason.takeIf { it.isNotBlank() },
-            "A resposta ficou no seu rascunho de revisão: publique o rascunho para o dev ver.".takeIf { posted.pending },
+            "Ficou no seu rascunho: publique com Concluir Revisão para o dev ver.".takeIf { posted.pending },
             resolveError?.let { "Não deu para resolver a conversa no GitHub: ${it.message ?: it.javaClass.simpleName}." },
         ).joinToString(" ")
         event(number, if (concluded) AutoEventKind.CONCLUDED else AutoEventKind.REPLIED, text, posted.url.ifBlank { to.url })

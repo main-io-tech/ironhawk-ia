@@ -1,8 +1,13 @@
 package com.mio.tomahawk.ui
 
+import com.intellij.openapi.actionSystem.ActionToolbar
+import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.util.Disposer
+import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.ui.UIUtil
+import com.mio.irondome.interceptor.AgentSettings
 import com.mio.irondome.base.MechanismList
 import com.mio.irondome.base.MechanismTree
 import com.mio.ironhawk.ArsenalPanel
@@ -14,6 +19,7 @@ import com.mio.tomahawk.run.Verdict
 import com.mio.tomahawk.speckit.SddStep
 import com.mio.tomahawk.speckit.SpecKitService
 import com.mio.tomahawk.speckit.StepStatus
+import com.mio.tomahawk.view.ArtifactView
 import java.awt.Container
 import java.nio.file.Files
 import java.nio.file.Path
@@ -115,7 +121,7 @@ class NativeTabsTest : BasePlatformTestCase() {
         val root = Path.of(project.basePath!!)
         sampleProject(root)
         SpecKitService.getInstance(project).refreshNow()
-        TomahawkSettings.launch()?.let { TomahawkSettings.markVerified("04/11/2026 14:00") }
+        TomahawkSettings.launch()?.let { AgentSettings.markVerified("04/11/2026 14:00") }
         val panel = LauncherPanel(project)
         Disposer.register(testRootDisposable, panel)
         val list = UIUtil.findComponentOfType(panel, MechanismList::class.java)!!
@@ -128,6 +134,41 @@ class NativeTabsTest : BasePlatformTestCase() {
         assertFalse(steps.drop(1).any { it.step == SddStep.CONSTITUTION })
         renderAll(list)
         assertTrue(buttons(panel).contains("Lançar"))
+    }
+
+    fun testChoosingAnotherFeatureInTheLauncherDoesNotWriteTheActiveOne() {
+        val root = Path.of(project.basePath!!)
+        sampleProject(root)
+        SpecKitService.getInstance(project).refreshNow()
+        val panel = LauncherPanel(project)
+        Disposer.register(testRootDisposable, panel)
+        val combo = UIUtil.findComponentsOfType(panel, ComboBox::class.java).first { it.itemCount > 0 && it.getItemAt(0)?.javaClass?.name?.contains("FeatureChoice") == true }
+        val login = (0 until combo.itemCount).first { combo.getItemAt(it).toString().contains("001-login") }
+        combo.selectedIndex = login
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertTrue(Files.readString(root.resolve(".specify/feature.json")).contains("002-photo-albums"))
+        assertEquals("002-photo-albums", SpecKitService.getInstance(project).snapshot.active?.name)
+    }
+
+    fun testTheTelemetryCreatesTheViewerOnlyWhenARunIsChosen() {
+        val root = Path.of(project.basePath!!)
+        sampleProject(root)
+        SpecKitService.getInstance(project).refreshNow()
+        val panel = TelemetryPanel(project)
+        Disposer.register(testRootDisposable, panel)
+        assertNull(UIUtil.findComponentOfType(panel, ArtifactView::class.java))
+        UIUtil.findComponentOfType(panel, MechanismList::class.java)!!.selectedIndex = 0
+        assertNotNull(UIUtil.findComponentOfType(panel, ArtifactView::class.java))
+    }
+
+    fun testTheEvaluationOnlyReads() {
+        val root = Path.of(project.basePath!!)
+        sampleProject(root)
+        SpecKitService.getInstance(project).refreshNow()
+        val panel = EvaluationPanel(project)
+        Disposer.register(testRootDisposable, panel)
+        val actions = ((panel.toolbar as ActionToolbar).actionGroup as DefaultActionGroup).childActionsOrStubs.mapNotNull { it.templatePresentation.text }
+        assertFalse(actions.toString(), actions.any { it == "Tornar Ativa" || it.contains("/speckit") })
     }
 
     fun testTheNativeTelemetryListsTheRunsByDay() {

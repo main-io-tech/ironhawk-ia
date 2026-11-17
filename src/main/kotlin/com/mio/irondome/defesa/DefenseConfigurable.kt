@@ -8,16 +8,21 @@ import com.intellij.util.ui.UIUtil
 import javax.swing.JComponent
 import javax.swing.JPanel
 
-/** Settings > Tools > Iron Dome IA > Inteligência da IA: o que vai junto dos pedidos à IA e os avisos de revisão. */
+/**
+ * Settings > Tools > IronHawk IA > Defesa: Inteligência da IA: o que vai junto dos pedidos de revisão à IA e o aviso de
+ * conflito entre comentários. Hoje o dossiê e o aprendizado só entram na Revisão com IA da Patrulha.
+ */
 class DefenseConfigurable : Configurable {
 
     private val feedback = JBCheckBox("Aprender com o que o time aceita e descarta das sugestões da IA")
     private val dossier = JBCheckBox("Anexar aos pedidos o dossiê das classes (histórico, comentários antigos, decisões)")
     private val conflicts = JBCheckBox("Avisar quando dois comentários apontam para o mesmo trecho")
 
-    override fun getDisplayName() = "Inteligência da IA"
+    override fun getDisplayName() = DISPLAY_NAME
 
     override fun createComponent(): JComponent = FormBuilder.createFormBuilder()
+        .addComponent(comment("Dossiê e aprendizado entram na Revisão com IA da Patrulha; o aviso vale para os comentários pendentes."))
+        .addVerticalGap(8)
         .addComponent(feedback)
         .addComponent(comment("Fica em ironhawk/iron-dome/defesa/aprendizado-revisao.md: escreva ali também regras do time, uma por linha."))
         .addComponent(dossier)
@@ -46,5 +51,9 @@ class DefenseConfigurable : Configurable {
     private fun comment(text: String) = JBLabel(text).apply {
         componentStyle = UIUtil.ComponentStyle.SMALL
         foreground = UIUtil.getContextHelpForeground()
+    }
+
+    companion object {
+        const val DISPLAY_NAME = "Defesa: Inteligência da IA"
     }
 }

@@ -33,10 +33,10 @@ class Parameter(val name: String?, val value: String)
 
 /**
  * O `@DisplayName` de um teste quebrado nas partes que a aba Escudo destaca. [index] e [parameters] vêm do nome
- * padrão das execuções de um teste parametrizado (`[1] cep=01001-000, valor=10`); [key], de uma chave no início
- * (`[Frete] calcula o frete`); [steps], das palavras dado/quando/então (given/when/then).
+ * padrão das execuções de um teste parametrizado (`[1] cep=01001-000, valor=10`); [steps], das palavras
+ * dado/quando/então (given/when/then).
  */
-class DisplayNameParts(val index: Int?, val key: String?, val steps: List<Step>, val parameters: List<Parameter>) {
+class DisplayNameParts(val index: Int?, val steps: List<Step>, val parameters: List<Parameter>) {
 
     /** Tem etapas dado/quando/então ou parâmetros, que valem uma explicação nos detalhes. */
     val structured: Boolean get() = parameters.isNotEmpty() || steps.any { it.role != null }
@@ -45,7 +45,6 @@ class DisplayNameParts(val index: Int?, val key: String?, val steps: List<Step>,
 object DisplayNameFormat {
 
     private val invocation = Regex("""^\s*\[(\d+)]\s*(.*)$""", RegexOption.DOT_MATCHES_ALL)
-    private val leadingKey = Regex("""^\s*\[\s*([^\]\d\s][^\]]*?)\s*]\s*(.+)$""", RegexOption.DOT_MATCHES_ALL)
     /** "Dado" sozinho também quer dizer "informação" (os dados do cliente): só abre etapa no início do nome. */
     private val keyword = Regex(
         """(?<![\p{L}\p{N}_])(?:dad[oa]s? que|given|quando|when|então|entao|then)(?![\p{L}\p{N}_])|^dad[oa]s?(?![\p{L}\p{N}_])""",
@@ -69,11 +68,9 @@ object DisplayNameFormat {
     fun parse(label: String): DisplayNameParts {
         invocation.matchEntire(label)?.let { match ->
             val arguments = match.groupValues[2].trim()
-            return DisplayNameParts(match.groupValues[1].toInt(), null, emptyList(), if (arguments.isEmpty()) emptyList() else parameters(arguments))
+            return DisplayNameParts(match.groupValues[1].toInt(), emptyList(), if (arguments.isEmpty()) emptyList() else parameters(arguments))
         }
-        val keyed = leadingKey.matchEntire(label)
-        val text = keyed?.groupValues?.get(2) ?: label
-        return DisplayNameParts(null, keyed?.groupValues?.get(1), steps(text.trim()), emptyList())
+        return DisplayNameParts(null, steps(label.trim()), emptyList())
     }
 
     private fun steps(text: String): List<Step> {

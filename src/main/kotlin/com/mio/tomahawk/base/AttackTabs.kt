@@ -2,12 +2,8 @@ package com.mio.tomahawk.base
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.options.ShowSettingsUtil
-import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.ui.components.JBLabel
@@ -21,13 +17,13 @@ import com.mio.ironhawk.IronHawkSystem
 import com.mio.ironhawk.IronHawkToolWindowFactory
 import com.mio.ironhawk.IronHawkWindow
 import com.mio.tomahawk.delivery.PullRequestGateway
-import com.mio.tomahawk.settings.TomahawkConfigurable
 import com.mio.tomahawk.speckit.SddStep
 import com.mio.tomahawk.ui.EvaluationPanel
 import com.mio.tomahawk.ui.LauncherPanel
 import com.mio.tomahawk.ui.RadioPanel
 import com.mio.tomahawk.ui.TelemetryPanel
 import java.awt.BorderLayout
+import java.nio.file.Path
 import javax.swing.Icon
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -45,13 +41,13 @@ object AttackTabs {
 
     /** Cria as abas do Ataque, fora do painel. */
     fun create(project: Project): List<Content> = buildList {
-        add(content(LAUNCHER, TomahawkIcons.lancador, "Dispara as etapas do Spec Kit: a missão SDD da feature ativa, etapa por etapa") {
+        add(content(LAUNCHER, TomahawkIcons.lancador, "Lança as etapas do Spec Kit da feature e entrega o resultado num PR") {
             LauncherPanel(project)
         })
-        add(content(EVALUATION, TomahawkIcons.avaliacao, "Avalia o que foi gerado: spec, plano, tarefas, checklists e pendências") {
+        add(content(EVALUATION, TomahawkIcons.avaliacao, "Revisa o que o Spec Kit gerou: spec, plano, tarefas, checklists e pendências") {
             EvaluationPanel(project)
         })
-        add(content(TELEMETRY, TomahawkIcons.telemetria, "Monitora as missões: a execução em voo, o log ao vivo e o histórico") {
+        add(content(TELEMETRY, TomahawkIcons.telemetria, "Acompanha a missão em voo, o log ao vivo e o histórico das execuções") {
             TelemetryPanel(project)
         })
         if (PullRequestGateway.available() != null) {
@@ -68,7 +64,7 @@ object AttackTabs {
             create().also { disposable = it as? Disposable }
         } catch (error: Throwable) {
             if (error is ControlFlowException || error is VirtualMachineError) throw error
-            LOG.warn("A aba $title do Tomahawk IA não pôde ser aberta", error)
+            LOG.warn("A aba $title do Ataque não pôde ser aberta", error)
             JPanel(BorderLayout()).apply {
                 border = JBUI.Borders.empty(16)
                 add(NoticeBox(AllIcons.General.Error, Tone.RED).apply {
@@ -85,9 +81,12 @@ object AttackTabs {
         }
     }
 
-    /** Pede ao Lançador que abra uma etapa: a Avaliação usa para "Lançar" um artefato que falta. */
+    /**
+     * Pede ao Lançador que abra uma etapa: a Avaliação usa para levar ao Lançador um artefato que falta. [feature] é a
+     * pasta da feature em que ele falta, para o Lançador escolhê-la; nula, fica a feature que estiver escolhida.
+     */
     fun interface GotoListener {
-        fun goto(step: SddStep)
+        fun goto(step: SddStep, feature: Path?)
     }
 
     @Topic.ProjectLevel
@@ -96,15 +95,3 @@ object AttackTabs {
     /** Abre o painel do IronHawk IA na aba [title] do Ataque (ou no Arsenal). */
     fun showTab(project: Project, title: String) = IronHawkWindow.show(project, IronHawkSystem.ATTACK, title)
 }
-
-internal fun refreshAction(onRefresh: () -> Unit): AnAction =
-    object : DumbAwareAction("Atualizar", "Relê o Spec Kit do projeto e as execuções", AllIcons.Actions.Refresh) {
-        override fun actionPerformed(e: AnActionEvent) = onRefresh()
-    }
-
-internal fun settingsAction(project: Project): AnAction =
-    object : DumbAwareAction("Configurações", "Abre Settings > Tools > IronHawk IA > Tomahawk IA", AllIcons.General.Settings) {
-        override fun actionPerformed(e: AnActionEvent) {
-            ShowSettingsUtil.getInstance().showSettingsDialog(project, TomahawkConfigurable::class.java)
-        }
-    }

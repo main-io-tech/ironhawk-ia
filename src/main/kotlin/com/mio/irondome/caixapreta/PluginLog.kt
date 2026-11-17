@@ -49,7 +49,7 @@ object PluginLog {
 
     /** Para colar numa conversa ou issue: os frames da plataforma longe do plugin saem, como no bug.md. */
     fun markdown(groups: List<ErrorGroup>): String = buildString {
-        appendLine("## Erros do Iron Dome IA no log da IDE")
+        appendLine("## Erros do IronHawk IA no log da IDE")
         groups.forEach { group ->
             val error = group.latest
             appendLine()
@@ -78,8 +78,7 @@ object PluginLog {
         val body = mutableListOf<String>()
         fun flush() {
             val (time, level, category, message) = header?.destructured ?: return
-            val pluginCode = Mechanism.ROOT_PACKAGE in category || Mechanism.ROOT_PACKAGE in message ||
-                body.any { Mechanism.ROOT_PACKAGE in it }
+            val pluginCode = Mechanism.isPluginCode(category) || Mechanism.isPluginCode(message) || body.any(Mechanism::isPluginCode)
             if (level in LEVELS && pluginCode) errors += PluginError(time, level, message.trim(), body.toList(), category)
         }
         for (line in text.lineSequence()) {

@@ -12,12 +12,13 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * Botão Reportar ao Iron Dome IA nos erros que a IDE atribui ao plugin (IDE Internal Errors): abre o
- * Reportar Bug com o erro escolhido no lugar do erro mais recente do log.
+ * Botão Reportar ao IronHawk IA nos erros que a IDE atribui ao plugin (IDE Internal Errors): abre o Reportar Bug com o
+ * erro escolhido no lugar do erro mais recente do log. A IDE só marca o erro como enviado quando a issue é criada; se o
+ * usuário desistir no formulário ou na prévia, o erro continua sem envio.
  */
 class IronDomeErrorSubmitter : ErrorReportSubmitter() {
 
-    override fun getReportActionText(): String = "Reportar ao Iron Dome IA"
+    override fun getReportActionText(): String = "Reportar ao IronHawk IA"
 
     override fun submit(
         events: Array<out IdeaLoggingEvent>,
@@ -29,8 +30,9 @@ class IronDomeErrorSubmitter : ErrorReportSubmitter() {
         val project = CommonDataKeys.PROJECT.getData(DataManager.getInstance().getDataContext(parentComponent))
             ?: ProjectManager.getInstance().openProjects.firstOrNull()
             ?: return false
-        ReportBugAction.open(project, errorOf(event, additionalInfo))
-        consumer.consume(SubmittedReportInfo(SubmittedReportInfo.SubmissionStatus.NEW_ISSUE))
+        ReportBugAction.open(project, errorOf(event, additionalInfo)) { issue ->
+            consumer.consume(SubmittedReportInfo(issue.url, "#${issue.number}", SubmittedReportInfo.SubmissionStatus.NEW_ISSUE))
+        }
         return true
     }
 

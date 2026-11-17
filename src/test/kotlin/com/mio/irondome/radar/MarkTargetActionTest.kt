@@ -35,8 +35,8 @@ class MarkTargetActionTest : HeavyPlatformTestCase() {
     }
 
     fun testVisibleForFileAndPackage() {
-        assertEquals("Iron Dome IA: Marcar Arquivo Inteiro como Alvo", update(file))
-        assertEquals("Iron Dome IA: Marcar Pacote como Alvo", update(file.parent))
+        assertEquals("IronHawk IA: Marcar Arquivo Inteiro como Alvo", update(file))
+        assertEquals("IronHawk IA: Marcar Pacote como Alvo", update(file.parent))
     }
 
     /** Como no projeto com `.iml` em `.idea` e um módulo Maven: a pasta do módulo do projeto é a `.idea`. */
@@ -50,7 +50,7 @@ class MarkTargetActionTest : HeavyPlatformTestCase() {
         createModule("backend")
 
         assertEquals("src/loja/Pedido.kt", project.service<ReviewCommentService>().targetPath(file))
-        assertEquals("Iron Dome IA: Marcar Pacote como Alvo", update(file.parent))
+        assertEquals("IronHawk IA: Marcar Pacote como Alvo", update(file.parent))
     }
 
     private fun update(target: VirtualFile): String? {

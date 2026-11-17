@@ -34,20 +34,25 @@ object TabFailures {
 internal class TabErrorPanel(title: String, error: Throwable) : JBPanelWithEmptyText() {
 
     init {
+        // O Diagnóstico aberto daqui vai direto para os logs, onde está a pilha do erro.
+        putClientProperty(DIAGNOSTICS_TAB_PROPERTY, ERROR_LOG_TAB)
         emptyText.apply {
             text = "Não foi possível abrir a aba $title"
             appendLine(TabFailures.describe(error), SimpleTextAttributes.GRAYED_ATTRIBUTES, null)
             appendLine("O erro foi registrado no idea.log.", SimpleTextAttributes.GRAYED_ATTRIBUTES, null)
-            appendLine("Ver Logs de Erro", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { runAction(this@TabErrorPanel, ERROR_LOG_ACTION) }
-            appendLine("Verificar Compatibilidade", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { runAction(this@TabErrorPanel, COMPATIBILITY_ACTION) }
+            appendLine("Ver no Diagnóstico", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { runAction(this@TabErrorPanel, DIAGNOSTICS_ACTION) }
             appendLine("Reportar Bug", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { runAction(this@TabErrorPanel, REPORT_BUG_ACTION) }
         }
     }
 
     companion object {
-        const val COMPATIBILITY_ACTION = "IronDome.CheckCompatibility"
+        /** IronHawk IA: Diagnóstico, com as abas Compatibilidade e Logs de erro. */
+        const val DIAGNOSTICS_ACTION = "IronHawk.Diagnostics"
         const val REPORT_BUG_ACTION = "IronDome.ReportBug"
-        const val ERROR_LOG_ACTION = "IronDome.ShowErrorLog"
+
+        /** Propriedade de um componente que escolhe a aba do Diagnóstico aberto a partir dele, pelo nome da aba. */
+        const val DIAGNOSTICS_TAB_PROPERTY = "IronHawk.Diagnostics.Tab"
+        const val ERROR_LOG_TAB = "ERROR_LOG"
     }
 }
 

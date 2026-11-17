@@ -7,8 +7,8 @@ import com.intellij.openapi.project.DumbAwareAction
 import com.mio.ironhawk.IronHawkSystem
 
 /**
- * Remove os comentários não resolvidos que cruzam a seleção ou a linha do cursor: os ainda não salvos
- * saem na hora, os demais ficam marcados até o próximo salvamento.
+ * Cancelar Alvo do Trecho: remove os comentários não resolvidos que cruzam a seleção ou a linha do cursor. Os ainda
+ * não salvos saem na hora, os demais ficam marcados até o próximo salvamento. No menu do editor, só aparece onde há alvo.
  */
 class RemoveReviewCommentAction : DumbAwareAction() {
 

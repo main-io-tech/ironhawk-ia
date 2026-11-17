@@ -168,6 +168,23 @@ class BugReportTest {
     }
 
     @Test
+    fun errorsFromTheAttackAndTheSharedPanelAreAlsoPluginErrors() {
+        val log = """
+            2026-11-03 07:00:00,000 [  1]   WARN - #com.mio.tomahawk.base.AttackTabs - A aba Telemetria do Tomahawk IA não pôde ser aberta
+            java.lang.IllegalStateException: sem browser
+            	at com.mio.tomahawk.ui.TelemetryPanel.<init>(TelemetryPanel.kt:90)
+            2026-11-03 07:01:00,000 [  2]  ERROR - #com.mio.ironhawk.ArsenalPanel - Falha ao montar o Arsenal
+            2026-11-03 07:02:00,000 [  3]  ERROR - #com.intellij.Other - Outro plugin
+        """.trimIndent()
+
+        val errors = PluginLog.parse(log, limit = 10)
+
+        assertEquals(listOf(Mechanism.ATAQUE, Mechanism.IRONHAWK), errors.map { it.mechanism }.sortedBy { it?.ordinal })
+        assertEquals("com.mio.tomahawk.ui.TelemetryPanel.<init>(TelemetryPanel.kt:90)", errors.firstNotNullOf { it.origin })
+        assertEquals(Mechanism.ATAQUE, Mechanism.ofTab("Telemetria"))
+    }
+
+    @Test
     fun repeatedErrorsAreGroupedWithTheirCountAndFirstTime() {
         val repeated = """
             2026-11-03 07:00:00,000 [  1]  ERROR - #com.mio.irondome.radar.ReviewCommentService - Falha ao salvar

@@ -38,7 +38,7 @@ class TestResultsTest : LightJavaCodeInsightFixtureTestCase() {
         names = JUnitDisplayNames(project)
     }
 
-    fun testClassesAreGroupedByTheKeyOfTheirDisplayName() {
+    fun testClassesComeInAlphabeticalOrderWithTheirDisplayNameAsWritten() {
         val root = SMTestProxy.SMRootTestProxy()
         val engine = root.child(suite("JUnit Jupiter", null))
         engine.child(testClass("CupomTest", passed("aplica()", "loja.CupomTest/aplica")))
@@ -51,18 +51,21 @@ class TestResultsTest : LightJavaCodeInsightFixtureTestCase() {
         engine.child(testClass("NotaTest", passed("emite()", "loja.NotaTest/emite")))
         engine.child(testClass("AbcTest", passed("um()", "loja.AbcTest/um")))
 
-        val groups = TestResults.build(root, names::of)
+        val classes = TestResults.build(root, names::of)
 
-        assertEquals(listOf("Estoque", "Pedido", TestResults.NO_KEY), groups.map { it.label })
-        assertTrue(groups.all { it.kind == TestKind.KEY })
-        val pedido = groups[1]
-        assertEquals(listOf("Cálculo de frete", "Cupom de desconto"), pedido.children.map { it.label })
-        assertEquals(TestOutcome.FAILED, pedido.outcome)
-        assertEquals(2, pedido.classes.size)
+        assertEquals(
+            listOf("[Estoque] Reserva de itens", "[Pedido] Cálculo de frete", "[pedido] Cupom de desconto", "AbcTest", "Nota fiscal"),
+            classes.map { it.label },
+        )
+        assertTrue(classes.all { it.kind == TestKind.CLASS })
+        assertEquals(
+            listOf(Convention.OK, Convention.OK, Convention.OK, Convention.MISSING_DISPLAY_NAME, Convention.OK),
+            classes.map { it.convention },
+        )
+        assertNull(classes.single { it.label == "AbcTest" }.codeName)
 
-        val freteNode = pedido.children[0]
-        assertEquals("FreteTest", freteNode.codeName)
-        assertEquals(Convention.OK, freteNode.convention)
+        val freteNode = classes.single { it.codeName == "FreteTest" }
+        assertEquals(TestOutcome.FAILED, freteNode.outcome)
         assertEquals(
             listOf("cobra frete grátis acima de 200", "semNome()", "Quando o CEP é inválido"),
             freteNode.children.map { it.label },
@@ -75,19 +78,6 @@ class TestResultsTest : LightJavaCodeInsightFixtureTestCase() {
         assertEquals(2, freteNode.count(TestOutcome.PASSED))
         assertEquals(1, freteNode.count(TestOutcome.FAILED))
         assertEquals("esperado 0, veio 15", freteNode.children[1].errorMessage)
-
-        val withoutKey = groups[2].children
-        assertEquals(listOf("AbcTest", "Nota fiscal"), withoutKey.map { it.label })
-        assertEquals(listOf(Convention.MISSING_DISPLAY_NAME, Convention.OK), withoutKey.map { it.convention })
-        assertNull(withoutKey[0].codeName)
-    }
-
-    fun testParseKey() {
-        assertEquals("Frete" to "Cálculo do frete", TestResults.parseKey("[Frete] Cálculo do frete"))
-        assertEquals("Pedido / Frete" to "Cálculo", TestResults.parseKey("  [ Pedido / Frete ]Cálculo"))
-        assertEquals("Frete" to "[Frete]", TestResults.parseKey("[Frete]"))
-        assertEquals(null to "Cálculo [Frete]", TestResults.parseKey("Cálculo [Frete]"))
-        assertEquals(null to "[] Cálculo", TestResults.parseKey("[] Cálculo"))
     }
 
     fun testParameterizedInvocationsKeepTheNameGivenByJUnit() {
@@ -97,7 +87,7 @@ class TestResultsTest : LightJavaCodeInsightFixtureTestCase() {
         method.child(passed("[1] n=1", "loja.AbcTest/parametros"))
         method.child(failed("[2] n=2", "loja.AbcTest/parametros", "falhou"))
 
-        val group = TestResults.build(root, names::of).single().children.single().children.single()
+        val group = TestResults.build(root, names::of).single().children.single()
 
         assertEquals(TestKind.GROUP, group.kind)
         assertEquals(listOf("[1] n=1", "[2] n=2"), group.children.map { it.label })
@@ -113,7 +103,7 @@ class TestResultsTest : LightJavaCodeInsightFixtureTestCase() {
             """
             package loja;
             import org.junit.jupiter.api.*;
-            @DisplayName("[Conta] Criar conta")
+            @DisplayName("Criar conta")
             @Tag("funcionalidade")
             public class ContaTest {
                 void cria() { }
@@ -140,10 +130,14 @@ class TestResultsTest : LightJavaCodeInsightFixtureTestCase() {
         assertEquals(listOf("importa()"), testsIn("lento"))
         assertEquals(listOf("um()"), testsIn(TestResults.NO_TAG))
         val tecnico = tagged.single { it.label == "tecnico" }
-        assertEquals(TestKind.KEY, tecnico.children.single().kind)
-        assertEquals("Conta", tecnico.children.single().classKey)
+        assertEquals(TestKind.CLASS, tecnico.children.single().kind)
+        assertEquals("Criar conta", tecnico.children.single().label)
         assertEquals(1, tecnico.classes.size)
-        assertFalse("a cópia por tag não repete as chaves da árvore por chave", tecnico.children.single().key == "key:conta")
+        val funcionalidade = tagged.single { it.label == "funcionalidade" }
+        assertFalse(
+            "a mesma classe em duas tags tem chaves diferentes na árvore",
+            tecnico.children.single().key == funcionalidade.children.single().key,
+        )
     }
 
     private fun SMTestProxy.child(proxy: SMTestProxy): SMTestProxy = proxy.also(::addChild)

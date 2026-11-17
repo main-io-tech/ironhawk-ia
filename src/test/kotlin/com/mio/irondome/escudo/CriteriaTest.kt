@@ -48,6 +48,56 @@ class CriteriaTest {
     }
 
     @Test
+    fun readsExigeAsABlockListUnderTheField() {
+        val result = parse(
+            """
+            - id: ROT-03
+              titulo: Mover para um dia que não existe é recusado
+              exige:
+                - aceitacao
+                - unidade   # comentário
+            - id: ROT-04
+              titulo: Reposicionar mantém a ordem
+              exige:
+              - integracao
+            - id: ROT-05
+              titulo: Sem exige
+            """,
+        )
+
+        assertTrue(result.errors.toString(), result.errors.isEmpty())
+        assertEquals(listOf("ROT-03", "ROT-04", "ROT-05"), result.criteria.map { it.id })
+        assertEquals(setOf(Level.ACCEPTANCE, Level.UNIT), result.criteria[0].requires)
+        assertEquals(setOf(Level.INTEGRATION), result.criteria[1].requires)
+        assertTrue(result.criteria[2].requires.isEmpty())
+    }
+
+    @Test
+    fun anUnknownLevelInABlockListIsAContractError() {
+        val result = parse(
+            """
+            - id: ROT-01
+              titulo: x
+              exige:
+                - e2e
+            """,
+        )
+
+        assertTrue(result.errors.toString(), result.errors.any { it.line == 3 && it.message.startsWith("nível desconhecido") })
+        assertTrue(result.criteria.isEmpty())
+    }
+
+    @Test
+    fun theSavedOrganizationFallsBackWhenItNoLongerExists() {
+        assertEquals(EscudoView.CRITERIA, EscudoView.of(null, hasCatalog = true))
+        assertEquals(EscudoView.CRITERIA, EscudoView.of("CRITERIA", hasCatalog = true))
+        assertEquals(EscudoView.TAG, EscudoView.of("TAG", hasCatalog = true))
+        assertEquals("a antiga visão por execução vira a por tag", EscudoView.TAG, EscudoView.of("EXECUTION", hasCatalog = true))
+        assertEquals(EscudoView.CRITERIA, EscudoView.of("KEY", hasCatalog = true))
+        assertEquals("sem catálogo, só a por tag", EscudoView.TAG, EscudoView.of("CRITERIA", hasCatalog = false))
+    }
+
+    @Test
     fun reportsContractErrorsWithTheLine() {
         val result = parse(
             """
@@ -193,7 +243,7 @@ class CriteriaTest {
 
         assertEquals(listOf("Acesso", "Roteiro"), view.map { it.label })
         val roteiro = view.last()
-        assertEquals(listOf("A", "B"), roteiro.children.map { it.classKey })
+        assertEquals(listOf("A", "B"), roteiro.children.map { it.criterionId })
         assertEquals(listOf("crit:a|t1", "crit:b|t1"), roteiro.children.flatMap { it.tests }.map { it.key })
         assertEquals(CriterionStatus.MET, roteiro.children.first().coverage?.status)
         assertEquals(CriterionStatus.UNTESTED, view.first().children.single().coverage?.status)

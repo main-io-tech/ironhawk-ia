@@ -155,6 +155,17 @@ class ArtifactHtmlTest {
         ArtifactHtml.render(Path.of("specs/001-photo-albums/$name"), text, if (dark) HtmlTheme.DARK else HtmlTheme.LIGHT, "specs/001-photo-albums/$name", "function(m){}")
 
     @Test
+    fun `só os scripts da página rodam, com o nonce da política de segurança`() {
+        val html = render("spec.md", "# Spec\n\n<img src=x onerror=\"__tomahawkSend('open:../x')\">\n\n<script>alert(1)</script>\n")
+        val nonce = Regex("""script-src 'nonce-([A-Za-z0-9+/=]+)'""").find(html)?.groupValues?.get(1)
+        assertTrue("a página declara a política", nonce != null && html.contains("http-equiv=\"Content-Security-Policy\""))
+        val scripts = Regex("""<script(\s[^>]*)?>""").findAll(html).map { it.groupValues[1].trim() }.toList()
+        assertEquals("o script do documento fica sem nonce, e a política o bloqueia", 1, scripts.count { it.isEmpty() })
+        assertTrue("os da página levam o nonce", scripts.count { it == "nonce=\"$nonce\"" } >= 2)
+        assertFalse("o nonce muda a cada página", render("spec.md", "# Spec").contains("'nonce-$nonce'"))
+    }
+
+    @Test
     fun `a spec vira cabeçalho com metadados, painel de histórias e pontos a esclarecer`() {
         val html = render("spec.md", spec)
         assertTrue(html.contains("Especificação"))

@@ -4,7 +4,7 @@ import com.intellij.openapi.project.Project
 import org.jetbrains.plugins.terminal.TerminalProjectOptionsProvider
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 
-/** [AgentTerminal] pelo plugin de terminal da IDE; registrado em `interceptador-terminal.xml`. */
+/** [AgentTerminal] pelo plugin de terminal da IDE; registrado em `META-INF/ironhawk-terminal.xml`. */
 class IdeAgentTerminal : AgentTerminal {
 
     override fun shellPath(project: Project): String? =

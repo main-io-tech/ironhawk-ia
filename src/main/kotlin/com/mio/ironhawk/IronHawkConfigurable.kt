@@ -8,10 +8,14 @@ import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.UIUtil
+import com.mio.irondome.caixapreta.BugGitHub
 import javax.swing.JComponent
 import javax.swing.JPanel
 
-/** Settings > Tools > IronHawk IA: liga e desliga a defesa (Iron Dome) e o ataque (Tomahawk). */
+/**
+ * Settings > Tools > IronHawk IA: liga e desliga a Defesa e o Ataque. Dentro dela: Arsenal (IA), Defesa: Inteligência da IA
+ * e Ataque: Spec Kit e Proteções.
+ */
 class IronHawkConfigurable : Configurable {
 
     private val boxes = IronHawkSystem.entries.associateWith { JBCheckBox(it.title) }
@@ -26,7 +30,9 @@ class IronHawkConfigurable : Configurable {
             }
         }
         .addVerticalGap(8)
-        .addComponent(comment("Desligado, o sistema sai do painel IronHawk IA e perde as ações e os avisos; o que já está nos editores abertos sai ao reiniciar a IDE."))
+        .addComponent(comment("Desligado, o sistema sai do painel e perde as ações e os avisos; nos editores abertos, ao reiniciar."))
+        .addVerticalGap(8)
+        .addComponent(comment("Bugs do plugin viram issues em ${BugGitHub.REPOSITORY.fullName}, com a conta do GitHub do IntelliJ."))
         .addComponentFillVertically(JPanel(), 0)
         .panel
 

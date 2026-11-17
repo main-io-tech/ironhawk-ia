@@ -148,7 +148,7 @@ object DevContainer {
             ?: return listOf("o devcontainer.json não é um JSON válido")
         val problems = mutableListOf<String>()
         if (json.has("initializeCommand")) problems += "o initializeCommand roda na sua máquina, fora do container"
-        if (json.has("dockerComposeFile")) problems += "o Tomahawk não confere configurações com Docker Compose; use image ou build"
+        if (json.has("dockerComposeFile")) problems += "o IronHawk IA não confere configurações com Docker Compose; use image ou build"
         if (json.get("privileged").bool()) problems += "o modo privilegiado dá ao container acesso à máquina"
         if (json.get("capAdd").strings().isNotEmpty()) problems += "o capAdd dá ao container poderes da máquina"
         if (json.get("securityOpt").strings().isNotEmpty()) problems += "o securityOpt desliga isolamentos do container"

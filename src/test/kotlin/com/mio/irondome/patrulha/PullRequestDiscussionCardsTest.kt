@@ -132,11 +132,13 @@ class PullRequestDiscussionCardsTest : HeavyPlatformTestCase() {
             assertFalse(radar.pullRequestDraftsHidden)
 
             cards().first { it.comment.id == "@ana" }.onHide()
-            assertEquals(1, patrulha.hiddenInEditor(12))
+            val ana = patrulha.editorDiscussions(12).first { it.first.author == "ana" }
+            assertTrue(patrulha.isDiscussionHidden(12, ana))
+            assertEquals(1, cards().size)
             patrulha.setAllShownInEditor(12, false)
-            patrulha.showHiddenInEditor(12)
-            assertEquals(0, patrulha.hiddenInEditor(12))
-            assertEquals("trazer os ocultados liga os cartões de novo", 2, cards().size)
+            patrulha.setAllShownInEditor(12, true)
+            assertFalse("mostrar traz também os ocultados um a um", patrulha.isDiscussionHidden(12, ana))
+            assertEquals(2, cards().size)
 
             radar.setPullRequestDraftsHidden(true)
             radar.addComment(file, document(), 3..3, "Outro", discuss = false)

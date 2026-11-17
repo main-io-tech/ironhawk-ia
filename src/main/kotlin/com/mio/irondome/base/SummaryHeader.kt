@@ -17,7 +17,6 @@ import java.awt.Color
 import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.FlowLayout
-import java.awt.GradientPaint
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.event.MouseAdapter
@@ -35,8 +34,8 @@ class Stat(val count: Int, val label: String, val tone: Tone)
  * uma linha de contexto, os indicadores de cada estado, a barra com a proporção entre eles e, se houver,
  * um aviso. O fundo ganha um leve degradê na cor do estado e a linha de baixo acompanha essa cor.
  *
- * Minimizado, cabe numa linha: ícone, título e indicadores, com o contexto e o aviso no tooltip. A seta do canto
- * alterna, e a escolha vale para as abas de todos os mecanismos; o padrão é o cabeçalho completo.
+ * Compacto, o padrão, cabe numa linha: ícone, título e indicadores, com o contexto no tooltip e o aviso logo abaixo,
+ * sempre à vista. A seta do canto alterna, e a escolha vale para as abas de todos os mecanismos.
  */
 class SummaryHeader(icon: Icon, private val tone: Tone = Tone.GRAY) : JPanel(BorderLayout()) {
 
@@ -44,6 +43,8 @@ class SummaryHeader(icon: Icon, private val tone: Tone = Tone.GRAY) : JPanel(Bor
     private val smallTile = IconTile(icon, tone, scale = 1f, size = 22)
     private val dot = StatusDot()
     private val title = WrapText(font = JBFont.h4())
+    /** O título no compacto: uma linha só, cortada com reticências quando não cabe. */
+    private val compactTitle = JBLabel().apply { font = JBFont.label().asBold() }
     private val subtitle = WrapText(font = JBFont.small(), color = UIUtil.getContextHelpForeground())
     private val chips = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(4))).apply { isOpaque = false }
     private val barSlot = JPanel(BorderLayout()).apply {
@@ -51,7 +52,6 @@ class SummaryHeader(icon: Icon, private val tone: Tone = Tone.GRAY) : JPanel(Bor
         border = JBUI.Borders.emptyTop(4)
     }
     private val banner = NoticeBox(AllIcons.General.Warning, Tone.YELLOW).apply { isVisible = false }
-    private val warningIcon = JBLabel(AllIcons.General.Warning).apply { isVisible = false }
     private val toggle = JBLabel().apply {
         cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         border = JBUI.Borders.empty(2)
@@ -62,8 +62,6 @@ class SummaryHeader(icon: Icon, private val tone: Tone = Tone.GRAY) : JPanel(Bor
         })
     }
 
-    /** A cor do estado atual: tinge o fundo e a linha de baixo. */
-    private var accent: Color? = null
     private var subtitleText: String? = null
     private var warningText: String? = null
 
@@ -84,7 +82,8 @@ class SummaryHeader(icon: Icon, private val tone: Tone = Tone.GRAY) : JPanel(Bor
     ) {
         this.title.text = title
         this.title.foreground = titleColor ?: UIUtil.getLabelForeground()
-        accent = titleColor
+        compactTitle.text = title
+        compactTitle.foreground = this.title.foreground
         dot.color = titleColor
         dot.isVisible = titleColor != null
         subtitleText = subtitle?.takeIf { it.isNotEmpty() }
@@ -141,14 +140,20 @@ class SummaryHeader(icon: Icon, private val tone: Tone = Tone.GRAY) : JPanel(Bor
             add(body, BorderLayout.CENTER)
         } else {
             border = JBUI.Borders.empty(3, 8, 3, 6)
-            title.font = JBFont.label().asBold()
-            add(JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(2))).apply {
+            // Linha 1: ícone, ponto e título; linha 2: os indicadores, que quebram linha; e o aviso, se houver.
+            add(JPanel(VerticalLayout(JBUI.scale(3), VerticalLayout.FILL)).apply {
                 isOpaque = false
-                add(smallTile)
-                add(dot)
-                add(title)
-                add(warningIcon)
+                add(JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
+                    isOpaque = false
+                    add(JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
+                        isOpaque = false
+                        add(smallTile)
+                        add(dot)
+                    }, BorderLayout.WEST)
+                    add(compactTitle, BorderLayout.CENTER)
+                })
                 add(chips)
+                add(banner)
             }, BorderLayout.CENTER)
         }
         add(corner, BorderLayout.EAST)
@@ -162,21 +167,20 @@ class SummaryHeader(icon: Icon, private val tone: Tone = Tone.GRAY) : JPanel(Bor
         subtitle.isVisible = expanded && subtitleText != null
         chips.isVisible = chips.componentCount > 0
         barSlot.isVisible = expanded && barSlot.componentCount > 0
-        banner.isVisible = expanded && warningText != null
-        warningIcon.isVisible = !expanded && warningText != null
-        warningIcon.toolTipText = warningText
-        title.toolTipText = if (expanded) null else listOfNotNull(subtitleText, warningText).joinToString("\n").ifEmpty { null }
+        // O aviso pede ação: fica à vista também no compacto.
+        banner.isVisible = warningText != null
+        compactTitle.toolTipText = listOfNotNull(compactTitle.text.takeIf { it.isNotEmpty() }, subtitleText).joinToString(" · ").ifEmpty { null }
     }
 
     companion object {
         private const val EXPANDED_KEY = "IronDome.Header.Expanded"
         private val headers = ContainerUtil.createWeakSet<SummaryHeader>()
 
-        /** Os cabeçalhos completos, com o contexto, a barra e o aviso; vale para todas as abas abertas. */
+        /** Os cabeçalhos completos, com o contexto e a barra; vale para todas as abas abertas. O padrão é o compacto. */
         var expanded: Boolean
-            get() = PropertiesComponent.getInstance().getBoolean(EXPANDED_KEY, true)
+            get() = PropertiesComponent.getInstance().getBoolean(EXPANDED_KEY, false)
             set(value) {
-                PropertiesComponent.getInstance().setValue(EXPANDED_KEY, value, true)
+                PropertiesComponent.getInstance().setValue(EXPANDED_KEY, value, false)
                 headers.toList().forEach(SummaryHeader::relayout)
             }
     }
@@ -184,21 +188,15 @@ class SummaryHeader(icon: Icon, private val tone: Tone = Tone.GRAY) : JPanel(Bor
     override fun paintComponent(g: Graphics) {
         val g2 = g.create() as Graphics2D
         try {
+            // Fundo liso e uma linha fina embaixo: a cor do estado fica no ponto do título e nos indicadores.
             g2.color = background
-            g2.fillRect(0, 0, width, height)
-            val color = accent ?: tone.accent
-            g2.paint = GradientPaint(0f, 0f, tint(color, 0.10f), width.toFloat() * 0.7f, 0f, tint(color, 0f))
             g2.fillRect(0, 0, width, height)
             g2.color = JBColor.border()
             g2.fillRect(0, height - 1, width, 1)
-            g2.color = tint(color, 0.55f)
-            g2.fillRect(0, height - JBUI.scale(2), JBUI.scale(72), JBUI.scale(2))
         } finally {
             g2.dispose()
         }
     }
-
-    private fun tint(color: Color, alpha: Float) = Color(color.red, color.green, color.blue, (alpha * 255).toInt())
 }
 
 /** O ícone do mecanismo, ampliado, sobre um quadrado arredondado na cor dele. */

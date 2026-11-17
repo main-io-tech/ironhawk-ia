@@ -1,13 +1,21 @@
 package com.mio.irondome.radar
 
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.DumbAwareAction
 import com.mio.ironhawk.IronHawkSystem
 
-/** Oculta do editor todos os alvos interceptados; [ShowResolvedCommentsAction] traz de volta. */
-class RemoveResolvedCommentsAction : DumbAwareAction() {
+/**
+ * Oculta do editor todos os alvos interceptados, sem alterar o `.md`; [ShowResolvedCommentsAction] traz de volta.
+ * Fica no ⋮ da aba Radar.
+ */
+class RemoveResolvedCommentsAction : DumbAwareAction(
+    "Ocultar Alvos Interceptados",
+    "Tira do editor os alvos já interceptados, sem alterar o .md",
+    AllIcons.Actions.ToggleVisibility,
+) {
 
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
@@ -24,7 +32,12 @@ class RemoveResolvedCommentsAction : DumbAwareAction() {
     }
 }
 
-class ShowResolvedCommentsAction : DumbAwareAction() {
+/** Volta a mostrar no editor os alvos interceptados que foram ocultados. Fica no ⋮ da aba Radar. */
+class ShowResolvedCommentsAction : DumbAwareAction(
+    "Mostrar Alvos Interceptados",
+    "Volta a mostrar no editor os alvos interceptados ocultados",
+    AllIcons.Actions.Show,
+) {
 
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
 

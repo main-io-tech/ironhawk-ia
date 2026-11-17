@@ -10,33 +10,67 @@
     <p><b>A resistência do ferro na defesa, a precisão do gavião no ataque.</b> O IronHawk IA junta dois sistemas,
     que podem ser ligados e desligados em Settings &gt; Tools &gt; IronHawk IA.</p>
     <h3>🛡️ Defesa: Iron Dome</h3>
-    <p>Revise o código como num pull request e deixe a IA interceptar as correções. Marque qualquer linha ou trecho
-    como alvo no editor; ao salvar, as ordens de interceptação vão para <code>ironhawk/iron-dome/ordem-interceptacao-&lt;id&gt;.md</code>,
-    prontas para qualquer assistente de IA ler, aplicar e marcar como resolvidas.</p>
+    <p>Revise o código como num pull request e deixe a IA interceptar as correções. Marque qualquer linha, arquivo ou
+    pacote como alvo no editor e use <b>Disparar com IA</b>: as ordens de interceptação vão para
+    <code>ironhawk/iron-dome/ordem-interceptacao-&lt;id&gt;.md</code> e a IA corrige e marca cada alvo como resolvido.
+    Sem IA configurada, o pedido é copiado para você colar na sua.</p>
     <ul>
       <li><b>📡 Radar:</b> marque os alvos com o <b>+</b> da margem, duplo clique no número da linha ou
-        <kbd>Ctrl+Alt+Shift+M</kbd>, e acompanhe pendentes e resolvidos.</li>
-      <li><b>🎯 Centro de Comando:</b> cada comentário vira uma ordem, <i>Aplicar direto</i> ou <i>Discutir antes de
-        alterar</i>, para Cursor, Claude Code ou qualquer outro assistente.</li>
-      <li><b>💥 Raio de Impacto:</b> dependências, risco e testes de cada classe Java e Kotlin.</li>
+        <kbd>Ctrl+Alt+Shift+M</kbd>, em modo <i>Aplicar direto</i> ou <i>Discutir antes de alterar</i>, e acompanhe
+        pendentes e interceptados.</li>
       <li><b>👁️ Sentinela:</b> os arquivos não commitados, com o diff a um clique.</li>
-      <li><b>🛡️ Escudo:</b> os testes JUnit do projeto agrupados pelo <code>@DisplayName</code>.</li>
+      <li><b>💥 Raio de Impacto:</b> o diagrama de classes de uma classe Java ou Kotlin e da vizinhança dela, com as
+        aferentes e eferentes.</li>
+      <li><b>🛡️ Escudo:</b> os testes JUnit organizados por <code>@Tag</code> ou por critério de aceite, com os cenários
+        Cucumber rodados fora da IDE.</li>
       <li><b>🛰️ Patrulha:</b> revisão dos pull requests do GitHub, com as respostas da IA nas conversas.</li>
-      <li><b>🧠 Inteligência da IA:</b> risco com o histórico do git, dossiê das classes e aprendizado do time.</li>
     </ul>
     <h3>🚀 Ataque: Tomahawk</h3>
-    <p>Conduz a missão SDD do <a href="https://github.com/github/spec-kit">Spec Kit</a> etapa por etapa: dispara os
-    comandos <code>/speckit</code> pelo Cursor CLI ou pelo Claude Code, avalia os artefatos e monitora cada execução.</p>
+    <p>Conduz o Spec-Driven Development do <a href="https://github.com/github/spec-kit">Spec Kit</a> etapa por etapa:
+    lança os comandos <code>/speckit</code> pelo CLI de IA, avalia os artefatos e acompanha cada execução.</p>
     <ul>
-      <li><b>🚀 Lançador:</b> a missão da feature ativa em nove etapas, com a próxima em destaque.</li>
-      <li><b>🛬 Extração:</b> o commit, o push e o pull request no GitHub no fim da missão.</li>
-      <li><b>📻 Rádio:</b> os comentários dos seus PRs, com a resposta escrita pela IA.</li>
-      <li><b>🎯 Avaliação:</b> spec, plano, tarefas e checklists gerados em <code>specs/NNN-feature/</code>.</li>
+      <li><b>🚀 Lançador:</b> as nove etapas da feature, com a próxima em destaque, e a Entrega (commit, push e PR).</li>
+      <li><b>🎯 Avaliação:</b> spec, plano, tarefas e checklists gerados em <code>specs/NNN-feature/</code>, só leitura.</li>
       <li><b>📡 Telemetria:</b> o log ao vivo de cada passo da IA e o histórico das execuções.</li>
+      <li><b>📻 Rádio:</b> os comentários dos seus PRs, com a resposta escrita pela IA.</li>
     </ul>
+    <h3>🛠️ Arsenal</h3>
+    <p>A IA dos dois sistemas: Cursor, Claude Code ou Codex, na aba (no devcontainer do projeto) ou no terminal da IDE,
+    e Antigravity no terminal, com ponto de restauração e proteções. Help &gt; IronHawk IA: Diagnóstico mostra a
+    compatibilidade e os erros do plugin.</p>
     ]]></description>
 
     <change-notes><![CDATA[
+    <h3>0.3.0 (em desenvolvimento)</h3>
+    <ul>
+      <li>Abas mais limpas: cabeçalho compacto de uma linha (a seta expande o contexto) e só as ações principais na
+        barra; o resto fica em ⋮ Mais ações.</li>
+      <li>Uma ação só para disparar, <b>Disparar com IA</b>: age nos alvos selecionados no Radar ou, sem seleção, em
+        todos os não interceptados; sem IA, grava o .md e copia o pedido. Saem Disparar Este Arquivo e Disparar Todos;
+        Ctrl+S só grava o .md.</li>
+      <li>Menu do editor com Marcar Trecho como Alvo, Marcar Arquivo Inteiro ou Pacote como Alvo e Cancelar Alvo do
+        Trecho. A contagem de alvos é a mesma na árvore do projeto e na Sentinela (só pendentes).</li>
+      <li>Raio de Impacto sem risco nem cobertura de testes: o diagrama de classes e a tabela de aferentes e eferentes.</li>
+      <li>Escudo organizado por <code>@Tag</code> ou por critério de aceite, num menu só; sai o agrupamento pela chave do
+        <code>@DisplayName</code> e a visão Por execução. Os cenários Cucumber do XML entram nos mesmos grupos, com a
+        idade do XML e sem mudar o veredito, e repetidos valem uma vez. <b>Padronizar Testes</b> substitui Deixar no
+        Padrão e Ligar Testes aos Critérios. O catálogo aceita <code>exige:</code> em lista de bloco.</li>
+      <li>Patrulha: Enviar ao GitHub sempre envia como rascunho e Concluir Revisão é a única forma de publicar.
+        Mostrar Comentários do PR traz também os ocultados um a um. A lista de PRs abertos lê todas as páginas.</li>
+      <li>Ataque: a Extração vira a seção Entrega do Lançador, com Gerar com IA para o título e a descrição do PR. A
+        feature escolhida só vira a ativa ao lançar ou copiar o comando. Avaliação com cabeçalho de qualidade.</li>
+      <li>Arsenal com um cartão de Segurança só, Como cada CLI roda recolhido e a aba Recursos com Skills extras e Spec
+        Kit. Settings: IronHawk IA com Arsenal (IA), Defesa: Inteligência da IA e Ataque: Spec Kit e Proteções; sai a
+        página Iron Dome IA.</li>
+      <li>Help &gt; IronHawk IA: Diagnóstico junta Compatibilidade e Logs de erro, que agora incluem o Ataque e o
+        painel. Substitui Verificar Compatibilidade e Ver Logs de Erro.</li>
+      <li>Segurança: argumentos extras não liberam permissão total em tarefas só de leitura nem no terminal; a
+        Visualização dos artefatos bloqueia scripts vindos dos .md.</li>
+      <li>Correções: o log ao vivo da Telemetria não congela após 2.000 linhas; as Respostas da IA não desligam sozinhas
+        em repositórios com mais de 100 PRs; o tempo-limite do git no ponto de restauração funciona; o aviso de
+        comentários sobrepostos não silencia pares novos nem repete os antigos; Reportar ao IronHawk IA só marca o
+        erro como enviado quando a issue é criada.</li>
+    </ul>
     <h3>0.2.0</h3>
     <ul>
       <li>Escudo lê o Cucumber rodado pelo CLI (XML do <code>junit:</code>): os cenários aparecem no grupo Cucumber, com as
@@ -102,6 +136,11 @@
         <postStartupActivity implementation="com.mio.ironhawk.ArsenalMigrationStartup"/>
         <postStartupActivity implementation="com.mio.ironhawk.IronHawkFolderStartup" order="first"/>
         <errorHandler implementation="com.mio.irondome.caixapreta.IronDomeErrorSubmitter"/>
+        <postStartupActivity implementation="com.mio.irondome.caixapreta.CompatibilityStartup"/>
+        <applicationConfigurable parentId="com.mio.ironhawk.settings"
+                                 instance="com.mio.irondome.defesa.DefenseConfigurable"
+                                 id="com.mio.irondome.settings.defense"
+                                 displayName="Defesa: Inteligência da IA"/>
     </extensions>
 
     <!-- Defesa: Iron Dome. -->
@@ -113,16 +152,7 @@
         <projectViewNodeDecorator implementation="com.mio.irondome.radar.TargetDecorator"/>
         <notificationGroup id="Iron Dome IA" displayType="BALLOON"/>
         <notificationGroup id="Iron Dome IA: Gravação" displayType="STICKY_BALLOON"/>
-        <postStartupActivity implementation="com.mio.irondome.caixapreta.CompatibilityStartup"/>
         <postStartupActivity implementation="com.mio.irondome.defesa.DefenseStartup"/>
-        <applicationConfigurable parentId="com.mio.ironhawk.settings"
-                                 instance="com.mio.irondome.caixapreta.IronDomeConfigurable"
-                                 id="com.mio.irondome.settings"
-                                 displayName="Iron Dome IA"/>
-        <applicationConfigurable parentId="com.mio.irondome.settings"
-                                 instance="com.mio.irondome.defesa.DefenseConfigurable"
-                                 id="com.mio.irondome.settings.defense"
-                                 displayName="Inteligência da IA"/>
     </extensions>
 
     <!-- Ataque: Tomahawk. -->
@@ -132,7 +162,7 @@
         <applicationConfigurable parentId="com.mio.ironhawk.settings"
                                  instance="com.mio.tomahawk.settings.TomahawkConfigurable"
                                  id="com.mio.tomahawk.settings"
-                                 displayName="Tomahawk IA"/>
+                                 displayName="Ataque: Spec Kit e Proteções"/>
     </extensions>
 
     <applicationListeners>
@@ -152,17 +182,6 @@
     </projectListeners>
 
     <actions>
-        <action id="IronDome.SaveFileReview"
-                class="com.mio.irondome.comando.SaveFileReviewAction"
-                text="Disparar Este Arquivo"
-                description="Salva o arquivo aberto e envia à IA, no .md de revisão, as ordens de interceptação só dele"
-                icon="/icons/saveReview.svg"/>
-        <action id="IronDome.SaveReview"
-                class="com.mio.irondome.comando.SaveReviewAction"
-                text="Disparar Todos"
-                description="Salva todos os arquivos e envia à IA, no .md de revisão, as ordens de interceptação de todos eles"
-                icon="/icons/fireAll.svg"/>
-
         <action id="IronDome.ShowFileDiff"
                 class="com.mio.irondome.sentinela.ShowFileDiffAction"
                 text="Inspecionar Diff"
@@ -171,28 +190,27 @@
 
         <action id="IronDome.FireWithAi"
                 class="com.mio.irondome.interceptor.FireWithAiAction"
-                text="Disparar Todos com IA"
-                description="Dispara os alvos e pede à IA configurada que execute a ordem de interceptação"
+                text="Disparar com IA"
+                description="Grava o .md e pede à IA que corrija os alvos pendentes; sem IA, copia o pedido"
                 icon="/icons/interceptador.svg"/>
 
         <group id="IronDome.FloatingToolbar">
             <reference ref="IronDome.ShowFileDiff"/>
-            <reference ref="IronDome.SaveFileReview"/>
-            <reference ref="IronDome.SaveReview"/>
             <reference ref="IronDome.FireWithAi"/>
         </group>
 
         <action id="IronDome.AddComment"
                 class="com.mio.irondome.radar.AddReviewCommentAction"
-                text="Iron Dome IA: Marcar Alvo"
+                text="IronHawk IA: Marcar Trecho como Alvo"
                 description="Marca a seleção ou a linha atual como alvo para a IA corrigir"
                 icon="/icons/addComment.svg">
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift M"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
         <action id="IronDome.MarkTarget"
                 class="com.mio.irondome.radar.MarkTargetAction"
-                text="Iron Dome IA: Marcar como Alvo"
-                description="Comenta o arquivo ou o pacote inteiro para a IA corrigir"
+                text="IronHawk IA: Marcar Arquivo ou Pacote como Alvo"
+                description="Marca o arquivo ou o pacote inteiro como alvo para a IA corrigir"
                 icon="/icons/addComment.svg">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
             <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
@@ -200,23 +218,14 @@
         </action>
         <action id="IronDome.RemoveComment"
                 class="com.mio.irondome.radar.RemoveReviewCommentAction"
-                text="Iron Dome IA: Cancelar Alvo"
-                description="Cancela os alvos não interceptados da seleção ou da linha atual; os já disparados saem no próximo disparo"
-                icon="/icons/removeComment.svg"/>
-        <action id="IronDome.RemoveResolved"
-                class="com.mio.irondome.radar.RemoveResolvedCommentsAction"
-                text="Iron Dome IA: Ocultar Alvos Interceptados"
-                description="Tira do editor os alvos já interceptados, sem alterar o .md da revisão; Mostrar Alvos Interceptados traz de volta"
-                icon="AllIcons.Actions.ToggleVisibility"/>
-        <action id="IronDome.ShowResolved"
-                class="com.mio.irondome.radar.ShowResolvedCommentsAction"
-                text="Iron Dome IA: Mostrar Alvos Interceptados"
-                description="Volta a mostrar no editor os alvos interceptados que foram ocultados"
-                icon="AllIcons.Actions.Show"/>
-
+                text="IronHawk IA: Cancelar Alvo do Trecho"
+                description="Cancela os alvos não interceptados da seleção ou da linha atual"
+                icon="/icons/removeComment.svg">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
         <action id="Tomahawk.InitSpecKit"
                 class="com.mio.tomahawk.run.InitSpecKitAction"
-                text="Tomahawk IA: Inicializar Spec Kit"
+                text="IronHawk IA: Inicializar Spec Kit"
                 description="Roda specify init --here no terminal da IDE, com a integração do CLI de IA configurado"
                 icon="/icons/lancador.svg">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
@@ -229,18 +238,11 @@
                 icon="/icons/caixaPreta.svg">
             <add-to-group group-id="HelpMenu" anchor="last"/>
         </action>
-        <action id="IronDome.CheckCompatibility"
-                class="com.mio.irondome.caixapreta.CheckCompatibilityAction"
-                text="IronHawk IA: Verificar Compatibilidade"
-                description="Mostra o que cada mecanismo precisa da IDE, o que está faltando e os erros recentes do plugin no log"
-                icon="AllIcons.Nodes.Plugin">
-            <add-to-group group-id="HelpMenu" anchor="last"/>
-        </action>
-        <action id="IronDome.ShowErrorLog"
-                class="com.mio.irondome.caixapreta.ShowErrorLogAction"
-                text="IronHawk IA: Ver Logs de Erro"
-                description="Lista os erros e avisos do plugin no log da IDE, com a pilha completa, para copiar ou reportar"
-                icon="AllIcons.Actions.ShowAsTree">
+        <action id="IronHawk.Diagnostics"
+                class="com.mio.irondome.caixapreta.DiagnosticsAction"
+                text="IronHawk IA: Diagnóstico"
+                description="Compatibilidade de cada mecanismo com a IDE e os erros do plugin no log"
+                icon="AllIcons.General.InspectionsEye">
             <add-to-group group-id="HelpMenu" anchor="last"/>
         </action>
     </actions>

@@ -11,7 +11,7 @@ class TestsTab : ReviewToolWindowTab {
 
     override val title: String = TITLE
     override val icon: Icon = IronDomeIcons.escudo
-    override val description = "Executa todos os testes JUnit do projeto e mostra se passaram, agrupados pela chave do @DisplayName das classes"
+    override val description = "Executa os testes JUnit e mostra o resultado por tag ou por critério de aceite"
 
     override fun createComponent(project: Project, toolWindow: ToolWindow): JComponent = TestsPanel(project)
 

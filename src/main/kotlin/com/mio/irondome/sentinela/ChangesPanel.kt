@@ -42,6 +42,7 @@ import com.mio.irondome.base.RichTreeCellRenderer
 import com.mio.irondome.base.Segment
 import com.mio.irondome.base.Stat
 import com.mio.irondome.base.SummaryHeader
+import com.mio.irondome.base.moreActions
 import com.mio.irondome.base.Tone
 import com.mio.irondome.base.plural
 import com.mio.irondome.base.refreshAction
@@ -103,7 +104,7 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     }
 
     internal enum class Grouping(val label: String, val description: String) {
-        DIRECTORY("Diretório", "A árvore de pastas do projeto; as pastas que só levam a outra ficam juntas numa linha, como src/main/kotlin"),
+        DIRECTORY("Diretório", "A árvore de pastas, com as pastas encadeadas numa linha só, como src/main/kotlin"),
         ROOT_AND_PACKAGE("Raiz e Pacote", "Agrupa pela raiz de código, como src/main e src/test, e dentro dela pelo pacote"),
         PACKAGE("Pacote", "Um grupo por pacote, com a raiz de código ao lado do nome"),
         KIND("Tipo de Alteração", "Agrupa em modificados, adicionados, removidos e não versionados"),
@@ -168,7 +169,7 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     ) { openFile(selectedEntry()) }
     private val markTargetAction = selectionAction(
         "Marcar como Alvo",
-        "Comenta o arquivo ou o pacote selecionado inteiro para a IA",
+        "Marca o arquivo ou o pacote selecionado inteiro como alvo para a IA",
         ReviewIcons.addComment,
         enabled = { selectedTarget() != null },
     ) { selectedTarget()?.let { TargetComments.mark(project, it) } }
@@ -185,19 +186,23 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             }, BorderLayout.CENTER)
         })
         val expander = DefaultTreeExpander(tree)
+        // À vista, o fluxo principal; abrir e marcar também estão no menu do item, e a lista se atualiza sozinha.
         toolbar = ActionManager.getInstance().createActionToolbar(
             "IronDome.ChangesToolbar",
             DefaultActionGroup(
                 showDiffAction,
-                openFileAction,
                 Separator.getInstance(),
                 groupingActions(),
                 filterActions(),
                 Separator.getInstance(),
                 CommonActionsManager.getInstance().createExpandAllAction(expander, tree),
                 CommonActionsManager.getInstance().createCollapseAllAction(expander, tree),
-                Separator.getInstance(),
-                refreshAction { VcsDirtyScopeManager.getInstance(project).markEverythingDirty() },
+                moreActions(
+                    openFileAction,
+                    markTargetAction,
+                    null,
+                    refreshAction { refreshVcs() },
+                ),
             ),
             true,
         ).apply { targetComponent = tree }.wrapping().component
@@ -212,6 +217,8 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
     }
 
     override fun dispose() = Unit
+
+    private fun refreshVcs() = VcsDirtyScopeManager.getInstance(project).markEverythingDirty()
 
     private fun groupingActions() = DefaultActionGroup("Agrupar Por", true).apply {
         templatePresentation.icon = AllIcons.Actions.GroupBy
@@ -232,7 +239,7 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
 
     private fun filterActions() = DefaultActionGroup("Filtrar", true).apply {
         templatePresentation.icon = AllIcons.General.Filter
-        templatePresentation.description = "Mostra só alguns tipos de alteração ou só os arquivos com alvos"
+        templatePresentation.description = "Mostra só alguns tipos de alteração, ou só os arquivos com alvos"
         ChangeKind.entries.forEach { kind ->
             add(object : DumbAwareToggleAction(kind.title, "Mostra os arquivos ${kind.many}", null) {
                 override fun getActionUpdateThread() = ActionUpdateThread.EDT
@@ -244,7 +251,7 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
             })
         }
         addSeparator()
-        add(object : DumbAwareToggleAction("Só com Alvos", "Mostra só os arquivos com alvos do Radar", null) {
+        add(object : DumbAwareToggleAction("Só com Alvos", "Mostra só os arquivos com alvos pendentes no Radar", null) {
             override fun getActionUpdateThread() = ActionUpdateThread.EDT
             override fun isSelected(e: AnActionEvent) = filter.onlyTargets
             override fun setSelected(e: AnActionEvent, state: Boolean) {
@@ -276,12 +283,13 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         if (!ProjectLevelVcsManager.getInstance(project).hasActiveVcss()) {
             entries = emptyList()
             model.setRoot(DefaultMutableTreeNode())
-            tree.emptyText.text = "Projeto sem controle de versão: a sentinela não tem o que vigiar"
-            header.update("Sem controle de versão", Tone.GRAY.accent, "A sentinela não tem o que vigiar")
+            tree.emptyText.text = "Projeto sem controle de versão: a Sentinela não tem o que vigiar"
+            header.update("Sem controle de versão", Tone.GRAY.accent, "A Sentinela vigia as alterações do Git")
             return
         }
         val changeListManager = ChangeListManager.getInstance(project)
-        val comments = service.activeComments().groupingBy { it.filePath }.eachCount()
+        // Os mesmos números da árvore do projeto: só os alvos abertos, nem interceptados nem cancelados.
+        val comments = service.openCounts
         fun entry(change: Change, path: FilePath, unversioned: Boolean): Entry {
             val relative = relativePath(path.path)
             return Entry(change, path, relative, locationOf(path), comments[relative] ?: 0, unversioned)
@@ -343,6 +351,7 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
 
         if (entries.isEmpty()) {
             tree.emptyText.text = PERIMETER_CLEAR
+            tree.emptyText.appendSecondaryText("Atualizar", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { refreshVcs() }
         } else {
             tree.emptyText.text = "Nenhum arquivo com esse filtro"
             tree.emptyText.appendSecondaryText("Limpar filtros", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { clearFilters() }
@@ -424,28 +433,26 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         }
     }
 
-    /** O perímetro em números: quantos arquivos de cada tipo de alteração e quantos alvos marcados. */
+    /**
+     * O perímetro em números: os tipos de alteração presentes (até [MAX_STATS]; o resto fica na barra) e, no contexto,
+     * os alvos pendentes e o filtro.
+     */
     private fun updateHeader(visible: List<Entry>) {
         if (entries.isEmpty()) {
             header.update("Perímetro limpo", Tone.GREEN.accent, "Nenhuma alteração não commitada")
             return
         }
         val kinds = entries.groupingBy { it.kind }.eachCount()
-        val where = if (grouping == Grouping.DIRECTORY) {
-            plural(entries.map { it.relativePath.substringBeforeLast('/', "") }.distinct().size, "pasta", "pastas")
-        } else {
-            plural(entries.map { it.location.key }.distinct().size, "pacote", "pacotes")
-        }
         val targets = entries.sumOf { it.comments }
         header.update(
             title = plural(entries.size, "arquivo alterado", "arquivos alterados"),
-            subtitle = listOfNotNull(
-                "em $where",
-                plural(targets, "alvo na mira", "alvos na mira").takeIf { targets > 0 },
-                "mostrando ${visible.size} com o filtro".takeIf { filter.active },
-            ).joinToString(" · "),
-            stats = ChangeKind.entries.map { kind ->
-                val count = kinds[kind] ?: 0
+            subtitle = when {
+                filter.active -> "Mostrando ${visible.size} com o filtro"
+                targets > 0 -> plural(targets, "alvo pendente", "alvos pendentes")
+                else -> null
+            },
+            stats = ChangeKind.entries.filter { (kinds[it] ?: 0) > 0 }.take(MAX_STATS).map { kind ->
+                val count = kinds.getValue(kind)
                 Stat(count, if (count == 1) kind.one else kind.many, kind.tone)
             },
             bar = ChangeKind.entries.map { Segment(kinds[it] ?: 0, it.tone.accent) },
@@ -588,6 +595,8 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
         private const val PERIMETER_CLEAR = "Perímetro limpo: nenhuma alteração não commitada"
         private const val OTHER_FILES = "Outros arquivos"
         private const val GROUPING_KEY = "IronDome.Changes.Grouping"
+        /** Indicadores no cabeçalho, como nas outras abas. */
+        private const val MAX_STATS = 4
         /** Acima disso, os grupos de arquivos novos chegam recolhidos. */
         private const val EXPAND_UP_TO = 20
 

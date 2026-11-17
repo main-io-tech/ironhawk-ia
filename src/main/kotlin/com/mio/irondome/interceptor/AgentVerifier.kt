@@ -115,7 +115,7 @@ object AgentVerifier {
         ApplicationManager.getApplication().executeOnPooledThread {
             val shellPath = terminal.shellPath(project)
             val shell = ShellKind.of(shellPath, SystemInfo.isWindows)
-            val prompt = "Teste de integracao do Iron Dome IA: grave apenas a palavra OK no arquivo $relative (crie as pastas se faltarem) e termine, sem fazer mais nada."
+            val prompt = "Teste de integracao do IronHawk IA: grave apenas a palavra OK no arquivo $relative (crie as pastas se faltarem) e termine, sem fazer mais nada."
             val command = runCatching { launch.terminal(provider, prompt, AgentSettings.model, 2, shell, root, interactive = false) }
             ApplicationManager.getApplication().invokeLater({
                 try {
