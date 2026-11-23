@@ -35,7 +35,7 @@ class JUnitDisplayNames(private val project: Project) {
         return name.value
     }
 
-    /** As tags do teste: as do método ou, sem elas, as da classe (e das classes de fora, nas `@Nested`). */
+    /** As tags do teste, somadas: as do método, as da classe, as herdadas da classe base e as das classes de fora. */
     fun tagsOf(locationUrl: String): List<String> {
         tagCache[locationUrl]?.let { return it }
         val tags = read { resolve(project, locationUrl)?.let(::effectiveTags) }?.value ?: return emptyList()
@@ -76,14 +76,31 @@ class JUnitDisplayNames(private val project: Project) {
                 ?.let { AnnotationUtil.getStringAttributeValue(it, "value") }
                 ?.takeIf { it.isNotBlank() }
 
-        /** As do próprio elemento; sem nenhuma, as da classe que o contém, subindo até achar. Exige read action. */
+        /**
+         * As tags que valem para o elemento, somadas como o JUnit soma: as do método, as da classe, as das classes de
+         * que ela herda (a `@Tag` de classe é herdada) e as das classes de fora, nas `@Nested`. Exige read action.
+         */
         fun effectiveTags(owner: PsiModifierListOwner): List<String> {
+            val tags = LinkedHashSet<String>()
             var current: PsiModifierListOwner? = owner
             while (current != null) {
-                tagsOn(current).takeIf { it.isNotEmpty() }?.let { return it }
+                if (current is PsiClass) tags += classTags(current) else tags += tagsOn(current)
                 current = (current as? PsiMember)?.containingClass
             }
-            return emptyList()
+            return tags.toList()
+        }
+
+        /** As tags de [psiClass] e as que ela herda das classes de cima, até [MAX_SUPERS] níveis. */
+        private fun classTags(psiClass: PsiClass): List<String> {
+            val tags = LinkedHashSet<String>()
+            val seen = HashSet<PsiClass>()
+            var current: PsiClass? = psiClass
+            while (current != null && seen.add(current) && seen.size <= MAX_SUPERS) {
+                if (current.qualifiedName == "java.lang.Object") break
+                tags += tagsOn(current)
+                current = current.superClass
+            }
+            return tags.toList()
         }
 
         /** `@Tag`, `@Tags` e anotações próprias marcadas com `@Tag`, como um `@Lento`. Exige read action. */
@@ -91,14 +108,24 @@ class JUnitDisplayNames(private val project: Project) {
             owner.modifierList?.annotations.orEmpty().flatMap { annotation ->
                 when (annotation.qualifiedName) {
                     TAG -> listOfNotNull(tagValue(annotation))
-                    TAGS -> (annotation.findAttributeValue("value") as? PsiArrayInitializerMemberValue)
-                        ?.initializers?.filterIsInstance<PsiAnnotation>()?.mapNotNull(::tagValue).orEmpty()
+                    TAGS -> tagsIn(annotation)
                     else -> (annotation.nameReferenceElement?.resolve() as? PsiClass)
                         ?.takeIf { it.isAnnotationType }
-                        ?.let { meta -> AnnotationUtil.findAnnotation(meta, TAG)?.let(::tagValue) }
-                        ?.let(::listOf).orEmpty()
+                        ?.let { meta ->
+                            AnnotationUtil.findAnnotations(meta, listOf(TAG)).mapNotNull(::tagValue) +
+                                AnnotationUtil.findAnnotation(meta, TAGS)?.let(::tagsIn).orEmpty()
+                        }.orEmpty()
                 }
             }.distinct()
+
+        /** As `@Tag` de dentro de uma `@Tags({...})`; com uma só, o Java dispensa as chaves. */
+        private fun tagsIn(container: PsiAnnotation): List<String> = when (val value = container.findAttributeValue("value")) {
+            is PsiArrayInitializerMemberValue -> value.initializers.filterIsInstance<PsiAnnotation>().mapNotNull(::tagValue)
+            is PsiAnnotation -> listOfNotNull(tagValue(value))
+            else -> emptyList()
+        }
+
+        private const val MAX_SUPERS = 12
 
         private fun tagValue(annotation: PsiAnnotation): String? =
             AnnotationUtil.getStringAttributeValue(annotation, "value")?.trim()?.takeIf { it.isNotEmpty() }

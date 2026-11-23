@@ -1,5 +1,7 @@
 package com.mio.irondome.interceptor
 
+import com.mio.tomahawk.run.MissionRunner
+import com.mio.ironhawk.IronHawkFolder
 import com.intellij.history.Label
 import com.intellij.history.LocalHistory
 import com.intellij.history.LocalHistoryException
@@ -115,7 +117,12 @@ class AgentProgress(val task: AgentTask, val provider: AgentProvider, val inTerm
  * mostrarem e cancelarem. Ao terminar, grava o registro, atualiza os arquivos que a IA mexeu e avisa.
  */
 @Service(Service.Level.PROJECT)
-class AgentRunner(private val project: Project) {
+class AgentRunner(private val project: Project) : com.intellij.openapi.Disposable {
+
+    /** Projeto fechado: a IA não continua alterando arquivos, nem a espera fica rodando, sem ninguém para cancelar. */
+    override fun dispose() {
+        progress?.cancel()
+    }
 
     /** Um por vez por projeto: dois agentes escrevendo nos mesmos arquivos se atropelam. */
     @Volatile
@@ -151,6 +158,11 @@ class AgentRunner(private val project: Project) {
             if (!unattended) notify("A IA já está trabalhando", "Espere ${running?.title} terminar ou cancele na barra de progresso da aba.", NotificationType.WARNING)
             return false
         }
+        // A missão do Ataque usa o mesmo container e o mesmo projeto: duas IAs se atropelam, e abortar uma derruba a outra.
+        MissionRunner.getInstance(project).progress?.let { mission ->
+            if (!unattended) notify("Há uma missão do Ataque em voo", "Espere ${mission.mission.step.codename} terminar ou aborte na Telemetria.", NotificationType.WARNING)
+            return false
+        }
         val root = project.rootPath() ?: return false
         val terminal = when (if (unattended) AgentRunMode.BACKGROUND else chooseMode(task)) {
             null -> return false
@@ -173,30 +185,41 @@ class AgentRunner(private val project: Project) {
         progress = current
         // Um problema só no ícone não pode deixar a IA presa como trabalhando.
         runCatching { AgentActivity.started(project, task) }.onFailure { LOG.warn("O ícone da IA trabalhando não pôde ser trocado", it) }
-        project.messageBus.syncPublisher(RUNS).changed()
+        runCatching { project.messageBus.syncPublisher(RUNS).changed() }.onFailure { LOG.warn("As abas não puderam ser avisadas do início da IA", it) }
         val work: () -> AgentResult = if (terminal == null) {
             { execute(task, provider, root, current) }
         } else {
-            val answer = answerFile(task) ?: run {
-                finish(failure(task, provider, "O projeto não tem pasta no disco."), actions, unattended, onDone, checkpoint)
+            val answer = runCatching { answerFile(task) }.onFailure { LOG.warn("A pasta das respostas da IA não pôde ser criada", it) }.getOrNull() ?: run {
+                finish(failure(task, provider, "Não consegui criar a pasta das respostas da IA no projeto."), actions, unattended, onDone, checkpoint)
                 return true
             }
             val relative = "${ReviewCommentService.REVIEW_DIR}/$DIR/$ANSWERS_DIR/${answer.fileName}"
             val prompt = "${task.prompt} ${AgentCommand.answerInstruction(relative)}"
+            val exit = exitMarker(answer)
             current.step = "No terminal: abrindo o terminal"
             work@{
+                Files.deleteIfExists(exit)
                 val shell = ShellKind.of(terminal.shellPath(project), SystemInfo.isWindows)
-                val command = launch.terminal(provider, prompt, AgentSettings.model, AgentSettings.timeoutMinutes, shell, root)
+                val command = AgentCommand.withExitMarker(
+                    launch.terminal(provider, prompt, AgentSettings.model, AgentSettings.timeoutMinutes, shell, root), exit.toString(), shell,
+                )
                 var opened: Throwable? = null
+                var session: AgentTerminal.Session? = null
                 ApplicationManager.getApplication().invokeAndWait({
-                    opened = runCatching { terminal.run(project, root, "IA: ${task.title}", command) }.exceptionOrNull()
+                    runCatching { terminal.run(project, root, "IA: ${task.title}", command) }
+                        .onSuccess { session = it }
+                        .onFailure { opened = it }
                 }, ModalityState.any())
                 opened?.let {
                     LOG.warn("O terminal da IDE não abriu", it)
                     return@work failure(task, provider, "O terminal não abriu: ${it.message ?: it.javaClass.simpleName}")
                 }
                 current.step = "No terminal: esperando a resposta em $relative"
-                waitForAnswer(task, provider, answer, command, current)
+                try {
+                    waitForAnswer(task, provider, answer, command, current, exit, session ?: AgentTerminal.Session { false })
+                } finally {
+                    Files.deleteIfExists(exit)
+                }
             }
         }
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -308,6 +331,10 @@ class AgentRunner(private val project: Project) {
         return true
     }
 
+    /**
+     * Libera a IA e devolve o resultado a quem pediu. Uma falha ao atualizar os arquivos ou ao avisar não pode deixar os
+     * botões presos: [onDone], que os reabilita, e o aviso às abas rodam sempre.
+     */
     private fun finish(
         result: AgentResult,
         actions: Array<out Pair<String, (AgentResult) -> Unit>>,
@@ -316,11 +343,28 @@ class AgentRunner(private val project: Project) {
         checkpoint: Checkpoint? = null,
     ) {
         progress = null
-        runCatching { AgentActivity.finished(project) }.onFailure { LOG.warn("O ícone da IA trabalhando não pôde voltar", it) }
-        refresh(result)
-        if (!unattended || !result.ok) report(result, actions, checkpoint)
-        project.messageBus.syncPublisher(RUNS).changed()
-        onDone(result)
+        try {
+            runCatching { AgentActivity.finished(project) }.onFailure { LOG.warn("O ícone da IA trabalhando não pôde voltar", it) }
+            runCatching { refresh(result) }.onFailure { LOG.warn("Os arquivos alterados pela IA não puderam ser atualizados", it) }
+            if (!unattended || !result.ok) runCatching { report(result, actions, checkpoint) }.onFailure { LOG.warn("O aviso do fim da IA não pôde ser mostrado", it) }
+        } finally {
+            try {
+                project.messageBus.syncPublisher(RUNS).changed()
+            } finally {
+                onDone(result)
+            }
+        }
+        ApplicationManager.getApplication().executeOnPooledThread {
+            runCatching { prune() }.onFailure { LOG.warn("Os registros antigos da IA não puderam ser apagados", it) }
+        }
+    }
+
+    /** Os registros mais antigos saem sozinhos; dos pedidos e das respostas, que o registro já traz, ficam só os últimos. */
+    private fun prune() {
+        val dir = transcriptsDir() ?: return
+        IronHawkFolder.prune(dir, AgentSettings.keepRuns)
+        IronHawkFolder.prune(dir.resolve(REQUESTS_DIR), KEEP_REQUESTS)
+        IronHawkFolder.prune(dir.resolve(ANSWERS_DIR), KEEP_ANSWERS)
     }
 
     private fun failure(task: AgentTask, provider: AgentProvider, error: String) =
@@ -372,17 +416,33 @@ class AgentRunner(private val project: Project) {
     private fun answerFile(task: AgentTask): Path? {
         val dir = transcriptsDir()?.resolve(ANSWERS_DIR) ?: return null
         Files.createDirectories(dir)
+        IronHawkFolder.keepLocal(project)
         return dir.resolve("${LocalDateTime.now().format(FILE_TIME)}-${slug(task.title)}.md").also(Files::deleteIfExists)
     }
 
-    /** A IA roda no terminal: a resposta chega quando o arquivo existe e para de crescer. */
-    private fun waitForAnswer(task: AgentTask, provider: AgentProvider, file: Path, command: String, state: AgentProgress): AgentResult {
+    /** Ao lado da resposta: aparece quando o CLI termina no terminal, com ou sem resposta. */
+    private fun exitMarker(answer: Path): Path = answer.resolveSibling("${answer.fileName}.fim")
+
+    /**
+     * A IA roda no terminal: a resposta chega quando o arquivo existe e para de crescer. Se o CLI terminar ([exit]
+     * aparece) ou a aba do terminal fechar sem a resposta, para de esperar em vez de segurar os botões até o tempo limite.
+     */
+    private fun waitForAnswer(
+        task: AgentTask,
+        provider: AgentProvider,
+        file: Path,
+        command: String,
+        state: AgentProgress,
+        exit: Path,
+        session: AgentTerminal.Session,
+    ): AgentResult {
         val started = System.nanoTime()
         val timeout = AgentSettings.timeoutMinutes
         val deadline = started + TimeUnit.MINUTES.toNanos(timeout.toLong())
         var lastSize = -1L
         var error: String? = null
         var answer = ""
+        var endedAt = 0L
         while (true) {
             if (state.cancelled) {
                 answer = "Parei de esperar a resposta. A IA continua no terminal: feche a aba do terminal para pará-la."
@@ -402,11 +462,20 @@ class AgentRunner(private val project: Project) {
                 lastSize = size
                 state.step = "No terminal: a IA está gravando a resposta"
             }
+            val ended = Files.exists(exit) || session.ended()
+            if (ended && endedAt == 0L) endedAt = System.currentTimeMillis()
+            // A resposta pode ainda estar sendo gravada quando o CLI sai: espera um pouco antes de desistir.
+            if (endedAt > 0 && System.currentTimeMillis() - endedAt > ANSWER_AFTER_EXIT_MS && !(Files.isRegularFile(file) && Files.size(file) > 0)) {
+                error = TerminalEnd.describe(Files.exists(exit), runCatching { Files.readString(exit) }.getOrNull())
+                break
+            }
             Thread.sleep(POLL_MS)
         }
         val duration = Duration.ofNanos(System.nanoTime() - started)
         val partial = AgentResult(task, provider, answer, error, state.cancelled, emptySet(), emptyList(), null, duration, null)
         val transcript = runCatching { writeTranscript(partial, listOf(command), "") }.getOrNull()
+        // A resposta já está no registro: o arquivo que a IA gravou no terminal não precisa ficar.
+        if (transcript != null && error == null && !state.cancelled) runCatching { Files.deleteIfExists(file) }
         return AgentResult(task, provider, answer, error, state.cancelled, emptySet(), emptyList(), null, duration, transcript)
     }
 
@@ -563,6 +632,7 @@ class AgentRunner(private val project: Project) {
     private fun writeTranscript(result: AgentResult, command: List<String>, stderr: String): Path? {
         val dir = transcriptsDir() ?: return null
         Files.createDirectories(dir)
+        IronHawkFolder.keepLocal(project)
         val name = "${LocalDateTime.now().format(FILE_TIME)}-${slug(result.task.title)}.md"
         val file = dir.resolve(name)
         Files.writeString(file, AgentTranscript.render(result, command, stderr))
@@ -585,6 +655,7 @@ class AgentRunner(private val project: Project) {
     fun writeInstructions(name: String, content: String): String? {
         val dir = transcriptsDir()?.resolve(REQUESTS_DIR) ?: return null
         Files.createDirectories(dir)
+        IronHawkFolder.keepLocal(project)
         Files.writeString(dir.resolve(name), content)
         LocalFileSystem.getInstance().refreshNioFiles(listOf(dir.resolve(name)))
         return "${ReviewCommentService.REVIEW_DIR}/$DIR/$REQUESTS_DIR/$name"
@@ -641,8 +712,11 @@ class AgentRunner(private val project: Project) {
         const val DIR = "ia"
         private const val REQUESTS_DIR = "pedidos"
         private const val ANSWERS_DIR = "respostas"
+        private const val KEEP_REQUESTS = 10
+        private const val KEEP_ANSWERS = 3
         private const val POLL_MS = 1_000L
         private const val ANSWER_QUIET_MS = 1_500L
+        private const val ANSWER_AFTER_EXIT_MS = 4_000L
 
         /** Uma execução começou ou terminou. */
         @Topic.ProjectLevel

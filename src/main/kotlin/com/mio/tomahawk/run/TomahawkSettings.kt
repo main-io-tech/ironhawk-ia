@@ -156,14 +156,14 @@ object TomahawkSettings {
 
     /** O executável configurado, se existir, ou o encontrado no PATH e nas pastas de instalação. */
     fun resolveExecutable(provider: AgentProvider = this.provider, configured: String? = executable): Path? {
-        configured?.let { path -> return Path.of(path).takeIf(Files::isRegularFile) }
+        configured?.let { path -> return AgentSettings.pathOf(path)?.takeIf(Files::isRegularFile) }
         return find(provider)
     }
 
     fun find(provider: AgentProvider): Path? = find(provider.executables, installDirs(provider))
 
     fun resolveSpecify(configured: String? = specifyExecutable): Path? {
-        configured?.let { path -> return Path.of(path).takeIf(Files::isRegularFile) }
+        configured?.let { path -> return AgentSettings.pathOf(path)?.takeIf(Files::isRegularFile) }
         val home = System.getProperty("user.home")
         return find(listOf("specify"), listOf(File(home, ".local/bin")))
     }

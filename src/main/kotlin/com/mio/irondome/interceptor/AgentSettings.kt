@@ -37,6 +37,10 @@ object AgentSettings {
     private val cursorCredentials = CredentialAttributes(generateServiceName("Iron Dome IA", "Cursor API key"))
 
     const val DEFAULT_TIMEOUT_MINUTES = 30
+    private const val KEEP_RUNS_KEY = "IronHawk.KeepRuns"
+    const val DEFAULT_KEEP_RUNS = 20
+    const val MIN_KEEP_RUNS = 5
+    const val MAX_KEEP_RUNS = 500
     const val MAX_TIMEOUT_MINUTES = 480
 
     /** Avisa quando a configuração ou o teste mudam, para as abas e os botões se atualizarem. */
@@ -75,6 +79,14 @@ object AgentSettings {
     var timeoutMinutes: Int
         get() = PropertiesComponent.getInstance().getInt(TIMEOUT_KEY, DEFAULT_TIMEOUT_MINUTES).coerceIn(1, MAX_TIMEOUT_MINUTES)
         set(value) = change { PropertiesComponent.getInstance().setValue(TIMEOUT_KEY, value.coerceIn(1, MAX_TIMEOUT_MINUTES), DEFAULT_TIMEOUT_MINUTES) }
+
+    /**
+     * Quantos registros de execução da IA ficam em `ironhawk/`, na Defesa e no Ataque: os mais antigos são apagados
+     * quando uma execução termina. Não entra no teste da integração.
+     */
+    var keepRuns: Int
+        get() = PropertiesComponent.getInstance().getInt(KEEP_RUNS_KEY, DEFAULT_KEEP_RUNS).coerceIn(MIN_KEEP_RUNS, MAX_KEEP_RUNS)
+        set(value) = PropertiesComponent.getInstance().setValue(KEEP_RUNS_KEY, value.coerceIn(MIN_KEEP_RUNS, MAX_KEEP_RUNS), DEFAULT_KEEP_RUNS)
 
     /** Argumentos a mais para o CLI, antes do prompt, como `--approve-mcps`. */
     var extraArgs: String?
@@ -182,9 +194,15 @@ object AgentSettings {
 
     /** O executável configurado, se existir, ou o encontrado no PATH e nas pastas de instalação. */
     fun resolveExecutable(provider: AgentProvider = this.provider, configured: String? = executable): Path? {
-        configured?.let { path -> return Path.of(path).takeIf(Files::isRegularFile) }
+        configured?.let { path -> return pathOf(path)?.takeIf(Files::isRegularFile) }
         return find(provider)
     }
+
+    /**
+     * O caminho que o usuário escreveu, ou nulo se não for um caminho válido. As aspas em volta saem: o "Copiar como
+     * caminho" do Windows as inclui, e com elas `Path.of` lança, o que travava as telas que conferem o executável.
+     */
+    fun pathOf(text: String): Path? = runCatching { Path.of(text.trim().trim('"')) }.getOrNull()
 
     fun find(provider: AgentProvider): Path? {
         val names = provider.executables.flatMap { name ->

@@ -56,7 +56,6 @@ O Ataque precisa do Spec Kit no projeto (a pasta `.specify/`) e do CLI `specify`
 - **Sem o `specify`:** **Instalar o Spec Kit** roda a instalação no terminal da IDE (`uv tool install specify-cli`).
 - **`specify` com defeito** (falta o pacote na instalação do `uv`): **Reinstalar o Spec Kit** roda
   `uv tool install --force specify-cli`.
-- **Versão nova:** **Atualizar o Spec Kit**.
 - **Outra integração:** se o projeto foi inicializado para outro CLI, o Arsenal oferece **Instalar a Integração**.
 
 As missões rodam na aba, no devcontainer do projeto (`.devcontainer/tomahawk/devcontainer.json`), ou no terminal da IDE.
@@ -71,8 +70,10 @@ O Arsenal cria e confere o devcontainer: veja [Onde rodar a IA](arsenal.md#onde-
 **Para que serve:** escolher a feature, ver em que pé está cada etapa e lançar a próxima.
 **Onde fica:** aba **Lançador**. Barra: **Abrir Artefato**, **Abrir a Spec**, **Arsenal**.
 
-À esquerda, o seletor **Feature** e a lista das nove etapas: a constituição, que vale para o projeto todo, e as oito da
-feature, com o estado de cada uma e a **Próxima** em destaque.
+Abaixo do cabeçalho, três abas: **Spec Kit** (as etapas), **Skills extras** e **Entrega** (commit, push e PR).
+
+Na aba **Spec Kit**, em cima, o seletor **Feature** e a lista das nove etapas: a constituição, que vale para o projeto
+todo, e as oito da feature, com o estado de cada uma e a **Próxima** em destaque.
 
 | # | Etapa | Comando | O que faz |
 | --- | --- | --- | --- |
@@ -88,18 +89,24 @@ feature, com o estado de cada uma e a **Próxima** em destaque.
 
 O cabeçalho mostra a feature, quantas etapas estão concluídas, as tarefas feitas e as abertas, e a próxima etapa.
 
-À direita, o formulário da etapa escolhida, em seções:
+Embaixo, o formulário da etapa escolhida, em seções:
 
 - **A etapa:** pílulas (*Entrada obrigatória*, *Só leitura*, *Faz perguntas*), uma frase do que ela faz e o motivo do
   estado atual. **Detalhes**, recolhido, traz o propósito completo e o link **Abrir o comando**.
 - **Executar:** a **Entrada** (`$ARGUMENTS`), **Lançar** (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>) **em** Devcontainer ou
   Terminal, e **Copiar Comando**, para colar no chat do agente. No devcontainer, a IA roda sem perguntar e a Telemetria
   acompanha cada passo; no terminal, você conversa com a IA e aprova os comandos.
-- **Skills extras:** um botão por skill marcada no Arsenal (veja [Skills extras](arsenal.md#recursos)). Pede uma
-  instrução opcional e roda a skill sobre a feature escolhida, como uma tarefa da IA comum, fora da sequência.
-- **Entrega (commit, push e PR):** recolhida, com um resumo no título. Veja [Entregar num PR](#entregar-num-pr).
 
-Com uma missão em voo, o formulário avisa e traz o link **Acompanhar na Telemetria**.
+Com uma missão em voo, o formulário avisa e traz o link **Acompanhar na Telemetria**. Quando a Avaliação leva a uma
+etapa, o Lançador abre na aba **Spec Kit**.
+
+Na aba **Skills extras**, a lista das skills que você adicionou ao Lançador no Arsenal (veja
+[Skills extras](arsenal.md#recursos)), com o nome e a descrição. Escolha uma, escreva a **Instrução (opcional)** e use
+**Executar Skill** (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>): a skill roda sobre a feature escolhida na aba Spec Kit, como uma
+tarefa da IA comum, fora da sequência. O texto de cada skill fica guardado até você executá-la. Sem nenhuma skill, o
+link **Adicionar no Arsenal** leva até lá.
+
+A aba **Entrega** tem o commit, o push e o PR. Veja [Entregar num PR](#entregar-num-pr).
 
 **A feature ativa.** Escolher outra feature no seletor só muda o que se vê. Ela vira a ativa (`.specify/feature.json`) só
 quando você lança uma etapa ou copia o comando. **+ Nova feature** começa por **Designar Alvo**.
@@ -111,7 +118,8 @@ quando você lança uma etapa ou copia o comando. **+ Nova feature** começa por
 ## Entregar num PR (Entrega)
 
 **Para que serve:** commitar, enviar e abrir o pull request da feature no GitHub. Antes se chamava Extração.
-**Onde fica:** no fim do Lançador, na seção **Entrega (commit, push e PR)**, recolhida até você abrir.
+**Onde fica:** no Lançador, na aba **Entrega**. Ela usa a feature escolhida na aba **Spec Kit** e precisa de um
+repositório Git com remote do GitHub.
 
 - **O que fazer:** *Só commitar*, *Commitar e enviar* ou *Commitar, enviar e abrir PR*.
 - **Branch** (uma nova é criada a partir da atual) e **Base do PR**.

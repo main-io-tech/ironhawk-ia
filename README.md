@@ -20,7 +20,7 @@ O IronHawk IA junta dois plugins num só. Cada sistema pode ser ligado ou deslig
 
 | Sistema | O que faz |
 |---|---|
-| 🛡️ **Defesa: Iron Dome** | Revisão do código com a IA: você marca os alvos no editor, usa **Disparar com IA** e a IA intercepta as correções. Abas Radar, Sentinela, Raio de Impacto, Escudo e Patrulha. |
+| 🛡️ **Defesa: Iron Dome** | Revisão do código com a IA: você marca os alvos no editor, usa **Disparar com IA** e a IA intercepta as correções. Abas Radar, Sentinela, Escudo e Patrulha. |
 | 🚀 **Ataque: Tomahawk** | Desenvolvimento guiado pela spec com o [Spec Kit](https://github.com/github/spec-kit): a IA escreve a feature etapa por etapa. Abas Lançador (com a Entrega: commit, push e PR), Avaliação, Telemetria e Rádio. |
 
 Os dois ficam num painel só, **IronHawk IA**. No título dele, **Defesa** e **Ataque** trocam as abas do sistema, e o
@@ -32,18 +32,21 @@ A IA roda pelo CLI do **Cursor**, do **Claude Code** ou do **Codex**, na aba (no
 da IDE, e pelo do **Antigravity**, só no terminal. Problemas com o plugin: **Help > IronHawk IA: Diagnóstico** e
 **Help > Reportar Bug do IronHawk IA**.
 
+A ideia por trás dos dois: a IA gera, e você valida comportamento e evidência, sem ter de reler todo o código. O plugin
+mostra o que cada teste verifica de fato e aponta o que pede atenção. O que ele grava no
+projeto fica em `ironhawk/`, fora do git: é de quem está trabalhando, não da equipe.
+
 Desligado, o sistema sai do painel e perde as ações e os avisos. O que já está nos editores abertos sai ao reiniciar a
 IDE, e a página de configurações oferece reiniciar na hora.
 
 ## Documentação
 
-- [Defesa: Iron Dome](docs/defesa.md): marcar e disparar alvos, ver o que mudou, medir o impacto, rodar e padronizar
-  testes, revisar um PR.
+- [Defesa: Iron Dome](docs/defesa.md): marcar e disparar alvos, ver o que mudou, conferir os testes sem abrir o
+  código, revisar um PR.
 - [Ataque: Tomahawk](docs/ataque.md): preparar o projeto, lançar as etapas, entregar num PR, revisar o que foi gerado,
   acompanhar a missão e responder aos comentários dos seus PRs.
 - [Arsenal](docs/arsenal.md): a IA comum aos dois sistemas, onde ela roda, a segurança, as Settings, o Diagnóstico e o
   Reportar Bug.
-- [Escudo: critérios de aceite](docs/escudo-criterios.md): o contrato que liga os testes aos critérios.
 
 ## Instalação
 

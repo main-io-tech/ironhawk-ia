@@ -17,7 +17,7 @@ import javax.imageio.stream.ImageOutputStream
 
 /**
  * Captura pela tela, e não pintando os componentes, para pegar também o que é desenhado fora do Swing,
- * como o diagrama do Raio de Impacto.
+ * como o gráfico de uma aba.
  */
 object ScreenCapture {
 

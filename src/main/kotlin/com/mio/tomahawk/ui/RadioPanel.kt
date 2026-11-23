@@ -109,7 +109,12 @@ class RadioPanel(private val project: Project) : SimpleToolWindowPanel(true, tru
         editorKit = HTMLEditorKitBuilder().withWordWrapViewFactory().build()
         isEditable = false
         isOpaque = false
-        addHyperlinkListener { if (it.eventType == HyperlinkEvent.EventType.ACTIVATED) it.url?.let(BrowserUtil::browse) }
+        // Os comentários são de terceiros: só links da web abrem, nunca `file:` nem outro esquema.
+        addHyperlinkListener { event ->
+            if (event.eventType == HyperlinkEvent.EventType.ACTIVATED) {
+                event.url?.takeIf { it.protocol == "http" || it.protocol == "https" }?.let(BrowserUtil::browse)
+            }
+        }
     }
     private val status = NoticeBox(AllIcons.General.Information, Tone.BLUE).apply { isVisible = false }
     private val reply = JBTextArea(5, 40).apply {

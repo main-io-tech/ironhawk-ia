@@ -48,7 +48,7 @@ class BugReportTest {
 
     @Test
     fun mechanismsMatchTabsAndFrames() {
-        assertEquals(Mechanism.IMPACTO, Mechanism.ofTab("Raio de Impacto"))
+        assertEquals(Mechanism.ESCUDO, Mechanism.ofTab("Escudo"))
         assertNull(Mechanism.ofTab(null))
         assertEquals(Mechanism.CAIXA_PRETA, Mechanism.ofFrame("com.mio.irondome.caixapreta.GifRecorder.record(ScreenCapture.kt:70)"))
         assertNull(Mechanism.ofFrame("com.mio.irondomeextra.Thing.run(Thing.kt:1)"))

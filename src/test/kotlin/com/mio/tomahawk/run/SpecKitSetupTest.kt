@@ -2,7 +2,6 @@ package com.mio.tomahawk.run
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -29,11 +28,8 @@ class SpecKitSetupTest {
     }
 
     @Test
-    fun `le a versao instalada e a nova anunciada pelo self check`() {
+    fun `le a versao instalada`() {
         assertEquals("0.11.8", SpecKitSetup.versionIn("specify 0.11.8\n"))
-        val check = "Update available: 0.11.8 → v1.3.0\n\nTo upgrade:\n  specify self upgrade\n"
-        assertEquals("1.3.0", SpecKitSetup.latestIn(check))
-        assertNull(SpecKitSetup.latestIn("specify-cli is up to date (1.3.0)"))
     }
 
     @Test

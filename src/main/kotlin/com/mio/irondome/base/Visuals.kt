@@ -9,6 +9,7 @@ import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Dimension
 import java.awt.Font
+import java.awt.GradientPaint
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.geom.Rectangle2D
@@ -18,6 +19,7 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTextArea
 import javax.swing.SwingConstants
+import javax.swing.Timer
 
 internal fun plural(count: Int, one: String, many: String) = "$count ${if (count == 1) one else many}"
 
@@ -207,5 +209,80 @@ class SegmentBar(private val segments: List<Segment>, private val preferredWidth
         } finally {
             g2.dispose()
         }
+    }
+}
+
+/**
+ * Barra fina com um brilho que percorre o trilho enquanto [running], para dizer "em andamento" sem porcentagem. O
+ * brilho só anda com a barra à vista; no visual leve ele não anda, e a barra fica cheia na cor do mecanismo.
+ */
+class PulseBar(private val tone: Tone) : JComponent() {
+
+    var running = true
+    private var phase = 0f
+    private val animation = Timer(FRAME_MS) {
+        if (!isShowing || IronHawkVisual.lite) {
+            stopAnimation()
+        } else {
+            phase = (phase + STEP) % 1f
+            repaint()
+        }
+    }
+
+    init {
+        isOpaque = false
+    }
+
+    /** Chamado por quem atualiza o andamento: liga ou desliga o brilho conforme o estado de agora. */
+    fun tick() {
+        val animate = running && isShowing && !IronHawkVisual.lite
+        if (animate && !animation.isRunning) animation.start()
+        if (!animate && animation.isRunning) stopAnimation()
+    }
+
+    private fun stopAnimation() {
+        animation.stop()
+        repaint()
+    }
+
+    override fun removeNotify() {
+        animation.stop()
+        super.removeNotify()
+    }
+
+    override fun getPreferredSize() = Dimension(JBUI.scale(160), JBUI.scale(8))
+
+    override fun paintComponent(g: Graphics) {
+        val g2 = g.create() as Graphics2D
+        try {
+            GraphicsUtil.setupAAPainting(g2)
+            val height = JBUI.scale(4).toFloat()
+            val top = (this.height - height) / 2
+            val track = RoundRectangle2D.Float(0f, top, width.toFloat(), height, height, height)
+            g2.color = Tone.GRAY.background
+            g2.fill(track)
+            if (!running) return
+            val accent = tone.accent
+            if (IronHawkVisual.lite) {
+                g2.color = accent
+                g2.fill(track)
+                return
+            }
+            g2.clip(track)
+            val span = width * 0.35f
+            val x = -span + (width + span) * phase
+            val clear = Color(accent.red, accent.green, accent.blue, 0)
+            g2.paint = GradientPaint(x, 0f, clear, x + span / 2, 0f, accent)
+            g2.fill(RoundRectangle2D.Float(x, top, span / 2, height, height, height))
+            g2.paint = GradientPaint(x + span / 2, 0f, accent, x + span, 0f, clear)
+            g2.fill(RoundRectangle2D.Float(x + span / 2, top, span / 2, height, height, height))
+        } finally {
+            g2.dispose()
+        }
+    }
+
+    private companion object {
+        const val FRAME_MS = 50
+        const val STEP = 0.015f
     }
 }

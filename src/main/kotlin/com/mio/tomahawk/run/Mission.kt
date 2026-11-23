@@ -135,6 +135,7 @@ object RunStore {
     const val RUNS_DIR = "execucoes"
     const val INPUTS_DIR = "pedidos"
     private const val MAX_RUNS = 300
+    private const val MIN_KEPT = 5
     private val FILE_TIME = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
 
     fun runsDir(root: Path): Path = root.resolve(DIR).resolve(RUNS_DIR)
@@ -158,13 +159,22 @@ object RunStore {
     fun writeInput(root: Path, name: String, text: String): String {
         val dir = root.resolve(DIR).resolve(INPUTS_DIR)
         Files.createDirectories(dir)
+        IronHawkFolder.keepLocal(root)
         Files.writeString(dir.resolve(name), text, StandardCharsets.UTF_8)
         return "$DIR/$INPUTS_DIR/$name"
+    }
+
+    /** Deixa só os [keep] registros e pedidos mais novos: os antigos saem sozinhos, para a pasta não crescer sem fim. */
+    fun prune(root: Path, keep: Int) {
+        val kept = keep.coerceAtLeast(MIN_KEPT)
+        IronHawkFolder.prune(runsDir(root), kept)
+        IronHawkFolder.prune(root.resolve(DIR).resolve(INPUTS_DIR), kept)
     }
 
     fun writeRun(root: Path, name: String, content: String): Path {
         val dir = runsDir(root)
         Files.createDirectories(dir)
+        IronHawkFolder.keepLocal(root)
         return dir.resolve(name).also { Files.writeString(it, content, StandardCharsets.UTF_8) }
     }
 }

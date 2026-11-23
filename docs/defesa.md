@@ -13,8 +13,7 @@
   <a href="#como-funciona">Como funciona</a> &nbsp;·&nbsp;
   <a href="#marcar-e-disparar-alvos">Marcar e disparar alvos</a> &nbsp;·&nbsp;
   <a href="#ver-o-que-mudou">Ver o que mudou</a> &nbsp;·&nbsp;
-  <a href="#medir-o-impacto">Medir o impacto</a> &nbsp;·&nbsp;
-  <a href="#rodar-e-padronizar-testes">Rodar e padronizar testes</a> &nbsp;·&nbsp;
+  <a href="#rodar-e-padronizar-testes">Conferir os testes</a> &nbsp;·&nbsp;
   <a href="#revisar-um-pr">Revisar um PR</a> &nbsp;·&nbsp;
   <a href="#configure-sua-ia">Configure sua IA</a> &nbsp;·&nbsp;
   <a href="#faq">FAQ</a>
@@ -43,8 +42,8 @@ editor. A IA comum aos dois sistemas, a segurança e o Diagnóstico estão em [A
 ## O painel
 
 As abas da Defesa ficam no painel **IronHawk IA**, com **Defesa** escolhido no título: **Radar**, **Sentinela**,
-**Raio de Impacto**, **Escudo** e **Patrulha**, e o **Arsenal** no fim. Raio de Impacto, Escudo e Patrulha dependem de
-plugins que já vêm no IntelliJ IDEA (Java, JUnit, Git e GitHub); sem eles, a aba não aparece e o
+**Escudo** e **Patrulha**, e o **Arsenal** no fim. Escudo e Patrulha dependem de
+plugins que já vêm no IntelliJ IDEA (JUnit, Git e GitHub); sem eles, a aba não aparece e o
 [Diagnóstico](arsenal.md#diagnostico) diz o motivo.
 
 Todas as abas seguem o mesmo desenho:
@@ -102,11 +101,31 @@ Radar e, como **Disparar**, no cartão do alvo no editor.
 **Save Document**, só os do arquivo atual. A IDE também salva sozinha (ao trocar de janela, por exemplo), e isso não grava
 o `.md`.
 
-**Discutir antes de alterar, com a IA pronta:** a IA roda só lendo e devolve as perguntas, que aparecem no topo da aba
-Radar, um bloco por comentário, com as opções (a recomendada marcada) e um campo de texto livre. Pergunta sem resposta
-usa a recomendação. **Enviar respostas** faz a IA aplicar o que foi decidido. Ela pode fazer mais uma rodada de
-perguntas, se ainda tiver uma dúvida que muda o resultado; depois disso aplica, assume a melhor opção onde restar
-dúvida e lista as suposições no resumo. **Cancelar discussão** deixa os comentários como estavam.
+**Discutir antes de alterar, com a IA pronta:** a discussão é uma entrevista, na aba **Discussão** do próprio Radar. A
+aba **Alvos** continua com a árvore; a Discussão vem para a frente quando a IA responde, e o título dela diz em que ponto
+está ("Discussão · 2 de 5").
+
+1. A IA roda só lendo, apura os fatos no código e **responde ao comentário primeiro**: a conclusão numa linha ("Pode
+   remover", "Precisa ficar") e a explicação em uma ou duas frases. Sem análise longa.
+2. Ela traz **uma decisão por vez**, na ordem em que precisam ser tomadas. Cada decisão tem de 2 a 4 opções, o efeito
+   de cada uma em uma frase, a etiqueta **não altera** na que deixa tudo como está e a **recomendada** já marcada, com o
+   porquê. O que dá para descobrir no código ela descobre e não pergunta.
+3. Você responde de dois jeitos:
+   - **Responder** vale a opção marcada e traz a próxima decisão, na hora, sem rodar a IA.
+   - Escrever no campo e **Enviar para a IA** serve para perguntar de volta, discordar ou propor outra saída. A IA
+     responde em poucas frases e pergunta de novo, com a sua proposta entre as opções. Ela **não decide por você**: um
+     texto nunca vira decisão, só a opção que você escolher.
+   - **Voltar** desfaz a última decisão.
+4. Sem mais decisões, a tela mostra **O que ficou decidido** e só então oferece aplicar. Nada é alterado antes disso.
+
+| No fim | O que acontece |
+| --- | --- |
+| **Aplicar com IA** | Cada comentário com uma decisão que altera arquivos **vira uma alteração**: deixa de ser *discutir antes*, passa a trazer a decisão escrita no texto e a IA a aplica pelo disparo normal. Se a IA não concluir, a alteração continua no Radar, com a decisão, para disparar de novo |
+| **Guardar para Disparar Depois** | O mesmo, sem rodar a IA agora: as alterações ficam no Radar para você disparar quando quiser |
+| **Encerrar** / **Encerrar sem Alterar** | Para quando a resposta bastou: os comentários saem como tratados e nenhum arquivo é alterado |
+| **Cancelar Discussão** | Fecha a discussão e deixa os comentários pendentes, como estavam |
+
+Um comentário cuja decisão foi manter como está sai como tratado, com a decisão registrada no texto dele.
 
 A IA é orientada a analisar os comentários em conjunto e a perguntar antes de aplicar comentários que se contradizem.
 Quando ela marca `[x]`, o plugin percebe a mudança no `.md` e mostra o comentário como resolvido. Com todos resolvidos,
@@ -212,93 +231,62 @@ mesmo com um alvo.
 
 ---
 
-<a id="medir-o-impacto"></a>
-
-## Medir o impacto de uma mudança (Raio de Impacto)
-
-**Para que serve:** ver uma classe Java ou Kotlin e a vizinhança dela num diagrama de classes, antes de mexer.
-**Onde fica:** aba **Raio de Impacto**. Ação principal: **Mirar Classe Atual** (também é o link do estado vazio).
-
-O raio é de 1 nível, nas duas direções: quem depende da classe e de quem ela depende. Cada classe é uma caixa em três
-partes, como na UML: o nome (com `«interface»`, `«enumeration»` ou `«annotation»`, e itálico nas abstratas), os atributos
-e as operações, com a visibilidade (`+`, `-`, `#`, `~`). A classe analisada tem a borda destacada.
-
-| Seta | Significa |
-| --- | --- |
-| Linha cheia, triângulo vazado | **Herança** |
-| Linha tracejada, triângulo vazado | **Realização**: implementa a interface |
-| Linha cheia, ponta aberta | **Associação**: tem um atributo do tipo da outra |
-| Linha tracejada, ponta aberta | **Uso**: chama, instancia ou usa membros estáticos da outra |
-
-- **Clique** seleciona a caixa, **dois cliques** abrem o código e <kbd>Ctrl</kbd>+clique mira a classe clicada.
-- <kbd>/</kbd> foca a busca e <kbd>Enter</kbd> passa pelas classes encontradas. Arraste para mover; a roda aproxima e
-  afasta.
-- A tabela abaixo do diagrama lista cada classe com o pacote, as **aferentes** (quantas dependem dela: o que pode
-  quebrar se você mudá-la) e as **eferentes** (de quantas ela depende).
-
-O Raio de Impacto não mede risco nem cobertura de testes. Para cobertura de linhas, use o **Run with Coverage** da IDE.
-
----
-
 <a id="rodar-e-padronizar-testes"></a>
 
-## Rodar e padronizar testes (Escudo)
+## Conferir os testes sem abrir o código (Escudo)
 
-**Para que serve:** rodar os testes JUnit pela IDE e ver o resultado por `@Tag` ou por critério de aceite.
+**Para que serve:** rodar os testes JUnit pela IDE e ver, pela aba, o resultado de cada teste e o que ele verifica de
+fato.
 **Onde fica:** aba **Escudo**.
 
-| Ações principais | Mais ações (⋮) |
-| --- | --- |
-| **Executar Todos os Testes** (vira **Parar os Testes**), **Padronizar Testes**, **Mostrar Só as Falhas**, **Organizar por** | **Gerar Critérios com IA**, **Recarregar Critérios e Cucumber**, **Expandir**, **Recolher** |
-
-<p align="center">
-  <img src="images/escudo-detalhes.png" width="820" alt="Detalhes de um teste com a seção Cenário e de uma execução parametrizada com os parâmetros">
-</p>
+| Ações |
+| --- |
+| **Executar Todos os Testes** (vira **Parar os Testes**), **Expandir**, **Recolher** |
 
 **Executar** compila o projeto e roda todos os testes JUnit pelo runner da IDE, não pelo Gradle; a execução também
-aparece na janela Run. O resultado chega ao vivo, e o cabeçalho diz se o escudo está **íntegro** ou **rompido**.
+aparece na janela Run. O resultado chega ao vivo.
 
-**Organizar por:**
+### O cabeçalho
 
-- **Tag:** a árvore vem por `@Tag` do JUnit. Vale a tag do método e, sem ela, a da classe. `@Tags` e anotações próprias
-  marcadas com `@Tag` também contam. Um teste com duas tags aparece nas duas; os sem tag ficam em **Sem tag**.
-- **Critério:** com o catálogo em `ironhawk/iron-dome/criterios/`, a árvore vem por critério de aceite, com o status de
-  cada um e um placar no cabeçalho. Sem catálogo, essa opção fica desligada. O contrato está em
-  [Escudo: critérios de aceite](escudo-criterios.md).
-
-**Cucumber de fora da IDE:** os cenários rodados pelo CLI do Cucumber (XML do plugin `junit:`) entram nos mesmos
-agrupamentos, com a pílula **Cucumber**. O subtítulo mostra a idade do XML, como *"Cucumber (XML há 5 min): 12 cenários,
-1 falhando"*, e esses cenários não mudam o veredito da execução da IDE. Um cenário repetido em vários XMLs aparece uma
-vez, com o resultado do mais novo. Detalhes em [Cucumber](escudo-criterios.md#cucumber-opcional).
-
-**Padronizar Testes:**
-
-- **Com catálogo de critérios**, a IA liga os testes aos critérios: deixa o `@DisplayName` em Dado/Quando/Então, põe as
-  tags `criterio:` (e `nivel:` quando evidente) e um `@DisplayName` na classe que não tem. Só mexe em anotações, nunca na
-  lógica, e o aviso do fim traz **Desfazer Alterações da IA**.
-- **Sem catálogo**, marca no Radar as classes sem `@DisplayName` (as selecionadas ou, sem seleção, todas), como alvos
-  **Marcados pelo Escudo**. Disparar esses alvos faz a IA corrigir. Uma classe que já tem alvo aberto do Escudo não é
-  marcada de novo, e mesmo durante a revisão de um PR eles vão para o Radar.
-
-**Falhas:** as classes com falha se abrem sozinhas, o teste mostra a primeira linha do erro e o painel de detalhes traz o
-motivo e a pilha. **Explicar Falha com IA** fica no botão direito e como link nos detalhes do teste com falha: a IA
-explica a causa e propõe a correção, sem alterar nada; a resposta oferece **Corrigir com IA**.
-
-**Nomes formatados.** O `@DisplayName` de cada teste ganha destaque:
-
-| Escrito no `@DisplayName` | Como aparece |
+| Título | Quando |
 | --- | --- |
-| `Dado que…`, `quando…`, `então…` (ou `given`, `when`, `then`) | Etiquetas **DADO**, **QUANDO** e **ENTÃO** |
-| `deve…`, `should…` / `não deve…`, `should not…` | Verbo em negrito; o negativo em laranja |
-| `` `código` `` e `"strings"` | Fundo lilás |
-| `IllegalStateException`, `…Error` | Fundo vermelho |
-| `200`, `R$ 200`, `15%` | Azul em negrito |
-| `soma 2 e 3 -> 5` (`->`, `=>`, `→`) | Seta destacada e o resultado em verde |
-| `[1] cep=01001-000, valor=10.0` (parametrizados) | Etiqueta **#1** e cada parâmetro destacado |
+| **Escudo íntegro** | Todos os testes passaram |
+| **Escudo rompido** | Algum teste falhou |
+| **Execução interrompida** | A execução parou antes do fim |
 
-"Dado" sozinho também quer dizer informação ("valida os dados do cliente"), então só vira etapa no início do nome ou na
-forma "dado que". O painel de detalhes repete a formatação e mostra o **Cenário** em etapas e os **Parâmetros desta
-execução**.
+Os números ao lado só aparecem quando não são zero: os testes que passaram, os que falharam, os ignorados e os que não
+terminaram.
+
+### A árvore
+
+- Os testes ficam agrupados pela **`@Tag`** do JUnit e, dentro de cada tag, pela classe. Os sem tag ficam em
+  **Sem tag**. Num projeto sem nenhuma tag, a árvore mostra direto as classes.
+- As tags se somam, como no JUnit: valem as do método, as da classe, as herdadas da classe base e as da classe de fora,
+  numa `@Nested`. `@Tags` e anotações próprias marcadas com `@Tag` também contam. Um teste com duas tags aparece nas
+  duas.
+- Cada linha mostra o **`@DisplayName`** como está escrito no código; sem ele, o nome que o JUnit deu.
+- Cor e etiqueta ficam só para o que falhou. Com até três grupos, a árvore abre inteira; com mais, só abre sozinho o
+  grupo com falha, e a primeira falha fica escolhida.
+- **Dois cliques ou Enter** num teste abrem o teste no editor.
+
+### A ficha
+
+Selecione uma linha: a parte de baixo da aba mostra a ficha dela.
+
+- **Em cada teste:** o resultado e **o que o teste verifica**, uma verificação por linha, **dita em português**:
+  `assertThat(checklist.getTarefas()).hasSize(1)` aparece como *checklist.tarefas tem 1 item*, e
+  `verify(mongo, never()).dropCollection(...)`, como *não chama mongo.dropCollection(...)*. A leitura é do código, sem
+  IA. Ela cobre o JUnit, o AssertJ, o Mockito e o MockMvc; o que ela não reconhece por inteiro aparece como código.
+- **Num teste que confere por outra classe**, como o ator de um teste de aceitação: cada **passo** aparece em
+  palavras, com os argumentos. `ana.conferirRecusa("DIA_NAO_ENCONTRADO")` vira *conferir recusa: DIA_NAO_ENCONTRADO*,
+  com quantas asserções tem dentro, e um clique abre as asserções. Os passos de preparação e de ação que também têm
+  asserção ficam juntos numa linha, no fim. O Escudo segue as chamadas em classes de teste Java do projeto.
+- **Numa classe:** todos os testes dela, um bloco para cada, com o que cada um verifica.
+- **Num teste parametrizado:** cada execução aparece como um exemplo, com o nome dela e se passou.
+- **Num teste que falhou:** o motivo, a pilha e **Explicar com IA**, que explica a causa e propõe a correção sem
+  alterar nada; a resposta oferece **Corrigir com IA**.
+
+O método e as tags ficam numa linha discreta no fim da ficha, ao lado de **Abrir o teste**.
 
 ---
 
@@ -415,9 +403,8 @@ Antes de alterar qualquer arquivo, analise os comentários pendentes em conjunto
 outro, ou se aplicar um quebrar outro, pergunte ao usuário como resolver e espere a resposta. Sem
 conflitos, trate os comentários em sequência. Os de `**Modo:** aplicar direto` podem ser aplicados
 sem consulta. Nos de `**Modo:** discutir antes de alterar`, siga o modo de discussão do `.md`:
-escreva a análise completa (por que o código está assim, se o apontamento procede e o impacto de
-manter, alterar ou remover), de 2 a 5 opções com prévia da alteração e a sua recomendação, discuta
-com o usuário e só altere depois da decisão final.
+responda ao comentário em 1 ou 2 frases, pergunte uma decisão de cada vez, com a opção que você
+recomenda, e só altere depois de o usuário confirmar o que ficou decidido.
 O arquivo `ironhawk/iron-dome/historico-interceptacoes.md` é só histórico: não aplique nem marque nada nele.
 Os arquivos em `ironhawk/iron-dome/pull-requests/` são pedidos para o autor de um PR: não os aplique.
 ```
@@ -454,20 +441,18 @@ Histórico** apaga de vez. A revisão aberta nunca é tocada.
 <details>
 <summary><b>Quais linguagens são suportadas?</b></summary>
 
-Os alvos funcionam em qualquer arquivo de texto: código, specs, documentação, configuração. O Raio de Impacto é para
-classes Java e Kotlin, e o Escudo, para testes JUnit 5 (e cenários Cucumber).
+Os alvos funcionam em qualquer arquivo de texto: código, specs, documentação, configuração. O Escudo é para
+testes JUnit 5.
 </details>
 
 <details>
 <summary><b>Ainda preciso da chave <code>[Chave]</code> no <code>@DisplayName</code>?</b></summary>
 
-Não. O Escudo não agrupa mais pela chave e não a cobra. Organize por `@Tag` ou por critério de aceite.
+Não. O Escudo não agrupa mais pela chave e não a cobra. Organize por `@Tag`.
 </details>
 
 ## Código
 
 O código da Defesa fica em `src/main/kotlin/com/mio/irondome`, um pacote por mecanismo: `radar` (alvos, editor e aba
-Radar), `comando` (o `.md` e o histórico), `interceptor` (a IA do Arsenal), `sentinela`, `impacto` (só com o plugin
-Java), `escudo` (só com o plugin JUnit), `patrulha` (só com os plugins Git e GitHub), `defesa` (Inteligência da IA),
-`caixapreta` (Diagnóstico e Reportar Bug) e `base` (o que as abas compartilham). O diagrama de classes é desenhado em
-SVG puro, sem biblioteca de terceiros.
+Radar), `comando` (o `.md` e o histórico), `interceptor` (a IA do Arsenal), `sentinela`, `escudo` (só com o plugin JUnit), `patrulha` (só com os plugins Git e GitHub), `defesa` (Inteligência da IA),
+`caixapreta` (Diagnóstico e Reportar Bug) e `base` (o que as abas compartilham).

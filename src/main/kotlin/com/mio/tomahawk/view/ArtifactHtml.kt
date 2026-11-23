@@ -156,10 +156,14 @@ object ArtifactHtml {
     /** O documento formatado, sem cabeçalho nem painel: para a prévia sem JCEF. */
     fun simple(text: String): String = "<html><body style=\"font-family:sans-serif\">" + decorate(toHtml(text)) + "</body></html>"
 
+    private val NAVIGATING_TAGS = Regex("""<\s*(meta|base)\b[^>]*>""", RegexOption.IGNORE_CASE)
+
     internal fun toHtml(markdown: String): String {
         val source = hardBreaks(markdown)
         val tree = MarkdownParser(flavour).buildMarkdownTreeFromString(source)
         return HtmlGenerator(source, tree, flavour).generateHtml().removePrefix("<body>").removeSuffix("</body>")
+            // HTML cru do .md não pode tirar a Visualização da página: `<meta http-equiv="refresh">` a levaria a um site de fora.
+            .replace(NAVIGATING_TAGS, "")
             .replace("<table>", "<div class=\"table-wrap\"><table>").replace("</table>", "</table></div>")
     }
 

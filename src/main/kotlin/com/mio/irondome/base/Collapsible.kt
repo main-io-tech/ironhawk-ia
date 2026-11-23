@@ -13,9 +13,14 @@ import javax.swing.JPanel
 
 /**
  * Uma seção que abre e fecha pelo título, com a seta ao lado: o conteúdo fica em [host], embaixo do título. Faz o
- * papel do `HideableDecorator` da plataforma, que saiu de uso.
+ * papel do `HideableDecorator` da plataforma, que saiu de uso. [onToggle] recebe o estado novo quando o usuário clica.
  */
-class Collapsible(private val host: JPanel, title: String, expanded: Boolean) {
+class Collapsible(
+    private val host: JPanel,
+    title: String,
+    expanded: Boolean,
+    private val onToggle: (Boolean) -> Unit = {},
+) {
 
     private var content: JComponent? = null
     private var on = expanded
@@ -25,7 +30,10 @@ class Collapsible(private val host: JPanel, title: String, expanded: Boolean) {
         cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         border = JBUI.Borders.empty(2, 0)
         addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) = setOn(!on)
+            override fun mouseClicked(e: MouseEvent) {
+                setOn(!on)
+                onToggle(on)
+            }
         })
     }
 

@@ -1,5 +1,6 @@
 package com.mio.irondome.interceptor
 
+import com.mio.irondome.base.PulseBar
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -11,7 +12,6 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.panels.HorizontalLayout
 import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.util.ui.AsyncProcessIcon
-import com.intellij.util.ui.GraphicsUtil
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -24,16 +24,9 @@ import com.mio.irondome.base.StatChip
 import com.mio.irondome.base.Tone
 import com.mio.ironhawk.IronHawkIcons
 import java.awt.BorderLayout
-import java.awt.Color
-import java.awt.Dimension
 import java.awt.FlowLayout
-import java.awt.GradientPaint
-import java.awt.Graphics
-import java.awt.Graphics2D
-import java.awt.geom.RoundRectangle2D
 import javax.swing.Icon
 import javax.swing.JButton
-import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.SwingConstants
 import javax.swing.Timer
@@ -183,57 +176,6 @@ class AgentProgressPanel(private val project: Project, private val tab: String, 
     }
 }
 
-/** Barra fina com um brilho que percorre o trilho enquanto [running], para dizer "em andamento" sem porcentagem. */
-class PulseBar(private val tone: Tone) : JComponent() {
-
-    var running = true
-    private var phase = 0f
-    private val animation = Timer(40) {
-        phase = (phase + 0.012f) % 1f
-        repaint()
-    }
-
-    init {
-        isOpaque = false
-    }
-
-    fun tick() {
-        if (running && !animation.isRunning) animation.start()
-        if (!running && animation.isRunning) animation.stop()
-    }
-
-    override fun removeNotify() {
-        animation.stop()
-        super.removeNotify()
-    }
-
-    override fun getPreferredSize() = Dimension(JBUI.scale(160), JBUI.scale(8))
-
-    override fun paintComponent(g: Graphics) {
-        val g2 = g.create() as Graphics2D
-        try {
-            GraphicsUtil.setupAAPainting(g2)
-            val height = JBUI.scale(4).toFloat()
-            val top = (this.height - height) / 2
-            val track = RoundRectangle2D.Float(0f, top, width.toFloat(), height, height, height)
-            g2.color = Tone.GRAY.background
-            g2.fill(track)
-            if (!running) return
-            g2.clip(track)
-            val span = width * 0.35f
-            val x = -span + (width + span) * phase
-            val accent = tone.accent
-            val clear = Color(accent.red, accent.green, accent.blue, 0)
-            g2.paint = GradientPaint(x, 0f, clear, x + span / 2, 0f, accent)
-            g2.fill(RoundRectangle2D.Float(x, top, span / 2, height, height, height))
-            g2.paint = GradientPaint(x + span / 2, 0f, accent, x + span, 0f, clear)
-            g2.fill(RoundRectangle2D.Float(x + span / 2, top, span / 2, height, height, height))
-        } finally {
-            g2.dispose()
-        }
-    }
-}
-
 /**
  * Enquanto a IA trabalha, o ícone do painel do IronHawk IA e o da aba que pediu viram o ícone de IA, para o
  * andamento ser visto mesmo com o painel fechado ou noutra aba. A barra lateral só aceita ícones que escalam,
@@ -241,20 +183,20 @@ class PulseBar(private val tone: Tone) : JComponent() {
  */
 internal object AgentActivity {
 
-    private val originals = mutableMapOf<String, Icon?>()
+    /** Por projeto: com duas janelas rodando a IA, o fim de uma não pode apagar os ícones guardados da outra. */
+    private val originals = java.util.WeakHashMap<Project, MutableMap<String, Icon?>>()
 
     fun started(project: Project, task: AgentTask) {
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(DefenseTabs.ID) ?: return
         toolWindow.setIcon(IronDomeIcons.ia)
         val content = DefenseTabs.findContent(toolWindow, task.origin ?: InterceptorTab.TITLE) ?: return
-        originals[content.displayName] = content.icon
+        originals.getOrPut(project) { mutableMapOf() }[content.displayName] = content.icon
         content.icon = IronDomeIcons.ia
     }
 
     fun finished(project: Project) {
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(DefenseTabs.ID) ?: return
         toolWindow.setIcon(IronHawkIcons.toolWindow)
-        originals.forEach { (name, icon) -> DefenseTabs.findContent(toolWindow, name)?.icon = icon }
-        originals.clear()
+        originals.remove(project)?.forEach { (name, icon) -> DefenseTabs.findContent(toolWindow, name)?.icon = icon }
     }
 }

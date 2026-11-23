@@ -24,8 +24,8 @@ import java.nio.file.Path
 
 /**
  * O Spec Kit nesta máquina: o CLI `specify`, instalado com o `uv` como manda o README do Spec Kit, e o `uv` antes,
- * pelo instalador oficial da Astral, quando ele falta. Instalar e atualizar rodam no terminal da IDE, à vista do
- * usuário; a tela acompanha até o `specify` aparecer ou ser trocado.
+ * pelo instalador oficial da Astral, quando ele falta. Instalar e reinstalar rodam no terminal da IDE, à vista do
+ * usuário; a tela acompanha até o `specify` aparecer ou voltar a rodar. Atualizar a versão fica com o desenvolvedor.
  */
 object SpecKitSetup {
 
@@ -39,17 +39,14 @@ object SpecKitSetup {
     }
 
     /**
-     * O `specify` encontrado, a versão dele e a mais nova publicada, quando há uma. [broken]: o executável existe, mas
-     * não roda, como quando a instalação do `uv` perdeu o pacote.
+     * O `specify` encontrado e a versão dele. [broken]: o executável existe, mas não roda, como quando a instalação do
+     * `uv` perdeu o pacote.
      */
-    data class Installed(val path: Path, val version: String?, val latest: String?, val broken: Boolean = false) {
-        val outdated: Boolean get() = latest != null && latest != version
-    }
+    data class Installed(val path: Path, val version: String?, val broken: Boolean = false)
 
     enum class Job(val label: String, val title: String) {
         INSTALL("Instalando o Spec Kit", "Spec Kit: instalar"),
         REPAIR("Reinstalando o Spec Kit", "Spec Kit: reinstalar"),
-        UPGRADE("Atualizando o Spec Kit", "Spec Kit: atualizar"),
         INIT("Inicializando o Spec Kit no projeto", "Spec Kit: init"),
     }
 
@@ -61,7 +58,6 @@ object SpecKitSetup {
     private const val POLL_MS = 3_000L
     private const val MAX_LISTED = 12
     private val VERSION = Regex("""v?(\d+\.\d+\.\d+[\w.+-]*)""")
-    private val UPDATE = Regex("""Update available:\s*v?(\S+)\s*\S+\s*v?(\d+\.\d+\.\d+[\w.+-]*)""")
     private val CRASH = Regex("""Traceback \(most recent call last\)|ModuleNotFoundError|ImportError""")
 
     /** O Python do `specify` escreve UTF-8 mesmo num console em outra página de código, em vez de quebrar no Rich. */
@@ -102,7 +98,7 @@ object SpecKitSetup {
                 installed = path?.let {
                     val output = run(it, "--version")
                     val broken = output != null && brokenIn(output)
-                    Installed(it, output?.takeUnless { broken }?.let(::versionIn), if (broken) null else latest(it), broken)
+                    Installed(it, output?.takeUnless { broken }?.let(::versionIn), broken)
                 }
                 checkedPath = path
             } finally {
@@ -136,8 +132,6 @@ object SpecKitSetup {
             ShellKind.POSIX -> "curl -LsSf $UV_SH | sh && export PATH=\"\$HOME/.local/bin:\$PATH\" && uv $tool"
         }
     }
-
-    fun upgradeCommand(shell: ShellKind, specify: String): String = specifyLine(shell, listOf(specify, "self", "upgrade"))
 
     fun integrationCommand(shell: ShellKind, specify: String, key: String): String =
         specifyLine(shell, listOf(specify, "integration", "install", key, "--script", scriptType()))
@@ -260,19 +254,6 @@ object SpecKitSetup {
                         "Confira a aba \"${Job.INSTALL.title}\" do terminal. Se ele foi instalado em outra pasta, informe o caminho do specify nas configurações do IronHawk IA.",
                     if (ok) NotificationType.INFORMATION else NotificationType.WARNING,
                 )
-            }
-        }
-    }
-
-    /** Na EDT. `specify self upgrade` no terminal da IDE; espera o executável ser trocado. */
-    fun upgrade(project: Project) {
-        if (job != null) return
-        val specify = TomahawkSettings.resolveSpecify() ?: return install(project)
-        if (installed?.takeIf { it.path == specify }?.broken == true) return repair(project)
-        val before = modified(specify)
-        inTerminal(project, Job.UPGRADE, { shell -> upgradeCommand(shell, specify.toString()) }) { started ->
-            watch(started, { modified(specify) != before }) { ok ->
-                if (ok) notify("Spec Kit atualizado", "O specify foi trocado pela versão nova.", NotificationType.INFORMATION)
             }
         }
     }
@@ -404,12 +385,7 @@ object SpecKitSetup {
     /** A versão na saída do `specify --version`, como `specify 0.11.8`. */
     fun versionIn(text: String): String? = VERSION.find(text)?.groupValues?.get(1)
 
-    /** A versão mais nova que o `specify self check` anuncia; nula se ele já está na última. */
-    fun latestIn(text: String): String? = UPDATE.find(text)?.groupValues?.get(2)
-
     private fun version(path: Path): String? = run(path, "--version")?.let(::versionIn)
-
-    private fun latest(path: Path): String? = run(path, "self", "check")?.let(::latestIn)
 
     private fun run(path: Path, vararg args: String): String? = runCatching {
         val line = GeneralCommandLine(listOf(path.toString()) + args)
@@ -419,8 +395,6 @@ object SpecKitSetup {
         val output = ExecUtil.execAndGetOutput(line, CHECK_TIMEOUT_MS)
         if (output.isTimeout) null else output.stdout + "\n" + output.stderr
     }.getOrNull()
-
-    private fun modified(path: Path) = runCatching { Files.getLastModifiedTime(path).toMillis() }.getOrDefault(0L)
 
     private fun line(shell: ShellKind, args: List<String>): String {
         val quoted = args.joinToString(" ") { AgentCommand.quote(it, shell) }

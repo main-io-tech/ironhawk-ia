@@ -10,7 +10,7 @@ enum class IronHawkSystem(val title: String, val label: String, val description:
     DEFENSE(
         "Defesa (Iron Dome)",
         "Defesa",
-        "Revisão do código com a IA: Radar, Centro de Comando, Raio de Impacto, Sentinela, Escudo, Patrulha e Inteligência.",
+        "Revisão do código com a IA: Radar, Centro de Comando, Sentinela, Escudo, Patrulha e Inteligência.",
         "Defesa",
     ),
     ATTACK(

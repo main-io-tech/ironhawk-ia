@@ -61,4 +61,46 @@ class IronHawkFolderTest {
         assertTrue(Files.exists(root.resolve("tomahawk/src/Main.kt")))
         assertFalse(Files.exists(root.resolve("ironhawk")))
     }
+
+    @Test
+    fun `a pasta fica fora do git por um gitignore proprio, sem mexer no do projeto`() {
+        val root = temp.root.toPath()
+        write(root, ".gitignore", "node_modules/\n")
+
+        IronHawkFolder.keepLocal(root, create = false)
+        assertFalse("sem a pasta, não cria nada", Files.exists(root.resolve("ironhawk")))
+
+        IronHawkFolder.keepLocal(root)
+
+        val ignore = root.resolve("ironhawk/.gitignore")
+        assertTrue("ignora tudo, inclusive ele mesmo", Files.readString(ignore).lines().any { it.trim() == "*" })
+        assertEquals("node_modules/\n", Files.readString(root.resolve(".gitignore")))
+    }
+
+    @Test
+    fun `um gitignore que ja esta na pasta e de quem o editou`() {
+        val root = temp.root.toPath()
+        write(root, "ironhawk/.gitignore", "")
+
+        IronHawkFolder.keepLocal(root)
+
+        assertEquals("", Files.readString(root.resolve("ironhawk/.gitignore")))
+    }
+
+    @Test
+    fun `a poda deixa so os registros mais novos e nao toca nas subpastas nem em outros arquivos`() {
+        val dir = temp.root.toPath().resolve("ironhawk/iron-dome/ia")
+        (1..5).forEach { number ->
+            write(dir, "2026111$number-run.md")
+            Files.setLastModifiedTime(dir.resolve("2026111$number-run.md"), java.nio.file.attribute.FileTime.fromMillis(1_000_000L * number))
+        }
+        write(dir, "pedidos/antigo.md")
+        write(dir, "resposta.md.fim")
+
+        assertEquals(3, IronHawkFolder.prune(dir, keep = 2))
+
+        assertEquals(setOf("20261114-run.md", "20261115-run.md", "pedidos", "resposta.md.fim"), Files.list(dir).use { files -> files.map { it.fileName.toString() }.toList().toSet() })
+        assertTrue(Files.exists(dir.resolve("pedidos/antigo.md")))
+        assertEquals(0, IronHawkFolder.prune(dir.resolve("nao-existe"), keep = 2))
+    }
 }

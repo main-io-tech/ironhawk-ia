@@ -69,6 +69,9 @@ class WrapText(text: String = "", font: Font = JBFont.label(), color: Color? = n
  */
 class FlowRow(private val maxWidth: Int, private val hgap: Int = JBUI.scale(6), private val vgap: Int = JBUI.scale(2)) : JPanel(null) {
 
+    /** Onde começam as linhas de baixo: depois do ícone, para o texto que quebra ficar alinhado com o da primeira linha. */
+    var hangingIndent = 0
+
     init {
         isOpaque = false
     }
@@ -80,12 +83,14 @@ class FlowRow(private val maxWidth: Int, private val hgap: Int = JBUI.scale(6), 
         var widest = 0
         val placed = mutableListOf<Pair<Component, Rectangle>>()
         val line = mutableListOf<Pair<Component, Rectangle>>()
+        // Numa largura muito pequena o recuo tomaria o espaço do próprio texto.
+        val indent = hangingIndent.takeIf { it < maxWidth / 3 } ?: 0
         fun closeLine() {
             line.forEach { (c, r) -> r.y = y + (lineHeight - r.height) / 2; placed += c to r }
             line.clear()
             y += lineHeight + vgap
             widest = maxOf(widest, x - hgap)
-            x = 0
+            x = indent
             lineHeight = 0
         }
         for (child in components) {
@@ -93,9 +98,9 @@ class FlowRow(private val maxWidth: Int, private val hgap: Int = JBUI.scale(6), 
             var size = child.preferredSize
             val remaining = maxWidth - x
             if (child is WrapText) {
-                if (remaining < JBUI.scale(MIN_TEXT) && x > 0) closeLine()
+                if (remaining < JBUI.scale(MIN_TEXT) && x > indent) closeLine()
                 size = child.fit(maxWidth - x).preferredSize
-            } else if (x > 0 && size.width > remaining) {
+            } else if (x > indent && size.width > remaining) {
                 closeLine()
             }
             line += child to Rectangle(x, 0, size.width, size.height)

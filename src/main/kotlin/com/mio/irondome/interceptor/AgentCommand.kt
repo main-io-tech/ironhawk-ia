@@ -106,7 +106,11 @@ object AgentCommand {
             // comandos de terminal continuam recusados, salvo os liberados nas configurações dele ou com --allowedTools.
             // A lista do --disallowedTools aceita vários valores: vem antes de outra opção, para não engolir o prompt.
             AgentProvider.CLAUDE -> buildList {
-                addAll(listOf(executable, "-p", "--disallowedTools", AgentGuard.claudeDisallowedTools, "--output-format", "stream-json", "--verbose"))
+                addAll(listOf(executable, "-p", "--disallowedTools", AgentGuard.claudeDisallowedTools))
+                // Apagar um arquivo é comando de terminal, que o acceptEdits não libera: sem isto, uma decisão de remover
+                // código ficava sem aplicar. Só o `git rm` de arquivos, que o Desfazer Alterações da IA traz de volta.
+                if (task.write) addAll(listOf("--allowedTools", AgentGuard.CLAUDE_DELETE_TOOL))
+                addAll(listOf("--output-format", "stream-json", "--verbose"))
                 if (task.write) addAll(listOf("--permission-mode", "acceptEdits"))
                 chosenModel?.let { addAll(listOf("--model", it)) }
                 addAll(extra)
@@ -140,7 +144,7 @@ object AgentCommand {
     /** Os argumentos extras das configurações, separados por espaço, com aspas simples ou duplas agrupando. */
     fun splitArgs(text: String?): List<String> {
         if (text.isNullOrBlank()) return emptyList()
-        return Regex(""""([^"]*)"|'([^']*)'|(\S+)""").findAll(text).map { m -> m.groupValues.drop(1).first { it.isNotEmpty() } }.toList()
+        return Regex(""""([^"]*)"|'([^']*)'|(\S+)""").findAll(text).map { m -> m.groups[1]?.value ?: m.groups[2]?.value ?: m.groupValues[3] }.toList()
     }
 
     /**
@@ -226,7 +230,7 @@ object AgentCommand {
             "o Cursor roda com --force: edita arquivos e roda comandos de terminal sem pedir aprovação, exceto os negados nas configurações do CLI"
         AgentProvider.CLAUDE ->
             "o Claude Code roda com --permission-mode acceptEdits: edita arquivos sem pedir aprovação, e os comandos de terminal " +
-                "que não estão liberados nas configurações dele são recusados"
+                "que não estão liberados nas configurações dele são recusados, menos apagar arquivos versionados com git rm, um a um"
         AgentProvider.CODEX ->
             "o Codex roda com --dangerously-bypass-approvals-and-sandbox: edita arquivos e roda comandos de terminal sem pedir aprovação"
         AgentProvider.ANTIGRAVITY ->
@@ -238,8 +242,23 @@ object AgentCommand {
         "Ao terminar, grave a sua resposta final completa no arquivo $path (crie as pastas se faltarem). Esse é o único " +
             "arquivo que você pode criar além do que a tarefa pedir; se a tarefa pede JSON, grave só o JSON."
 
+    /**
+     * [command] seguido da gravação do código de saída em [marker]: o arquivo aparece quando o CLI termina, mesmo que ele
+     * tenha falhado sem gravar a resposta. No cmd.exe o código não é confiável (o `%errorlevel%` se expande antes), só a
+     * existência do arquivo.
+     */
+    fun withExitMarker(command: String, marker: String, shell: ShellKind): String = when (shell) {
+        ShellKind.POWERSHELL -> "$command; Set-Content -LiteralPath ${quote(marker, shell)} -Value \$LASTEXITCODE"
+        ShellKind.CMD -> "$command & echo fim> ${quote(marker, shell)}"
+        ShellKind.POSIX -> "$command; echo $? > ${quote(marker, shell)}"
+    }
+
+    /** A aspa simples e as tipográficas (‘ ’ ‚ ‛), que o PowerShell aceita como delimitador de string. */
+    private val POWERSHELL_QUOTES = Regex("['‘’‚‛]")
+
     fun quote(arg: String, shell: ShellKind): String = when (shell) {
-        ShellKind.POWERSHELL -> "'" + arg.replace("'", "''") + "'"
+        // O PowerShell também fecha a string nas aspas tipográficas: dobram como a aspa reta.
+        ShellKind.POWERSHELL -> "'" + arg.replace(POWERSHELL_QUOTES) { it.value + it.value } + "'"
         ShellKind.CMD -> "\"" + arg.replace("\"", "") + "\""
         ShellKind.POSIX -> "'" + arg.replace("'", "'\\''") + "'"
     }
@@ -430,11 +449,13 @@ object AgentEvents {
      */
     fun extractJson(answer: String): JsonElement? {
         val fenced = Regex("""```(?:json)?\s*\n(.*?)\n```""", RegexOption.DOT_MATCHES_ALL).findAll(answer).map { it.groupValues[1] }
-        val candidates = fenced + sequenceOf('[' to ']', '{' to '}').mapNotNull { (open, close) ->
+        // O que abre primeiro vem primeiro: num objeto com um `[x]` no meio do texto, o colchete não pode ganhar do objeto.
+        val bare = listOf('[' to ']', '{' to '}').mapNotNull { (open, close) ->
             val start = answer.indexOf(open)
             val end = answer.lastIndexOf(close)
-            if (start >= 0 && end > start) answer.substring(start, end + 1) else null
-        }
+            if (start >= 0 && end > start) start to answer.substring(start, end + 1) else null
+        }.sortedBy { it.first }.map { it.second }
+        val candidates = fenced + bare
         return candidates.firstNotNullOfOrNull { runCatching { JsonParser.parseString(it) }.getOrNull()?.takeIf { e -> e.isJsonArray || e.isJsonObject } }
     }
 }

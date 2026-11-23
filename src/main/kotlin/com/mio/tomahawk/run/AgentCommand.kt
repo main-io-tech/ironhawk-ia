@@ -216,8 +216,12 @@ object AgentCommand {
         return if (shell == ShellKind.POWERSHELL) "& " + quoted.joinToString(" ") else quoted.joinToString(" ")
     }
 
+    /** A aspa simples e as tipográficas (‘ ’ ‚ ‛), que o PowerShell aceita como delimitador de string. */
+    private val POWERSHELL_QUOTES = Regex("['‘’‚‛]")
+
     fun quote(arg: String, shell: ShellKind): String = when (shell) {
-        ShellKind.POWERSHELL -> "'" + arg.replace("'", "''") + "'"
+        // O PowerShell também fecha a string nas aspas tipográficas: dobram como a aspa reta.
+        ShellKind.POWERSHELL -> "'" + arg.replace(POWERSHELL_QUOTES) { it.value + it.value } + "'"
         ShellKind.CMD -> "\"" + arg.replace("\"", "") + "\""
         ShellKind.POSIX -> "'" + arg.replace("'", "'\\''") + "'"
     }
@@ -225,7 +229,7 @@ object AgentCommand {
     /** Os argumentos extras das configurações, separados por espaço, com aspas simples ou duplas agrupando. */
     fun splitArgs(text: String?): List<String> {
         if (text.isNullOrBlank()) return emptyList()
-        return Regex(""""([^"]*)"|'([^']*)'|(\S+)""").findAll(text).map { m -> m.groupValues.drop(1).first { it.isNotEmpty() } }.toList()
+        return Regex(""""([^"]*)"|'([^']*)'|(\S+)""").findAll(text).map { m -> m.groups[1]?.value ?: m.groups[2]?.value ?: m.groupValues[3] }.toList()
     }
 
     /**

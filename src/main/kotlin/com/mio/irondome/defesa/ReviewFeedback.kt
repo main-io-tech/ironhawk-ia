@@ -1,5 +1,6 @@
 package com.mio.irondome.defesa
 
+import com.mio.ironhawk.IronHawkFolder
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
@@ -214,6 +215,7 @@ class ReviewFeedback(private val project: Project) {
             runCatching {
                 val next = change(state())
                 Files.createDirectories(file.parent)
+                IronHawkFolder.keepLocal(project)
                 Files.writeString(file, FeedbackMarkdown.render(next))
                 LocalFileSystem.getInstance().refreshNioFiles(listOf(file))
             }.onFailure { LOG.warn("Não deu para gravar ${FeedbackMarkdown.FILE_NAME}", it) }

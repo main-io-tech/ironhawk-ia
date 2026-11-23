@@ -13,32 +13,7 @@ enum class TestOutcome(val label: String) {
     NOT_RUN("Não executado"),
 }
 
-/** [SUBJECT] e [CRITERION] são da organização por critério: o grupo do catálogo e um critério com os testes que o cobrem. */
-enum class TestKind { TAG, CLASS, GROUP, TEST, SUBJECT, CRITERION }
-
-/** Como o Escudo organiza a árvore: pela `@Tag` dos testes ou pelos critérios de aceite do catálogo. */
-enum class EscudoView(val label: String) {
-    TAG("Tag"),
-    CRITERIA("Critério");
-
-    companion object {
-        /** O valor gravado antes, quando havia a visão "Por execução": hoje ela é a organização por tag. */
-        private const val LEGACY_EXECUTION = "EXECUTION"
-
-        /** A organização gravada em [saved]; sem catálogo só existe a por tag, e sem escolha vale a por critério. */
-        fun of(saved: String?, hasCatalog: Boolean): EscudoView = when {
-            !hasCatalog -> TAG
-            saved == LEGACY_EXECUTION -> TAG
-            else -> entries.firstOrNull { it.name == saved } ?: CRITERIA
-        }
-    }
-}
-
-/** A convenção do Escudo para as classes de teste: um `@DisplayName` que diga o que a classe testa. */
-enum class Convention(val problem: String?) {
-    OK(null),
-    MISSING_DISPLAY_NAME("sem @DisplayName"),
-}
+enum class TestKind { TAG, CLASS, GROUP, TEST }
 
 /**
  * Nó da árvore do Escudo. [label] é o `@DisplayName` escrito no código, se houver, ou o nome que o JUnit
@@ -57,16 +32,10 @@ class TestNode(
     val stacktrace: String?,
     val children: List<TestNode>,
     leafOutcome: TestOutcome,
-    /** Só nos critérios: o ID do critério, também o da tag órfã. */
-    val criterionId: String? = null,
-    /** Só nas classes de topo. */
-    val convention: Convention? = null,
-    /** Nos testes, as `@Tag` que valem para eles; nas classes, as da própria classe; nos grupos de tag, a tag. */
+    /** Nos testes, as `@Tag` que valem para eles; nos grupos de tag, a tag. */
     val tags: List<String> = emptyList(),
-    /** Só nos critérios: o status deles; nulo na tag que aponta para um critério que o catálogo não tem. */
-    val coverage: CriterionCoverage? = null,
-    /** Nas funcionalidades e nos cenários lidos do XML do Cucumber, fora da execução do JUnit. */
-    val cucumber: Boolean = false,
+    /** Uma classe de teste de topo, fora de outra classe. */
+    val topLevel: Boolean = false,
 ) {
     private val ownOutcome = leafOutcome
 
@@ -79,11 +48,14 @@ class TestNode(
     val classes: List<TestNode>
         get() = when (kind) {
             TestKind.TAG -> children.flatMap { it.classes }
-            TestKind.CLASS -> if (convention != null) listOf(this) else emptyList()
+            TestKind.CLASS -> if (topLevel) listOf(this) else emptyList()
             else -> emptyList()
         }
 
     fun count(outcome: TestOutcome) = tests.count { it.outcome == outcome }
+
+    /** O identificador do teste no código, como `loja.FreteTest#calcula`; o mesmo em todas as execuções de um parametrizado. */
+    val testId: String? get() = locationUrl?.let(TestSource::idOf)
 
     /** Classe e método no código, como `loja.FreteTest#calcula`. */
     val codeReference: String? get() = locationUrl?.substringAfter("://")?.replace('/', '#')
@@ -102,7 +74,7 @@ class TestNode(
 
     private fun copy(prefix: String, children: List<TestNode>, duration: Long? = durationMillis) = TestNode(
         kind, prefix + key, label, codeName, locationUrl, duration, errorMessage, stacktrace, children,
-        if (kind == TestKind.TEST) outcome else ownOutcome, criterionId, convention, tags, coverage, cucumber,
+        if (kind == TestKind.TEST) outcome else ownOutcome, tags, topLevel,
     )
 
     private companion object {
@@ -123,7 +95,10 @@ class TestNode(
 object TestResults {
 
     const val NO_TAG = "Sem tag"
-    const val CONVENTION_EXAMPLE = "@DisplayName(\"Descrição do que a classe testa\")"
+
+    /** Sem nenhuma `@Tag` no projeto, o grupo "Sem tag" é um nível a mais que não diz nada: ficam as classes. */
+    fun byTagOrClasses(classes: List<TestNode>): List<TestNode> =
+        if (classes.flatMap { it.tests }.all { it.tags.isEmpty() }) classes else byTag(classes)
 
     private const val SUITE_PROTOCOL = "java:suite://"
     private val byLabel = compareBy<TestNode, String>(Collator.getInstance(Locale.of("pt", "BR"))) { it.label }
@@ -201,13 +176,6 @@ object TestResults {
         val written = url?.takeIf { useCodeName }?.let(lookup.displayNames)
         val codeName = url?.let(::codeNameOf)
         val label = written ?: reported
-        // Sem o código, vale o nome que o JUnit 5 reportou, se for diferente do nome da classe.
-        val displayName = written ?: reported.takeIf { it != codeName }
-        val convention = when {
-            !topLevel || kind != TestKind.CLASS -> null
-            displayName == null -> Convention.MISSING_DISPLAY_NAME
-            else -> Convention.OK
-        }
         val key = "$parentKey/${url.orEmpty()}|$label"
         return TestNode(
             kind = kind,
@@ -220,8 +188,8 @@ object TestResults {
             stacktrace = proxy.stacktrace?.takeIf { it.isNotBlank() },
             children = proxy.children.map { node(it, key, useCodeName = kind == TestKind.CLASS, topLevel = false, lookup) },
             leafOutcome = outcomeOf(proxy),
-            convention = convention,
             tags = url?.let(lookup.tagsOf).orEmpty(),
+            topLevel = topLevel && kind == TestKind.CLASS,
         )
     }
 

@@ -57,6 +57,9 @@ object BugGitHub {
             return BugIssue(issue.number, issue.url)
         } catch (error: GitHubException) {
             throw BugReportException(describe(error))
+        } catch (error: java.io.IOException) {
+            // Sem rede ou com tempo esgotado, o relatório já está salvo: o aviso oferece tentar de novo.
+            throw BugReportException("Sem conexão com o GitHub: ${error.message ?: error.javaClass.simpleName}")
         }
     }
 

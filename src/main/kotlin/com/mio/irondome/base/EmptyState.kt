@@ -16,6 +16,7 @@ import javax.swing.JComponent
 import javax.swing.JViewport
 import javax.swing.ListModel
 import javax.swing.SwingUtilities
+import javax.swing.Timer
 import javax.swing.plaf.basic.BasicTreeUI
 import javax.swing.tree.TreeModel
 
@@ -61,12 +62,21 @@ internal object EmptyState {
 open class MechanismTree(model: TreeModel, private val icon: Icon, private val tone: Tone) : Tree(model) {
 
     private var lastWidth = -1
+    private var measuring = false
+    private var lite = IronHawkVisual.lite
 
     init {
         isRootVisible = false
         showsRootHandles = true
         rowHeight = 0
     }
+
+    /**
+     * Aqui a linha tem sempre a altura do conteúdo. O tema da IDE define uma altura fixa para as árvores e a reaplica a
+     * cada troca de UI (tema, fonte, zoom), por cima do zero pedido no início: com altura fixa, o que passa para a
+     * segunda linha é cortado e some.
+     */
+    override fun setRowHeight(rowHeight: Int) = super.setRowHeight(0)
 
     /** A largura que a linha de [depth] tem para o conteúdo, descontado o recuo dos níveis. */
     fun rowWidth(depth: Int): Int {
@@ -83,17 +93,29 @@ open class MechanismTree(model: TreeModel, private val icon: Icon, private val t
         super.setBounds(x, y, width, height)
         if (width != lastWidth) {
             lastWidth = width
-            SwingUtilities.invokeLater { TreeUtil.invalidateCacheAndRepaint(getUI()) }
+            // Arrastar a borda do painel muda a largura a cada pixel: mede as linhas uma vez, quando ela sossega.
+            if (measuring) return
+            measuring = true
+            Timer(MEASURE_DELAY_MS) {
+                measuring = false
+                TreeUtil.invalidateCacheAndRepaint(getUI())
+            }.apply { isRepeats = false }.start()
         }
     }
 
     override fun paintComponent(g: Graphics) {
+        // O visual leve muda o que cada linha traz, e com isso a altura dela: as alturas guardadas deixam de valer.
+        if (IronHawkVisual.lite != lite) {
+            lite = IronHawkVisual.lite
+            SwingUtilities.invokeLater { TreeUtil.invalidateCacheAndRepaint(getUI()) }
+        }
         super.paintComponent(g)
         if (isEmpty) EmptyState.paint(this, emptyText, icon, tone, g)
     }
 
     private companion object {
         const val ROW_MARGIN = 10
+        const val MEASURE_DELAY_MS = 60
     }
 }
 

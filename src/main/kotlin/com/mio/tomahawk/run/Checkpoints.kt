@@ -63,7 +63,7 @@ object Checkpoints {
     /** Os arquivos que mudaram no projeto desde [point]; nulo se o Git falhar. */
     fun changes(root: Path, point: Point): List<String>? {
         val now = snapshot(root, "Tomahawk: agora") ?: return null
-        return names(root, "diff", "--name-only", "--no-renames", "-z", point.commit, now)
+        return names(root, "diff", "--name-only", "--relative", "--no-renames", "-z", point.commit, now)
     }
 
     /**
@@ -75,8 +75,8 @@ object Checkpoints {
             val ref = UNDO_PREFIX + System.currentTimeMillis()
             git(root, emptyMap(), "update-ref", ref, commit)?.let { Point(ref, commit, "desfazer ${point.label}", System.currentTimeMillis()) }
         } ?: throw IllegalStateException("O Git não conseguiu guardar o estado de agora; nada foi desfeito.")
-        val added = names(root, "diff", "--name-only", "--no-renames", "--diff-filter=A", "-z", point.commit, safety.commit).orEmpty()
-        val changed = names(root, "diff", "--name-only", "--no-renames", "--diff-filter=MDT", "-z", point.commit, safety.commit).orEmpty()
+        val added = names(root, "diff", "--name-only", "--relative", "--no-renames", "--diff-filter=A", "-z", point.commit, safety.commit).orEmpty()
+        val changed = names(root, "diff", "--name-only", "--relative", "--no-renames", "--diff-filter=MDT", "-z", point.commit, safety.commit).orEmpty()
         if (changed.isNotEmpty()) {
             git(root, emptyMap(), "restore", "--source=${point.commit}", "--worktree", "--", ".", ":(exclude)${IronHawkFolder.ROOT}")
                 ?: throw IllegalStateException("O git restore falhou; o estado antes de desfazer está em ${safety.ref}.")

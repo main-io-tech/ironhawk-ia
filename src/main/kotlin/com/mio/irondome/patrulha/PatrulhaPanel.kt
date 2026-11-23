@@ -1301,6 +1301,8 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             return
         }
         background("Enviando os comentários ao rascunho do PR #${pr.number}", { patrulha.send(context, pr, unsent) }) {
+            // Foram enviados, não descartados: sem isto, o aprendizado contaria os da IA como recusados pelo time.
+            ReviewFeedback.getInstance(project).accepted(unsent)
             radar.remove(unsent)
             publish()
         }
@@ -1591,9 +1593,13 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         else -> selectedPr()?.let { it.pr?.url ?: it.record?.url }
     }
 
-    /** Roda [work] fora da EDT e entrega o resultado a [onSuccess] na EDT; erros viram notificação. */
+    /**
+     * Roda [work] fora da EDT e entrega o resultado a [onSuccess] na EDT; erros viram notificação. A tarefa não é
+     * cancelável: [work] não para no meio, e um cancelamento só pularia o [onSuccess], deixando o que já foi enviado ao
+     * GitHub sem registro aqui (e o próximo envio duplicado).
+     */
     private fun <T> background(title: String, work: () -> T, onSuccess: (T) -> Unit) {
-        object : Task.Backgroundable(project, title, true) {
+        object : Task.Backgroundable(project, title, false) {
             private var result: Result<T>? = null
 
             override fun run(indicator: ProgressIndicator) {
@@ -1676,6 +1682,9 @@ class PatrulhaPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     ) : PanelAction(description, tooltip, icon, onUpdate, perform), Toggleable
 
     private class Renderer : RichTreeCellRenderer() {
+
+        /** A linha sai só do item, e a árvore é refeita quando algo muda. */
+        override fun cacheStamp(): Any = Unit
 
         override fun describe(row: Row, value: Any?) {
             when (val item = (value as? DefaultMutableTreeNode)?.userObject) {

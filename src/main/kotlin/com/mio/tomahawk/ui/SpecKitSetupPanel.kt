@@ -31,7 +31,7 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 
 /**
- * O Spec Kit nesta máquina e no projeto: o aviso do `specify` (instalando, faltando, com defeito ou com versão nova),
+ * O Spec Kit nesta máquina e no projeto: o aviso do `specify` (instalando, faltando ou com defeito),
  * no Windows o shell dos comandos dele e, com [withInit], o comando e os botões de inicializar o projeto.
  *
  * Procurar o `specify` e o `uv` no PATH é I/O: roda fora da EDT, e o resultado fica guardado por [PROBE_TTL_MS] ou
@@ -159,9 +159,6 @@ class SpecKitSetupPanel(private val project: Project, parent: Disposable, withIn
                     add(primary("Reinstalar o Spec Kit") { SpecKitSetup.repair(project) })
                     add(button("Verificar de Novo") { recheck() })
                 }))
-            info != null && info.outdated -> machine.add(notice(AllIcons.General.Information, Tone.BLUE,
-                "Há uma versão nova do Spec Kit: v${info.latest.orEmpty()} (aqui está a v${info.version ?: "?"}).",
-                button("Atualizar o Spec Kit") { SpecKitSetup.upgrade(project) }))
         }
         machine.isVisible = machine.componentCount > 0
         filling = true

@@ -97,7 +97,8 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
      * revisão aberta) conta como salvo; o resto continua rascunho.
      */
     private fun adoptLegacyComments() {
-        val legacy = state.comments.filter { it.exported == null }
+        // Os rascunhos de PR nunca têm versão exportada nem revisão: não são legados, e adotá-los os deixaria sem como remover.
+        val legacy = state.comments.filter { it.exported == null && it.pullRequest == 0 }
         if (legacy.isEmpty()) return
         val inMarkdown = activeReviewFile()?.takeIf(Files::exists)
             ?.let { runCatching { ReviewMarkdown.parse(Files.readString(it)).map(SavedComment::id).toSet() }.getOrNull() }
@@ -225,6 +226,7 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
         val entries = history.map { (id, path) -> ReviewArchive.entryOf(reviewName(id), Files.readString(path)) }
         val existing = target.takeIf(Files::exists)?.let(Files::readString)
         Files.createDirectories(target.parent)
+        IronHawkFolder.keepLocal(project)
         Files.writeString(target, ReviewArchive.render(existing, entries, LocalDateTime.now()))
         LocalFileSystem.getInstance().refreshNioFiles(listOf(target), false, false, null)
         delete(history.map { it.second })
@@ -389,6 +391,21 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
         refreshEditorsOf(listOf(comment))
     }
 
+    /**
+     * A discussão de [comment] terminou: [text] traz o comentário com o que ficou decidido. O alvo deixa de ser "discutir
+     * antes" e vira uma alteração para a IA aplicar no próximo disparo; com [keepDiscussing], só o texto muda, para o
+     * alvo que vai sair como tratado sem alterar nada.
+     */
+    fun decide(comment: ReviewComment, text: String, keepDiscussing: Boolean = false) {
+        if (comment !in state.comments || comment.resolved) return
+        editing.remove(comment)
+        comment.text = text
+        if (!keepDiscussing) comment.discuss = false
+        comment.removing = false
+        notifyChanged()
+        refreshEditorsOf(listOf(comment))
+    }
+
     /** Só comentários de PR têm sugestão; igual ao trecho comentado, ela não sugere nada. */
     private fun suggestionFor(pullRequest: Int, suggestion: String, snippet: String): String {
         val code = suggestion.trimEnd()
@@ -421,6 +438,21 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
     }
 
     /** Resolvidos que aparecem no editor. */
+    /**
+     * Dá os [comments] por tratados sem alterar código, como quando a discussão respondeu à dúvida e nada precisa mudar.
+     * O `.md` da revisão passa a trazê-los com `[x]`.
+     */
+    fun resolve(comments: Collection<ReviewComment>) {
+        val open = comments.filter { it in state.comments && !it.resolved }
+        if (open.isEmpty()) return
+        open.forEach {
+            it.resolved = true
+            it.removing = false
+        }
+        exportPaths(open.map { it.filePath })
+        refreshEditorsOf(open)
+    }
+
     fun resolvedComments(): List<ReviewComment> = state.comments.filter { it.resolved && !it.dismissed && it.pullRequest == 0 }
 
     /** Resolvidos ocultos do editor, que podem voltar com [show]. */
@@ -693,6 +725,7 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
 
         val createdAt = runCatching { LocalDateTime.parse(state.activeReviewCreatedAt) }.getOrDefault(LocalDateTime.now())
         Files.createDirectories(target.parent)
+        IronHawkFolder.keepLocal(project)
         Files.writeString(
             target,
             ReviewMarkdown.render(reviewName(state.activeReviewId), comments, createdAt, LocalDateTime.now()),
@@ -753,7 +786,9 @@ class ReviewCommentService(private val project: Project) : PersistentStateCompon
         val lastLine = maxOf(document.lineCount - 1, 0)
         val start = comment.startLine.coerceIn(0, lastLine)
         val end = comment.endLine.coerceIn(start, lastLine)
-        return document.createRangeMarker(document.getLineStartOffset(start), document.getLineEndOffset(end))
+        // Sobrevive à recarga do arquivo (a IA alterou, a branch mudou): sem isso, o marcador morre e o alvo volta para as
+        // linhas antigas, citando outro trecho no .md.
+        return document.createRangeMarker(document.getLineStartOffset(start), document.getLineEndOffset(end), true)
     }
 
     private fun refreshEditors(document: Document) {

@@ -94,7 +94,7 @@ class IronHawkPlatformTest : BasePlatformTestCase() {
             val both = allTabsText(tab)
             assertTrue("Contenção da IA" in both && "Proteções das missões" in both)
             assertEquals("uma escolha só de onde rodar a IA", 1, Regex("Onde rodar a IA").findAll(both).count())
-            assertEquals("um cartão só de segurança", 1, Regex("Segurança").findAll(both).count())
+            assertTrue("o que é de cada sistema fica na seção dele", Regex("(?m)^Defesa$").containsMatchIn(both) && Regex("(?m)^Ataque$").containsMatchIn(both))
             assertTrue("a Contenção é sempre ligada; as Proteções, não", "sempre ligada" in both)
 
             IronHawkSystem.DEFENSE.enabled = false

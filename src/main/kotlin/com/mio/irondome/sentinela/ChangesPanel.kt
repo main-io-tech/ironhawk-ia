@@ -534,6 +534,9 @@ class ChangesPanel(private val project: Project) : SimpleToolWindowPanel(true, t
 
     private class Renderer : RichTreeCellRenderer() {
 
+        /** A linha sai só do item, e a árvore é refeita quando algo muda. */
+        override fun cacheStamp(): Any = Unit
+
         override fun describe(row: Row, value: Any?) {
             val node = value as? DefaultMutableTreeNode ?: return
             when (val item = node.userObject) {

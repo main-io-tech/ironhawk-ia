@@ -29,7 +29,7 @@ import javax.swing.JComponent
 
 /**
  * As abas da Defesa no painel do IronHawk IA: Radar, Sentinela e as dos mecanismos que dependem de plugins da IDE
- * (Raio de Impacto, Escudo, Patrulha). O [IronHawkWindow] decide quando elas aparecem.
+ * (Escudo, Patrulha). O [IronHawkWindow] decide quando elas aparecem.
  */
 object DefenseTabs {
 

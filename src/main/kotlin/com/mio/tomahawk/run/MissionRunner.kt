@@ -1,5 +1,7 @@
 package com.mio.tomahawk.run
 
+import com.mio.irondome.interceptor.AgentRunner
+import com.mio.irondome.interceptor.AgentSettings
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -65,6 +67,11 @@ class MissionRunner(private val project: Project) {
             notify("Já há uma missão em voo", "Espere ${it.mission.step.codename} terminar ou aborte na Telemetria.", NotificationType.WARNING)
             return false
         }
+        // A tarefa da Defesa usa o mesmo container e o mesmo projeto: duas IAs se atropelam, e abortar uma derruba a outra.
+        AgentRunner.getInstance(project).running?.let { task ->
+            notify("A IA da Defesa está trabalhando", "Espere ${task.title} terminar ou cancele na barra de progresso da aba.", NotificationType.WARNING)
+            return false
+        }
         val provider = TomahawkSettings.provider
         val launch = TomahawkSettings.launch()
         if (launch == null || !TomahawkSettings.ready) {
@@ -102,7 +109,7 @@ class MissionRunner(private val project: Project) {
         val current = MissionProgress(mission, invocation, provider)
         progress = current
         latest = current
-        project.messageBus.syncPublisher(RUNS).changed()
+        runCatching { project.messageBus.syncPublisher(RUNS).changed() }.onFailure { LOG.warn("As abas não puderam ser avisadas do início da missão", it) }
         ApplicationManager.getApplication().executeOnPooledThread {
             var point: Checkpoints.Point? = null
             val entry = try {
@@ -120,6 +127,7 @@ class MissionRunner(private val project: Project) {
                 failure(current, prompt, e.message ?: "A execução não terminou.")
             }
             val file = runCatching { RunStore.writeRun(root, runName, Transcript.render(entry)) }.getOrNull()
+            runCatching { RunStore.prune(root, AgentSettings.keepRuns) }
             ApplicationManager.getApplication().invokeLater({ finish(entry, file, point) }, project.disposed)
         }
         return true
@@ -289,6 +297,7 @@ class MissionRunner(private val project: Project) {
                 command = listOf(command, prompt),
             )
             val file = runCatching { RunStore.writeRun(root, runName, Transcript.render(entry)) }.getOrNull()
+            runCatching { RunStore.prune(root, AgentSettings.keepRuns) }
             ApplicationManager.getApplication().invokeLater({
                 project.messageBus.syncPublisher(RUNS).changed()
                 SpecKitService.getInstance(project).refresh()
@@ -447,12 +456,18 @@ class MissionRunner(private val project: Project) {
         state.mission.arguments, prompt, emptyList(), emptyList(), "", "", emptyList(),
     )
 
+    /** Libera a missão. Uma falha ao atualizar os arquivos não pode deixar os botões presos: as abas são avisadas sempre. */
     private fun finish(entry: Transcript.Entry, file: Path?, point: Checkpoints.Point?) {
         progress = null
-        val base = SpecKitService.getInstance(project).root()?.let { LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it) }
-        if (base != null) VfsUtil.markDirtyAndRefresh(true, true, true, base)
-        SpecKitService.getInstance(project).refresh()
-        project.messageBus.syncPublisher(RUNS).changed()
+        try {
+            val base = SpecKitService.getInstance(project).root()?.let { LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it) }
+            if (base != null) VfsUtil.markDirtyAndRefresh(true, true, true, base)
+            SpecKitService.getInstance(project).refresh()
+        } catch (e: Exception) {
+            LOG.warn("Os arquivos alterados pela missão não puderam ser atualizados", e)
+        } finally {
+            project.messageBus.syncPublisher(RUNS).changed()
+        }
         val title = when (entry.status) {
             RunStatus.CANCELLED -> "${entry.step.codename} abortada"
             RunStatus.FAILED -> "${entry.step.codename} falhou"

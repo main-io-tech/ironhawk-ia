@@ -42,24 +42,20 @@ object ReviewMarkdown {
 
         **Modo de pergunta:** $ASK_MODE
 
-        **Modo de discussão:** não reduza o comentário a uma pergunta de múltipla escolha. Leia o código
-        citado, quem o usa e os testes dele e, antes de qualquer pergunta, escreva no chat uma análise
-        completa:
-        - **Entendimento:** o que o comentário aponta ou pergunta, nas suas palavras.
-        - **Por que está assim:** os motivos prováveis do código atual, o que ele resolve e as evidências
-          no código, nos testes ou no histórico.
-        - **Avaliação:** se o apontamento procede, com os argumentos a favor e contra.
-        - **Impacto:** o que muda, quebra ou passa a ser exigido ao manter, alterar ou remover o trecho:
-          chamadores, testes, comportamento, dados, desempenho e segurança.
-        - **Opções:** de 2 a 5, numeradas, sempre incluindo manter como está e, se fizer sentido, remover.
-          Para cada uma: o que muda, vantagens, desvantagens, impacto, risco e uma prévia da alteração
-          (diff ou o trecho como ficaria).
-        - **Recomendação:** a opção que você escolheria e por quê.
-
-        Só então pergunte qual opção seguir pelo modo de pergunta, com rótulos curtos que remetam às
-        opções numeradas, mais "deixar para depois". Se o usuário discordar, questionar ou trouxer outro
-        argumento, responda com argumentos, revise a análise e as opções e pergunte de novo. Altere
-        arquivos só quando a decisão final estiver clara: manter, alterar (com a opção escolhida) ou remover.
+        **Modo de discussão:** conduza como uma entrevista, com respostas curtas. Texto longo atrapalha
+        a decisão.
+        - **Apure antes de perguntar.** Leia o código citado, quem o usa e os testes dele. O que dá para
+          descobrir no código você descobre, e não pergunta.
+        - **Responda ao comentário primeiro**, em 1 ou 2 frases, começando pela conclusão: "pode
+          remover", "precisa ficar", "está no lugar errado".
+        - **Pergunte uma decisão de cada vez**, pelo modo de pergunta, e espere a resposta antes da
+          próxima; comece pela decisão de que as outras dependem. Cada pergunta traz de 2 a 4 opções,
+          sempre com a de manter como está, o efeito de cada uma em uma frase e a opção que você
+          recomenda, com o porquê em uma frase.
+        - Se o usuário perguntar de volta, discordar ou propuser outra saída, responda em até 3 frases
+          e pergunte de novo. Você não decide por ele.
+        - **Não altere nada até ele confirmar.** Sem mais decisões a tomar, liste o que ficou decidido
+          e peça a confirmação. Só então altere, e só o que foi decidido.
     """.trimIndent()
 
     private const val ASK_MODE =
@@ -70,10 +66,9 @@ object ReviewMarkdown {
 
     private const val DISCUSS_NOTICE =
         "**IA: discuta antes de alterar.** Não altere nenhum arquivo por causa deste comentário. Siga o " +
-            "modo de discussão das instruções do topo: escreva no chat a análise completa (entendimento, por que " +
-            "o código está assim, avaliação e impacto de manter, alterar ou remover), de 2 a 5 opções com prévia " +
-            "da alteração e a sua recomendação. Só depois pergunte qual seguir, e continue a discussão até a " +
-            "decisão final de manter, alterar ou remover."
+            "modo de discussão das instruções do topo: responda ao comentário em 1 ou 2 frases, pergunte uma " +
+            "decisão de cada vez, com a opção que você recomenda, e só altere depois de o usuário confirmar o " +
+            "que ficou decidido."
 
     private const val WHOLE_FILE = "arquivo inteiro"
     private const val WHOLE_PACKAGE = "pacote inteiro"
@@ -110,7 +105,18 @@ object ReviewMarkdown {
             current = null
         }
 
+        // A cerca do trecho citado, enquanto aberta: uma linha `## Geral` dentro do trecho é código, não seção.
+        var fence: String? = null
         for (line in markdown.lines()) {
+            val open = fence
+            if (open != null) {
+                if (line.trimEnd() == open) fence = null
+                continue
+            }
+            if (current != null && current?.text == null && line.startsWith("```")) {
+                fence = line.takeWhile { it == '`' }
+                continue
+            }
             val file = fileHeading.matchEntire(line) ?: packageHeading.matchEntire(line)
             val general = generalHeading.matches(line)
             val heading = commentHeading.find(line)

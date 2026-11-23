@@ -112,10 +112,17 @@ object AgentGuard {
         "shutdown", "reboot", "sudo", "su", "runas", "reg", "chmod -R", "chown -R",
         "git push", "git reset --hard", "git clean", "git checkout --", "git restore", "git branch -D",
         "git stash drop", "git stash clear", "git rebase", "git filter-branch", "git update-ref -d", "git reflog expire",
+        "git rm -r", "git rm -rf", "git rm -fr", "git rm -f", "git rm -R", "git rm --cached",
         "curl", "wget",
     ).flatMap { listOf("Bash($it)", "Bash($it *)") }
         .plus(listOf("Edit(./.git/**)", "Edit(~/.ssh/**)", "Read(~/.ssh/**)", "Edit(~/.aws/**)", "Read(~/.aws/**)"))
         .joinToString(",")
+
+    /**
+     * O único comando de terminal liberado ao Claude Code nas tarefas que alteram arquivos: apagar arquivos versionados,
+     * um a um. As formas recursivas e forçadas estão em [claudeDisallowedTools], e a recusa vale mais que a liberação.
+     */
+    const val CLAUDE_DELETE_TOOL = "Bash(git rm *)"
 
     /** Para os pushes que a IA tentar: todo endereço de push vira um destino que não existe. Buscar continua. */
     private val PUSH_PREFIXES = listOf("https://", "http://", "git@", "ssh://", "git://")
@@ -161,5 +168,7 @@ object AgentGuard {
     const val RULE =
         "Seguranca: nao rode comandos destrutivos (apagar pastas, git push, git reset --hard, git clean, reescrever o historico, " +
             "sudo, formatar disco, baixar e executar scripts) e nao altere arquivos fora do projeto nem dentro de .git. " +
-            "Se a tarefa precisar disso, pare e explique na resposta."
+            "Se a tarefa precisar disso, pare e explique na resposta. Para apagar um arquivo que a tarefa pede para remover, " +
+            "use git rm com o caminho de cada arquivo, sem -r e sem -f; se o arquivo nao for versionado, liste-o no resumo " +
+            "para o usuario apagar."
 }

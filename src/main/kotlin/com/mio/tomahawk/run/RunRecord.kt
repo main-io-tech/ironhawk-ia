@@ -24,10 +24,11 @@ enum class Verdict(val label: String) {
 
     companion object {
         private val CONVERGED_TEXT = Regex("""\bconverged\b""", RegexOption.IGNORE_CASE)
-        private val NOT_CONVERGED = Regex("""\bnot\s+converged\b|\bnao\s+convergi""", RegexOption.IGNORE_CASE)
+        private val NOT_CONVERGED = Regex("""\bnot\s+converged\b|\bn[aã]o\s+convergi""", RegexOption.IGNORE_CASE)
         private val APPENDED = Regex("""tasks?\s+appended|appended\s+\d*\s*(new\s+)?tasks?|tarefas?\s+acrescentad|tarefas?\s+adicionad""", RegexOption.IGNORE_CASE)
         private val SEVERE = Regex("""\b(CRITICAL|HIGH)\b""")
-        private val NO_ISSUES = Regex("""no (critical )?issues|0 critical|nenhum problema|sem problemas""", RegexOption.IGNORE_CASE)
+        /** O `0 critical` com o zero sozinho: "10 CRITICAL" não é "sem problemas". */
+        private val NO_ISSUES = Regex("""no (critical )?issues|(?<!\d)0 critical|nenhum problema|sem problemas""", RegexOption.IGNORE_CASE)
 
         fun of(step: SddStep, answer: String): Verdict? = when (step) {
             SddStep.CONVERGE -> when {

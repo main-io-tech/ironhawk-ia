@@ -288,6 +288,9 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
     }
 
     private class Renderer : RichTreeCellRenderer() {
+        /** A linha sai só do nó, e a árvore é refeita quando algo muda. */
+        override fun cacheStamp(): Any = Unit
+
         override fun describe(row: Row, value: Any?) {
             when (val node = (value as? DefaultMutableTreeNode)?.userObject as? EvalNode) {
                 is EvalNode.Constitution -> {
@@ -301,8 +304,10 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
                     row.text(node.report.name, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                     if (node.active) row.pill("Ativa", Tone.ORANGE, bold = true)
                     node.report.tasks?.let { tasks ->
-                        row.bar(listOf(Segment(tasks.done, Tone.GREEN.accent), Segment(tasks.total - tasks.done, Tone.ORANGE.accent)))
-                        row.text("${tasks.done}/${tasks.total}", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+                        row.bar(
+                            listOf(Segment(tasks.done, Tone.GREEN.accent), Segment(tasks.total - tasks.done, Tone.ORANGE.accent)),
+                            label = "${tasks.done}/${tasks.total}", attributes = SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES,
+                        )
                     }
                 }
                 is EvalNode.Spec -> {
@@ -367,8 +372,10 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
                     val phase = node.phase
                     row.icon(if (phase.done == phase.tasks.size) AllIcons.General.InspectionsOK else AllIcons.Nodes.Folder)
                     row.text(phase.title)
-                    row.bar(listOf(Segment(phase.done, Tone.GREEN.accent), Segment(phase.tasks.size - phase.done, Tone.ORANGE.accent)))
-                    row.text("${phase.done}/${phase.tasks.size}", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+                    row.bar(
+                        listOf(Segment(phase.done, Tone.GREEN.accent), Segment(phase.tasks.size - phase.done, Tone.ORANGE.accent)),
+                        label = "${phase.done}/${phase.tasks.size}", attributes = SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES,
+                    )
                 }
                 is EvalNode.Task -> {
                     val task = node.task
@@ -391,8 +398,10 @@ class EvaluationPanel(private val project: Project) : SimpleToolWindowPanel(true
                     row.icon(AllIcons.FileTypes.Text)
                     row.text(list.file.name)
                     if (list.builtIn) row.pill("da spec", Tone.GRAY)
-                    row.bar(listOf(Segment(list.done, Tone.GREEN.accent), Segment(list.items.size - list.done, Tone.PINK.accent)))
-                    row.text("${list.done}/${list.items.size}", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+                    row.bar(
+                        listOf(Segment(list.done, Tone.GREEN.accent), Segment(list.items.size - list.done, Tone.PINK.accent)),
+                        label = "${list.done}/${list.items.size}", attributes = SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES,
+                    )
                 }
                 is EvalNode.Check -> {
                     row.icon(if (node.item.done) AllIcons.Actions.Checked else AllIcons.Nodes.EmptyNode)

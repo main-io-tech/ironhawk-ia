@@ -212,9 +212,15 @@ class GitHubClient(private val apiUrl: String, private val graphQlUrl: String, p
         body = json.optString("body").orEmpty(),
     )
 
-    fun reviewComments(repo: GitHubRepo, number: Int, reviewId: Long): List<PostedComment> =
-        request("GET", "${repoPath(repo)}/pulls/$number/reviews/$reviewId/comments?per_page=100")
-            .asJsonArray.map { postedComment(it.asJsonObject) }
+    fun reviewComments(repo: GitHubRepo, number: Int, reviewId: Long): List<PostedComment> {
+        val comments = mutableListOf<PostedComment>()
+        for (page in 1..MAX_PAGES) {
+            val batch = request("GET", "${repoPath(repo)}/pulls/$number/reviews/$reviewId/comments?per_page=100&page=$page").asJsonArray
+            batch.forEach { comments += postedComment(it.asJsonObject) }
+            if (batch.size() < 100) break
+        }
+        return comments
+    }
 
     /** Comentário sobre o arquivo inteiro, fora de qualquer linha do diff. */
     fun createFileComment(repo: GitHubRepo, number: Int, commitSha: String, path: String, body: String): PostedComment {
@@ -253,10 +259,11 @@ class GitHubClient(private val apiUrl: String, private val graphQlUrl: String, p
 
     fun reviewThreads(repo: GitHubRepo, number: Int): List<ReviewThread> {
         val query = """
-            query(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!) {
+            query(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!, ${'$'}after: String) {
               repository(owner: ${'$'}owner, name: ${'$'}name) {
                 pullRequest(number: ${'$'}number) {
-                  reviewThreads(first: 100) {
+                  reviewThreads(first: 100, after: ${'$'}after) {
+                    pageInfo { hasNextPage endCursor }
                     nodes { isResolved isOutdated comments(first: 50) { nodes { databaseId body createdAt author { login } } } }
                   }
                 }
@@ -268,8 +275,7 @@ class GitHubClient(private val apiUrl: String, private val graphQlUrl: String, p
             addProperty("name", repo.name)
             addProperty("number", number)
         }
-        val nodes = graphQl(query, variables).getAsJsonObject("repository")?.getAsJsonObject("pullRequest")
-            ?.getAsJsonObject("reviewThreads")?.getAsJsonArray("nodes") ?: return emptyList()
+        val nodes = pullRequestWithAllThreads(query, variables)?.getAsJsonObject("reviewThreads")?.getAsJsonArray("nodes") ?: return emptyList()
         return nodes.mapNotNull { node ->
             val thread = node.asJsonObject
             val comments = thread.getAsJsonObject("comments")?.getAsJsonArray("nodes")?.map { it.asJsonObject }.orEmpty()
@@ -293,10 +299,11 @@ class GitHubClient(private val apiUrl: String, private val graphQlUrl: String, p
     fun discussions(repo: GitHubRepo, number: Int): List<Discussion> {
         val comment = "databaseId body createdAt url author { login }"
         val query = """
-            query(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!) {
+            query(${'$'}owner: String!, ${'$'}name: String!, ${'$'}number: Int!, ${'$'}after: String) {
               repository(owner: ${'$'}owner, name: ${'$'}name) {
                 pullRequest(number: ${'$'}number) {
-                  reviewThreads(first: 100) {
+                  reviewThreads(first: 100, after: ${'$'}after) {
+                    pageInfo { hasNextPage endCursor }
                     nodes {
                       id path line originalLine startLine originalStartLine isResolved isOutdated
                       comments(first: 100) { nodes { $comment state } }
@@ -313,7 +320,7 @@ class GitHubClient(private val apiUrl: String, private val graphQlUrl: String, p
             addProperty("name", repo.name)
             addProperty("number", number)
         }
-        val pullRequest = graphQl(query, variables).getAsJsonObject("repository")?.getAsJsonObject("pullRequest") ?: return emptyList()
+        val pullRequest = pullRequestWithAllThreads(query, variables) ?: return emptyList()
         return Discussions.parse(pullRequest)
     }
 
@@ -372,6 +379,28 @@ class GitHubClient(private val apiUrl: String, private val graphQlUrl: String, p
     }
 
     /** O `data` da resposta; os erros do GraphQL viram exceção. */
+    /**
+     * O `pullRequest` de [query] com as conversas de linha de todas as páginas: um PR com mais de 100 conversas (comum com
+     * bots de revisão) não pode perder as mais novas em silêncio. A [query] recebe `after` e pede o `pageInfo` das
+     * conversas; a primeira resposta fica com os nós de todas as páginas.
+     */
+    private fun pullRequestWithAllThreads(query: String, variables: JsonObject): JsonObject? {
+        var first: JsonObject? = null
+        var after: String? = null
+        for (page in 1..MAX_PAGES) {
+            val paged = variables.deepCopy().apply { after?.let { addProperty("after", it) } }
+            val pullRequest = graphQl(query, paged).getAsJsonObject("repository")?.getAsJsonObject("pullRequest") ?: break
+            val threads = pullRequest.getAsJsonObject("reviewThreads")
+            val all = first
+            if (all == null) first = pullRequest
+            else threads?.getAsJsonArray("nodes")?.let { nodes -> all.getAsJsonObject("reviewThreads")?.getAsJsonArray("nodes")?.addAll(nodes) }
+            val info = threads?.getAsJsonObject("pageInfo")
+            if (info?.get("hasNextPage")?.takeUnless { it is JsonNull }?.asBoolean != true) break
+            after = info.optString("endCursor") ?: break
+        }
+        return first
+    }
+
     private fun graphQl(query: String, variables: JsonObject): JsonObject {
         val payload = JsonObject().apply {
             addProperty("query", query)

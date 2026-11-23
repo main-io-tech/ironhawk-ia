@@ -11,12 +11,10 @@ class CompatibilityTest {
         pluginVersion = "0.1.0",
         ide = "IntelliJ IDEA 2025.2 (build IU-252.1)",
         system = "Windows 11, Java 21",
-        javaPlugin = true,
         junitPlugin = true,
         githubPlugins = true,
-        jcef = true,
         vcs = listOf("Git"),
-        extraTabs = setOf("Raio de Impacto", "Escudo", "Patrulha"),
+        extraTabs = setOf("Escudo", "Patrulha"),
         tabFailures = emptyMap(),
         githubAccount = true,
         agentCli = "C:/Users/dev/.local/bin/agent.exe",
@@ -33,23 +31,12 @@ class CompatibilityTest {
     }
 
     @Test
-    fun withoutTheJavaPluginTheImpactTabIsUnavailable() {
-        val env = healthy.copy(javaPlugin = false, extraTabs = setOf("Escudo", "Patrulha"))
-
-        val impact = check(env, Mechanism.IMPACTO)
-
-        assertEquals(CheckStatus.ERROR, impact.status)
-        assertTrue(impact.detail.contains("plugin Java"))
-        assertEquals(listOf(Mechanism.IMPACTO), Compatibility.problems(Compatibility.evaluate(env)).map { it.mechanism })
-    }
-
-    @Test
     fun withTheDefenseOffOnlyTheSharedMechanismsWarn() {
-        val env = healthy.copy(javaPlugin = false, extraTabs = setOf("Escudo", "Patrulha"), agentCli = null)
+        val env = healthy.copy(extraTabs = setOf("Escudo", "Patrulha"), agentCli = null)
 
         val attackOnly = Compatibility.relevant(Compatibility.evaluate(env), defense = false)
 
-        assertTrue(attackOnly.none { it.mechanism == Mechanism.IMPACTO || it.mechanism == Mechanism.RADAR })
+        assertTrue(attackOnly.none { it.mechanism == Mechanism.ESCUDO || it.mechanism == Mechanism.RADAR })
         assertTrue(attackOnly.any { it.mechanism == Mechanism.INTERCEPTOR } && attackOnly.any { it.mechanism == Mechanism.CAIXA_PRETA })
         assertTrue(Compatibility.problems(attackOnly).isEmpty())
         assertEquals(Compatibility.evaluate(env), Compatibility.relevant(Compatibility.evaluate(env), defense = true))
@@ -68,20 +55,10 @@ class CompatibilityTest {
     }
 
     @Test
-    fun pluginActiveButTabNotRegisteredMeansThePartDidNotLoad() {
-        val env = healthy.copy(extraTabs = setOf("Escudo", "Patrulha"))
-
-        val impact = check(env, Mechanism.IMPACTO)
-
-        assertEquals(CheckStatus.ERROR, impact.status)
-        assertTrue(impact.detail.contains("não carregou"))
-    }
-
-    @Test
     fun aTabThatFailedToOpenShowsTheError() {
-        val env = healthy.copy(tabFailures = mapOf("Raio de Impacto" to "IllegalStateException: JCEF falhou"))
+        val env = healthy.copy(tabFailures = mapOf("Patrulha" to "IllegalStateException: JCEF falhou"))
 
-        val impact = check(env, Mechanism.IMPACTO)
+        val impact = check(env, Mechanism.PATRULHA)
 
         assertEquals(CheckStatus.ERROR, impact.status)
         assertTrue(impact.detail.contains("IllegalStateException: JCEF falhou"))
@@ -89,21 +66,13 @@ class CompatibilityTest {
     }
 
     @Test
-    fun withoutJcefTheDiagramIsLimited() {
-        val impact = check(healthy.copy(jcef = false), Mechanism.IMPACTO)
-
-        assertEquals(CheckStatus.WARNING, impact.status)
-        assertTrue(impact.fix!!.contains("Choose Boot Java Runtime"))
-    }
-
-    @Test
     fun withoutJUnitTheShieldIsUnavailable() {
-        assertEquals(CheckStatus.ERROR, check(healthy.copy(junitPlugin = false, extraTabs = setOf("Raio de Impacto", "Patrulha")), Mechanism.ESCUDO).status)
+        assertEquals(CheckStatus.ERROR, check(healthy.copy(junitPlugin = false, extraTabs = setOf("Patrulha")), Mechanism.ESCUDO).status)
     }
 
     @Test
     fun withoutTheGitHubPluginsThePatrolIsOptional() {
-        val env = healthy.copy(githubPlugins = false, extraTabs = setOf("Raio de Impacto", "Escudo"))
+        val env = healthy.copy(githubPlugins = false, extraTabs = setOf("Escudo"))
 
         assertEquals(CheckStatus.INFO, check(env, Mechanism.PATRULHA).status)
         assertTrue(Compatibility.problems(Compatibility.evaluate(env)).isEmpty())
@@ -122,17 +91,17 @@ class CompatibilityTest {
 
     @Test
     fun markdownListsTheChecksAndTheLogErrors() {
-        val env = healthy.copy(javaPlugin = false)
+        val env = healthy.copy(tabFailures = mapOf("Patrulha" to "IllegalStateException: boom"))
         val error = PluginError(
-            "2026-11-03 13:00:00", "WARN", "A aba Raio de Impacto do Iron Dome IA não pôde ser aberta",
-            listOf("java.lang.IllegalStateException: boom", "\tat com.mio.irondome.impacto.DependencyPanel.<init>(DependencyPanel.kt:72)"),
+            "2026-11-03 13:00:00", "WARN", "A aba Patrulha do Iron Dome IA não pôde ser aberta",
+            listOf("java.lang.IllegalStateException: boom", "\tat com.mio.irondome.patrulha.PatrulhaPanel.<init>(PatrulhaPanel.kt:72)"),
         )
 
         val text = Compatibility.markdown(env, Compatibility.evaluate(env), listOf(error))
 
-        assertTrue(text.contains("| Raio de Impacto | Indisponível |"))
-        assertTrue(text.contains("### 2026-11-03 13:00:00 · WARN: A aba Raio de Impacto"))
-        assertTrue(text.contains("com.mio.irondome.impacto.DependencyPanel.<init>"))
+        assertTrue(text.contains("| Patrulha | Indisponível |"))
+        assertTrue(text.contains("### 2026-11-03 13:00:00 · WARN: A aba Patrulha"))
+        assertTrue(text.contains("com.mio.irondome.patrulha.PatrulhaPanel.<init>"))
     }
 
     @Test

@@ -1,7 +1,9 @@
 package com.mio.irondome.interceptor
 
+import com.mio.irondome.base.IronHawkVisual
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
@@ -12,6 +14,7 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.TitledSeparator
 import com.intellij.ui.components.ActionLink
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.components.JBTextField
@@ -50,6 +53,8 @@ class AgentConfigurable : Configurable {
     private val model = JBTextField().apply { emptyText.text = "Padrão do CLI" }
     private val timeout = JSpinner(SpinnerNumberModel(AgentSettings.DEFAULT_TIMEOUT_MINUTES, 1, AgentSettings.MAX_TIMEOUT_MINUTES, 5))
     private val extraArgs = JBTextField().apply { emptyText.text = "Ex.: --approve-mcps" }
+    private val liteVisual = JBCheckBox("Visual leve")
+    private val keepRuns = JSpinner(SpinnerNumberModel(AgentSettings.DEFAULT_KEEP_RUNS, AgentSettings.MIN_KEEP_RUNS, AgentSettings.MAX_KEEP_RUNS, 5))
     /** Vazio mantém a chave salva; só o Remover a apaga, como na aba Arsenal. */
     private val cursorKey = JBPasswordField()
     private val keyState = JBLabel()
@@ -114,6 +119,11 @@ class AgentConfigurable : Configurable {
             .addComponentToRightColumn(comment("Vão para o CLI antes do pedido, separados por espaço; aspas agrupam."))
             .addLabeledComponent("Onde rodar a IA:", runMode)
             .addComponentToRightColumn(comment(ArsenalPanel.RUN_MODE_HINT))
+            .addLabeledComponent("Registros guardados:", keepRuns)
+            .addComponentToRightColumn(comment("Quantos registros de execução da IA ficam em ironhawk/. Os mais antigos são apagados quando uma execução termina."))
+            .addComponent(TitledSeparator("Aparência"))
+            .addComponent(liteVisual)
+            .addComponent(comment("Para máquinas mais fracas: tira a animação das barras de andamento, as barras de proporção das árvores e os destaques coloridos dos nomes. A informação é a mesma."))
             .addComponent(TitledSeparator("Cursor"))
             .addLabeledComponent("Chave de API do Cursor:", cursorKey)
             .addComponentToRightColumn(comment(ArsenalPanel.CURSOR_KEY_HINT))
@@ -146,6 +156,8 @@ class AgentConfigurable : Configurable {
             model.text.trim() != AgentSettings.model.orEmpty() ||
             (timeout.value as Int) != AgentSettings.timeoutMinutes ||
             extraArgs.text.trim() != AgentSettings.extraArgs.orEmpty() ||
+            (keepRuns.value as Int) != AgentSettings.keepRuns ||
+            liteVisual.isSelected != IronHawkVisual.lite ||
             runMode.selectedItem != AgentSettings.runMode ||
             String(cursorKey.password).isNotBlank()
 
@@ -160,6 +172,8 @@ class AgentConfigurable : Configurable {
         AgentSettings.model = model.text
         AgentSettings.timeoutMinutes = timeout.value as Int
         AgentSettings.extraArgs = extraArgs.text
+        AgentSettings.keepRuns = keepRuns.value as Int
+        IronHawkVisual.lite = liteVisual.isSelected
         AgentSettings.runMode = runMode.selectedItem as AgentRunMode
         val key = String(cursorKey.password).trim()
         cursorKey.text = ""
@@ -167,8 +181,14 @@ class AgentConfigurable : Configurable {
         updateHints()
         if (key.isEmpty() && then == null) return
         ApplicationManager.getApplication().executeOnPooledThread {
-            if (key.isNotEmpty()) AgentSettings.cursorApiKey = key
-            then?.let { ApplicationManager.getApplication().invokeLater(it, ModalityState.any()) }
+            // Uma falha no cofre de senhas não pode impedir o teste que vem depois, que reabilita os botões.
+            try {
+                if (key.isNotEmpty()) AgentSettings.cursorApiKey = key
+            } catch (e: Exception) {
+                logger<AgentConfigurable>().warn("A chave do Cursor não pôde ser salva", e)
+            } finally {
+                then?.let { ApplicationManager.getApplication().invokeLater(it, ModalityState.any()) }
+            }
         }
     }
 
@@ -180,6 +200,8 @@ class AgentConfigurable : Configurable {
         model.text = AgentSettings.model.orEmpty()
         timeout.value = AgentSettings.timeoutMinutes
         extraArgs.text = AgentSettings.extraArgs.orEmpty()
+        keepRuns.value = AgentSettings.keepRuns
+        liteVisual.isSelected = IronHawkVisual.lite
         runMode.selectedItem = AgentSettings.runMode
         cursorKey.text = ""
         updateKeyState(AgentSettings.hasCursorApiKey)

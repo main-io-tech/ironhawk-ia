@@ -56,6 +56,14 @@ class InterceptorTest {
         assertFalse("--permission-mode" in read)
         assertEquals(listOf("--model", "sonnet", "--approve-mcps", "Revise o PR seguindo as instrucoes responda"), read.takeLast(4))
         assertTrue("só editar, sem liberar os comandos", write.containsAll(listOf("--permission-mode", "acceptEdits")))
+        assertEquals(
+            "apagar arquivo versionado é o único comando liberado, e só em quem altera: sem ele, uma decisão de remover código não era aplicada",
+            "Bash(git rm *)",
+            write[write.indexOf("--allowedTools") + 1],
+        )
+        assertEquals("a liberação também vem antes de outra opção", "--output-format", write[write.indexOf("--allowedTools") + 2])
+        assertFalse("--allowedTools" in read)
+        assertTrue("apagar em massa continua recusado", listOf("Bash(git rm -r *)", "Bash(git rm -f *)").all { it in AgentGuard.claudeDisallowedTools })
         assertFalse("bypassPermissions" in write)
         assertEquals(
             "o teste não libera nada",

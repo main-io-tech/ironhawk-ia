@@ -415,6 +415,7 @@ class PatrulhaService(private val project: Project) : PersistentStateComponent<P
             stashSha = stashTop(context)?.takeIf { it != before }.orEmpty()
         }
         val previous = state.returnPoint
+        val previousPullRequest = previous?.pullRequest
         val restorable = previous == null && origin != null
         state.returnPoint = when {
             previous != null -> previous.apply { pullRequest = number }
@@ -425,7 +426,8 @@ class PatrulhaService(private val project: Project) : PersistentStateComponent<P
             checkout(context, number)
         } catch (e: PatrulhaException) {
             if (stashSha.isNotEmpty()) runCatching { popStash(context, stashSha) }
-            if (previous == null) state.returnPoint = null
+            // O checkout falhou: o ponto de volta continua sendo o do PR em que o usuário ainda está.
+            if (previous == null) state.returnPoint = null else previousPullRequest?.let { previous.pullRequest = it }
             throw e
         }
         return EnterResult(stashSha, stashMessage, restorable && stashSha.isNotEmpty())
@@ -599,8 +601,9 @@ class PatrulhaService(private val project: Project) : PersistentStateComponent<P
                     inline.map { GitHubClient.InlineComment(it.comment.filePath, it.startLine, it.line!!, it.body) },
                 ).also { posted += client.reviewComments(context.repo, pr.number, it.id) }
             } catch (e: GitHubException) {
-                throw if (e.status == 422) {
-                    PatrulhaException("Você já tem um rascunho de revisão neste PR, aberto pelo GitHub: publique ou descarte lá antes de enviar por aqui.")
+                // O 422 também vem por outros motivos, como uma linha fora do diff: só o do rascunho ganha este texto.
+                throw if (e.status == 422 && e.message.orEmpty().contains("pending review", ignoreCase = true)) {
+                    PatrulhaException("Você já tem um rascunho de revisão neste PR: publique ou descarte no GitHub antes de enviar por aqui.")
                 } else e
             }
         } else {
@@ -876,6 +879,7 @@ class PatrulhaService(private val project: Project) : PersistentStateComponent<P
     private fun write(record: PullRequestRecord): PullRequestRecord {
         val file = recordFile(record.number) ?: throw PatrulhaException("O projeto não tem pasta no disco.")
         Files.createDirectories(file.parent)
+        IronHawkFolder.keepLocal(project)
         Files.writeString(file, ChangeRequestMarkdown.render(record))
         recordCache.remove(record.number)
         LocalFileSystem.getInstance().refreshNioFiles(listOf(file), true, false, null)

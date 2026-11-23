@@ -31,6 +31,7 @@ import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.ui.PopupHandler
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SimpleTextAttributes
+import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.panels.VerticalLayout
 import com.mio.irondome.base.IronDomeIcons
 import com.mio.irondome.base.MechanismTree
@@ -90,14 +91,22 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     private var historyCount = 0
     private var hasArchive = false
 
+    /** Os alvos e a discussão em andamento, cada um na sua aba: a discussão pede leitura e não cabe acima da árvore. */
+    private val views = JBTabbedPane()
+    private val discussion = DiscussionPanel(project, this)
+    /** Em que ponto a discussão estava no último aviso: a aba dela só vem para a frente quando isso muda. */
+    private var discussionStage = ""
+
     init {
+        views.addTab(TARGETS_TAB, ScrollPaneFactory.createScrollPane(tree, true))
+        views.addTab(discussion.title(), discussion)
+        discussion.onChange = ::discussionChanged
         setContent(JPanel(BorderLayout()).apply {
             add(JPanel(VerticalLayout(0)).apply {
                 add(header)
                 add(AgentProgressPanel(project, DefenseTabs.RADAR, this@CommentsPanel))
-                add(DiscussionPanel(project, this@CommentsPanel))
             }, BorderLayout.NORTH)
-            add(ScrollPaneFactory.createScrollPane(tree, true), BorderLayout.CENTER)
+            add(views, BorderLayout.CENTER)
         })
         toolbar = createToolbar()
         installNavigation()
@@ -113,6 +122,24 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     }
 
     override fun dispose() = Unit
+
+    /**
+     * A discussão andou: o título da aba diz em que ponto ela está. A aba vem para a frente quando a IA termina de
+     * responder ou a discussão começa, e os alvos voltam quando ela acaba; fora disso, fica onde o usuário deixou.
+     */
+    private fun discussionChanged() {
+        views.setTitleAt(DISCUSSION_INDEX, discussion.title())
+        val session = project.service<DiscussionService>().session
+        val stage = when {
+            session == null -> ""
+            session.busy -> "busy"
+            session.confirming -> "confirm"
+            else -> "ask"
+        }
+        if (stage == discussionStage) return
+        discussionStage = stage
+        views.selectedIndex = if (session == null) TARGETS_INDEX else DISCUSSION_INDEX
+    }
 
     /**
      * À vista, o fluxo principal: Comentário Geral, Disparar com IA, Expandir e Recolher. No ⋮, por assunto: as regras
@@ -588,6 +615,9 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
 
     private class Renderer : RichTreeCellRenderer() {
 
+        /** A linha sai só do item, e a árvore é refeita quando algo muda. */
+        override fun cacheStamp(): Any = Unit
+
         override fun describe(row: Row, value: Any?) {
             when (val item = (value as? DefaultMutableTreeNode)?.userObject) {
                 is ReviewItem -> {
@@ -600,15 +630,16 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                         item.archived -> row.pill("Consolidada", Tone.GRAY)
                         else -> row.pill("Histórico", Tone.GRAY)
                     }
-                    row.bar(listOf(Segment(resolved, CommentStatus.RESOLVED.accent), Segment(item.pending, CommentStatus.PENDING.accent)))
-                    row.text("$resolved/${item.total} interceptados", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    row.bar(listOf(Segment(resolved, CommentStatus.RESOLVED.accent), Segment(item.pending, CommentStatus.PENDING.accent)), label = "$resolved/${item.total} interceptados")
                 }
                 is ArchiveItem -> {
                     row.icon(AllIcons.FileTypes.Archive)
                     row.text("Histórico consolidado", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                     row.pill(plural(item.reviews, "revisão", "revisões"), Tone.BLUE, bold = true)
-                    row.bar(listOf(Segment(item.comments - item.pending, CommentStatus.RESOLVED.accent), Segment(item.pending, CommentStatus.PENDING.accent)))
-                    row.text(plural(item.comments, "comentário", "comentários"), SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    row.bar(
+                        listOf(Segment(item.comments - item.pending, CommentStatus.RESOLVED.accent), Segment(item.pending, CommentStatus.PENDING.accent)),
+                        label = plural(item.comments, "comentário", "comentários"),
+                    )
                     if (item.pending > 0) row.pill(plural(item.pending, "pendente", "pendentes"), CommentStatus.PENDING.tone)
                     row.text(ReviewArchive.FILE_NAME, SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
                     row.tooltip("${ReviewCommentService.REVIEW_DIR}/${ReviewArchive.FILE_NAME} · duplo clique abre o arquivo")
@@ -658,6 +689,9 @@ class CommentsPanel(private val project: Project) : SimpleToolWindowPanel(true, 
 
     private companion object {
         const val ARCHIVE_KEY = "archive"
+        const val TARGETS_TAB = "Alvos"
+        const val TARGETS_INDEX = 0
+        const val DISCUSSION_INDEX = 1
         const val PROJECT_COMMENT_HINT = "Marca um alvo sobre o projeto todo, sem arquivo nem linha"
         const val RULES_CHECK_HINT = "A IA confere, sem alterar nada, se as alterações cumprem as regras de IA do projeto"
     }

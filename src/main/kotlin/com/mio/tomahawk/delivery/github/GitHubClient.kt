@@ -62,7 +62,7 @@ class GitHubClient(private val apiUrl: String, private val token: String, privat
         for (page in 1..MAX_PAGES) {
             val batch = request("GET", "${repoPath(repo)}/pulls?state=open&sort=updated&direction=desc&per_page=100&page=$page").asJsonArray
             batch.map { it.asJsonObject }
-                .filter { it.getAsJsonObject("user")?.optString("login").equals(author, ignoreCase = true) }
+                .filter { (it.get("user") as? JsonObject)?.optString("login").equals(author, ignoreCase = true) }
                 .forEach { json ->
                     prs += WatchedPr(pullRequest(json), json.getAsJsonObject("head").string("ref"), json.optString("updated_at").orEmpty(), emptyList())
                 }
@@ -98,7 +98,7 @@ class GitHubClient(private val apiUrl: String, private val token: String, privat
         return PrComment(
             key = "$prefix:$id",
             id = id,
-            author = json.getAsJsonObject("user")?.optString("login") ?: "fantasma",
+            author = (json.get("user") as? JsonObject)?.optString("login") ?: "fantasma",
             body = json.optString("body").orEmpty(),
             createdAt = json.optString("created_at").orEmpty(),
             url = json.optString("html_url").orEmpty(),

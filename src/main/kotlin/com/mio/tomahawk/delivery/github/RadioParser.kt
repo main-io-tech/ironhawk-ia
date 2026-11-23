@@ -64,7 +64,8 @@ internal object RadioParser {
         return PrComment(
             key = "$prefix:$id",
             id = id,
-            author = node.getAsJsonObject("author")?.str("login") ?: "fantasma",
+            // Conta apagada vem como `"author": null`, que o Gson guarda como JsonNull, não como ausente.
+            author = (node.get("author") as? JsonObject)?.str("login") ?: "fantasma",
             body = node.str("body").orEmpty(),
             createdAt = date ?: node.str("createdAt").orEmpty(),
             url = node.str("url").orEmpty(),

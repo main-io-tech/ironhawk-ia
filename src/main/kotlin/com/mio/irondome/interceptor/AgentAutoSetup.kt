@@ -1,6 +1,7 @@
 package com.mio.irondome.interceptor
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.application.ModalityState
 
 /**
@@ -24,31 +25,47 @@ object AgentAutoSetup {
 
     /** [onProgress] e [onDone] rodam na EDT. */
     fun run(onProgress: (String) -> Unit, onDone: (Result) -> Unit) {
-        if (running || AgentVerifier.testing) return
+        if (running || AgentVerifier.testing) {
+            // Quem chamou desligou os botões à espera do fim: sem este aviso, eles ficariam desligados.
+            onDone(Result(false, "Já há um teste da IA em andamento. Espere ele terminar e tente de novo."))
+            return
+        }
         running = true
         AgentSettings.autoSetupTried = true
         onProgress("Procurando os CLIs de IA instalados…")
         ApplicationManager.getApplication().executeOnPooledThread {
-            val local = AgentProvider.entries.mapNotNull { provider ->
-                AgentSettings.find(provider)?.let { Candidate(provider, AgentHost.LOCAL, null, it.toString()) }
+            try {
+                search(onProgress, onDone)
+            } catch (e: Exception) {
+                logger<AgentAutoSetup>().warn("A configuração automática da IA falhou", e)
+                ApplicationManager.getApplication().invokeLater({
+                    finish(onDone, Result(false, "A busca pelos CLIs falhou: ${e.message ?: e.javaClass.simpleName}"))
+                }, ModalityState.any())
             }
-            val wsl = if (!AgentLaunch.wslSupported) emptyList() else {
-                ApplicationManager.getApplication().invokeLater({ onProgress("Procurando os CLIs de IA no WSL…") }, ModalityState.any())
-                AgentLaunch.distributions().flatMap { distro ->
-                    AgentProvider.entries.mapNotNull { provider ->
-                        AgentLaunch.findInWsl(provider, distro)?.let { Candidate(provider, AgentHost.WSL, distro, "WSL $distro: $it") }
-                    }
-                }
-            }
-            val found = local + wsl
-            ApplicationManager.getApplication().invokeLater({
-                if (found.isEmpty()) {
-                    finish(onDone, Result(false, notFound()))
-                } else {
-                    tryNext(found, 0, emptyList(), onProgress, onDone)
-                }
-            }, ModalityState.any())
         }
+    }
+
+    /** Fora da EDT: procura os CLIs nesta máquina e no WSL e testa um por um. */
+    private fun search(onProgress: (String) -> Unit, onDone: (Result) -> Unit) {
+        val local = AgentProvider.entries.mapNotNull { provider ->
+            AgentSettings.find(provider)?.let { Candidate(provider, AgentHost.LOCAL, null, it.toString()) }
+        }
+        val wsl = if (!AgentLaunch.wslSupported) emptyList() else {
+            ApplicationManager.getApplication().invokeLater({ onProgress("Procurando os CLIs de IA no WSL…") }, ModalityState.any())
+            AgentLaunch.distributions().flatMap { distro ->
+                AgentProvider.entries.mapNotNull { provider ->
+                    AgentLaunch.findInWsl(provider, distro)?.let { Candidate(provider, AgentHost.WSL, distro, "WSL $distro: $it") }
+                }
+            }
+        }
+        val found = local + wsl
+        ApplicationManager.getApplication().invokeLater({
+            if (found.isEmpty()) {
+                finish(onDone, Result(false, notFound()))
+            } else {
+                tryNext(found, 0, emptyList(), onProgress, onDone)
+            }
+        }, ModalityState.any())
     }
 
     private fun tryNext(found: List<Candidate>, index: Int, failures: List<String>, onProgress: (String) -> Unit, onDone: (Result) -> Unit) {

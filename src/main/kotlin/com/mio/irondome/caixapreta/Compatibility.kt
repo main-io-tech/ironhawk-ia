@@ -6,7 +6,6 @@ import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
-import com.intellij.ui.jcef.JBCefApp
 import com.mio.irondome.base.ReviewToolWindowTab
 import com.mio.irondome.base.TabFailures
 import com.mio.irondome.interceptor.AgentSettings
@@ -27,11 +26,9 @@ data class Environment(
     val pluginVersion: String,
     val ide: String,
     val system: String,
-    val javaPlugin: Boolean,
     val junitPlugin: Boolean,
     /** Os plugins Git e GitHub da IDE, que a Patrulha usa juntos. */
     val githubPlugins: Boolean,
-    val jcef: Boolean,
     val vcs: List<String>,
     /** Títulos das abas extras registradas, que só existem quando o plugin de que dependem carregou. */
     val extraTabs: Set<String>,
@@ -47,7 +44,6 @@ data class Environment(
 object Compatibility {
 
     private const val PLUGIN_ID = "com.mio.ironhawk"
-    private const val JAVA_PLUGIN = "com.intellij.java"
     private const val JUNIT_PLUGIN = "JUnit"
     private const val GIT_PLUGIN = "Git4Idea"
     private const val GITHUB_PLUGIN = "org.jetbrains.plugins.github"
@@ -59,10 +55,8 @@ object Compatibility {
             pluginVersion = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.version ?: "desconhecida",
             ide = "${app.fullApplicationName} (build ${app.build.asString()})",
             system = "${SystemInfo.OS_NAME} ${SystemInfo.OS_VERSION}, Java ${SystemInfo.JAVA_RUNTIME_VERSION}",
-            javaPlugin = pluginEnabled(JAVA_PLUGIN),
             junitPlugin = pluginEnabled(JUNIT_PLUGIN),
             githubPlugins = pluginEnabled(GIT_PLUGIN) && pluginEnabled(GITHUB_PLUGIN),
-            jcef = runCatching { JBCefApp.isSupported() }.getOrDefault(false),
             vcs = ProjectLevelVcsManager.getInstance(project).allActiveVcss.map { it.displayName },
             extraTabs = ReviewToolWindowTab.EP_NAME.extensionList.mapTo(mutableSetOf()) { it.title },
             tabFailures = TabFailures.all,
@@ -81,7 +75,6 @@ object Compatibility {
         radar(env),
         CompatibilityCheck(Mechanism.COMANDO, CheckStatus.OK, "Não depende de outros plugins."),
         sentinela(env),
-        impacto(env),
         escudo(env),
         patrulha(env),
         interceptor(env),
@@ -102,7 +95,7 @@ object Compatibility {
     fun problems(checks: List<CompatibilityCheck>) = checks.filter { it.status == CheckStatus.WARNING || it.status == CheckStatus.ERROR }
 
     /** Os mecanismos que só existem na Defesa; com ela desligada, eles não contam. */
-    private val DEFENSE_ONLY = setOf(Mechanism.RADAR, Mechanism.COMANDO, Mechanism.SENTINELA, Mechanism.IMPACTO, Mechanism.ESCUDO, Mechanism.PATRULHA)
+    private val DEFENSE_ONLY = setOf(Mechanism.RADAR, Mechanism.COMANDO, Mechanism.SENTINELA, Mechanism.ESCUDO, Mechanism.PATRULHA)
 
     /** O que vale com os sistemas ligados agora: sem a Defesa, ficam a IA e a Caixa-Preta, comuns aos dois. */
     fun relevant(checks: List<CompatibilityCheck>, defense: Boolean) = if (defense) checks else checks.filter { it.mechanism !in DEFENSE_ONLY }
@@ -125,27 +118,6 @@ object Compatibility {
                 "Ative o Git em VCS > Enable Version Control Integration.",
             )
             else -> CompatibilityCheck(Mechanism.SENTINELA, CheckStatus.OK, "Controle de versão: ${env.vcs.joinToString()}.")
-        }
-    }
-
-    private fun impacto(env: Environment): CompatibilityCheck {
-        val title = Mechanism.IMPACTO.title
-        val failure = env.tabFailures[title]
-        return when {
-            failure != null -> failed(Mechanism.IMPACTO, title, failure)
-            !env.javaPlugin -> CompatibilityCheck(
-                Mechanism.IMPACTO, CheckStatus.ERROR,
-                "O plugin Java está ausente ou desativado nesta IDE, então a aba não aparece.",
-                "Ative o plugin Java em Settings > Plugins > Installed. Ele vem no IntelliJ IDEA; IDEs sem suporte a Java, como PyCharm e WebStorm, não têm.",
-            )
-            title !in env.extraTabs -> notLoaded(Mechanism.IMPACTO, "Java")
-            !env.jcef -> CompatibilityCheck(
-                Mechanism.IMPACTO, CheckStatus.WARNING,
-                "O navegador embutido (JCEF) não está disponível: a aba abre, mas o diagrama não é desenhado.",
-                "Na IntelliJ 2026.2 ou mais nova, confira se o plugin Web Browser (JCEF) está ativo em Settings > Plugins. " +
-                    "Nas anteriores, em Help > Find Action, rode Choose Boot Java Runtime for the IDE, escolha um runtime com JCEF e reinicie a IDE.",
-            )
-            else -> CompatibilityCheck(Mechanism.IMPACTO, CheckStatus.OK, "Plugin Java ativo e navegador embutido (JCEF) disponível.")
         }
     }
 

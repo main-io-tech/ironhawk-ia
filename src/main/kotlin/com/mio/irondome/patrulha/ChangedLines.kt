@@ -81,6 +81,8 @@ class ChangedLines(private val project: Project) {
                     throw e
                 } catch (e: Exception) {
                     LOG.warn("Não deu para ler os arquivos do PR #$number", e)
+                    // Uma falha de rede não pode deixar o editor sem as marcas até reiniciar a IDE: a próxima atualização tenta de novo.
+                    ApplicationManager.getApplication().invokeLater({ requested.remove("$number@$head") }, project.disposed)
                 }
             }
 

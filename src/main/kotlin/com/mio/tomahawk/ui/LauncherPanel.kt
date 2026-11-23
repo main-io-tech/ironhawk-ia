@@ -12,16 +12,17 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
-import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.mio.irondome.base.Collapsible
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.TitledSeparator
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.util.ui.JBFont
@@ -85,11 +86,16 @@ private sealed interface FeatureChoice {
 /** Uma linha da lista de etapas: [mark] é o número dela na feature; [group], o título que abre um grupo. */
 private class StepRow(val status: StepStatus, val mark: String, val group: String? = null)
 
+/** Uma linha da lista de skills extras: [skill] é o que a busca achou no disco, nulo se ela não achou ou ainda procura. */
+private class SkillRow(val name: String, val skill: Skill?, val searching: Boolean)
+
 /**
- * A aba Lançador: as nove etapas do SDD, a constituição do projeto, que vale para todas as features, e as oito da
- * feature escolhida, com o estado de cada uma e a próxima em destaque. O formulário da etapa tem seções: a etapa (o
- * que ela faz e por que está no estado atual, com os detalhes recolhidos), Executar (a entrada e onde lançar), as
- * skills extras marcadas no Arsenal e a Entrega (commit, push e PR), recolhida até o usuário abrir.
+ * A aba Lançador, em três abas internas abaixo do cabeçalho:
+ * - Spec Kit: as nove etapas do SDD, a constituição do projeto, que vale para todas as features, e as oito da feature
+ *   escolhida, com o estado de cada uma e a próxima em destaque. O formulário da etapa traz o que ela faz, por que está
+ *   no estado atual (com os detalhes recolhidos) e Executar (a entrada e onde lançar).
+ * - Skills extras: as skills que o usuário adicionou ao Lançador no Arsenal, com um campo fixo para a instrução.
+ * - Entrega: commit, push e PR da feature escolhida na aba Spec Kit.
  *
  * Escolher outra feature no seletor só muda o que se vê: ela vira a ativa (`.specify/feature.json`) quando o
  * usuário lança uma etapa ou copia o comando.
@@ -190,12 +196,65 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         add(AgentProgressPanel(project, AttackTabs.LAUNCHER, this@LauncherPanel), BorderLayout.CENTER)
     }
 
-    /** Os botões das skills extras que o usuário marcou no Arsenal; some quando não há nenhuma. */
-    private val skillsRow = JPanel(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)).apply { isOpaque = false }
+    // Skills extras: a lista das que o usuário adicionou ao Lançador e, abaixo, a instrução e o botão da escolhida.
+    private val skillsModel = DefaultListModel<SkillRow>()
+    private val skillList = MechanismList(skillsModel, TomahawkIcons.lancador, Tone.ORANGE, fitWidth = true).apply {
+        selectionMode = ListSelectionModel.SINGLE_SELECTION
+        cellRenderer = SkillRenderer()
+        emptyText.text = "Nenhuma skill no Lançador."
+        emptyText.appendSecondaryText("Adicionar no Arsenal", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) {
+            AttackTabs.showTab(project, AttackTabs.ARSENAL)
+        }
+        addListSelectionListener { if (!it.valueIsAdjusting && !skillsLoading) skillChanged() }
+    }
+    private val skillTitle = WrapText(font = JBFont.h4())
+    private val skillInput = JBTextArea(5, 30).apply {
+        lineWrap = true
+        wrapStyleWord = true
+        font = JBFont.label()
+        emptyText.text = "Diga à skill onde focar, ou deixe em branco"
+        addKeyListener(object : KeyAdapter() {
+            override fun keyPressed(e: KeyEvent) {
+                if (e.keyCode == KeyEvent.VK_ENTER && (e.isControlDown || e.isMetaDown) && runSkill.isEnabled) {
+                    e.consume()
+                    runSelectedSkill()
+                }
+            }
+        })
+    }
+    private val runSkill = JButton("Executar Skill", AllIcons.Actions.Execute).apply {
+        putClientProperty(DarculaButtonUI.DEFAULT_STYLE_KEY, true)
+        toolTipText = "Ctrl+Enter"
+        addActionListener { runSelectedSkill() }
+    }
+
+    /** Por que o botão está desligado, ou o erro da última tentativa; some quando não há o que dizer. */
+    private val skillWhy = WrapText(font = JBFont.small(), color = UIUtil.getContextHelpForeground())
+    private val skillForm = JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)).apply {
+        border = JBUI.Borders.empty(10, 14, 14, 14)
+        add(skillTitle)
+        add(JBLabel("Instrução (opcional)").apply { font = JBFont.small().asBold(); foreground = UIUtil.getContextHelpForeground() })
+        add(ScrollPaneFactory.createScrollPane(skillInput))
+        add(wrapRow().apply { add(runSkill) })
+        add(skillWhy)
+    }
+
+    /** Sem skill escolhida, o formulário some e a lista, com o texto vazio, ocupa a aba toda. */
+    private val skillFormScroll = ScrollPaneFactory.createScrollPane(FitWidthPanel(skillForm), true)
 
     /** As skills extras achadas no disco, pelo nome; lidas fora da EDT. Nulo enquanto a primeira leitura não volta. */
     private var foundSkills: Map<String, Skill>? = null
     private var skillsGeneration = 0
+    private var skillsLoading = false
+
+    /** O texto escrito para cada skill, para trocar de skill sem perder o rascunho. */
+    private val skillDrafts = mutableMapOf<String, String>()
+    private var currentSkill: String? = null
+
+    /** A leitura do SKILL.md falhou na última tentativa; o aviso vale até trocar de skill. */
+    private var skillError: String? = null
+
+    private val tabs = JBTabbedPane()
 
     /** O texto escrito em cada etapa, para trocar de etapa sem perder o rascunho. */
     private val drafts = mutableMapOf<SddStep, String>()
@@ -229,12 +288,6 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             })
             add(modeHint)
             add(flying)
-            add(skillsRow)
-            add(JPanel(BorderLayout()).apply {
-                isOpaque = false
-                border = JBUI.Borders.emptyTop(8)
-                add(delivery, BorderLayout.CENTER)
-            })
         }
         val splitter = OnePixelSplitter(true, 0.45f).apply {
             firstComponent = JPanel(BorderLayout()).apply {
@@ -243,6 +296,18 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             }
             secondComponent = ScrollPaneFactory.createScrollPane(FitWidthPanel(form), true)
         }
+        val skillsSplitter = OnePixelSplitter(true, 0.45f).apply {
+            firstComponent = ScrollPaneFactory.createScrollPane(skillList, true)
+            secondComponent = skillFormScroll
+        }
+        val deliveryTab = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            border = JBUI.Borders.empty(10, 14, 14, 14)
+            add(delivery, BorderLayout.CENTER)
+        }
+        tabs.addTab(SPEC_KIT_TAB, splitter)
+        tabs.addTab("Skills extras", skillsSplitter)
+        tabs.addTab("Entrega", ScrollPaneFactory.createScrollPane(FitWidthPanel(deliveryTab), true))
         setContent(JPanel(BorderLayout()).apply {
             add(JPanel(VerticalLayout(0)).apply {
                 add(header)
@@ -250,7 +315,7 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 add(agentProgress)
                 add(initPanel)
             }, BorderLayout.NORTH)
-            add(splitter, BorderLayout.CENTER)
+            add(tabs, BorderLayout.CENTER)
         })
         toolbar = ActionManager.getInstance().createActionToolbar(
             "Tomahawk.LauncherToolbar",
@@ -285,6 +350,11 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 if (e.clickCount == 2) input.requestFocusInWindow()
             }
         })
+        skillList.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (e.clickCount == 2) skillInput.requestFocusInWindow()
+            }
+        })
         project.messageBus.connect(this).subscribe(SpecKitService.CHANGED, SpecKitService.Listener { reload(it) })
         project.messageBus.connect(this).subscribe(
             MissionRunner.RUNS,
@@ -313,10 +383,11 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
     override fun dispose() = Unit
 
     /**
-     * A Avaliação pediu uma etapa da feature [dir]: o Lançador escolhe a feature e a etapa. O Designar Alvo numa feature
-     * que já tem spec começa uma feature nova.
+     * A Avaliação pediu uma etapa da feature [dir]: o Lançador abre a aba Spec Kit e escolhe a feature e a etapa. O
+     * Designar Alvo numa feature que já tem spec começa uma feature nova.
      */
     private fun goto(step: SddStep, dir: Path?) {
+        tabs.selectedIndex = tabs.indexOfTab(SPEC_KIT_TAB)
         wanted = step
         val target = dir?.let(::choiceFor)
         when {
@@ -474,7 +545,7 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         flying.isVisible = inFlight
         agentProgress.isVisible = !inFlight
         updateHint()
-        updateSkills()
+        updateSkillButton()
     }
 
     private fun updateHint() {
@@ -536,7 +607,7 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         val generation = ++skillsGeneration
         if (ExtraSkills.selected.isEmpty()) {
             foundSkills = emptyMap()
-            updateSkills()
+            fillSkills()
             return
         }
         val root = service.root()
@@ -547,60 +618,77 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
             ApplicationManager.getApplication().invokeLater({
                 if (generation != skillsGeneration) return@invokeLater
                 foundSkills = found
-                updateSkills()
+                fillSkills()
             }, project.disposed)
         }
     }
 
-    /** Um botão por skill extra marcada no Arsenal; desligado se ela sumiu ou a IA não pode rodar agora. */
-    private fun updateSkills() {
-        skillsRow.removeAll()
+    /** Uma linha por skill adicionada ao Lançador no Arsenal; a escolha fica na mesma skill enquanto ela estiver lá. */
+    private fun fillSkills() {
         val chosen = ExtraSkills.selected.sorted()
-        skillsRow.isVisible = chosen.isNotEmpty()
-        if (chosen.isEmpty()) return
         val found = foundSkills
-        skillsRow.add(TitledSeparator("Skills extras"))
-        skillsRow.add(wrapRow().apply {
-            chosen.forEach { name ->
-                val skill = found?.get(name)
-                val why = when {
-                    found == null -> "Procurando a skill…"
-                    skill == null -> "Skill não encontrada no projeto nem nesta máquina: ajuste no Arsenal"
-                    !agent.available() -> "Teste a integração com a IA no Arsenal"
-                    agent.running != null -> "A IA já está trabalhando"
-                    runner.progress != null -> "Há uma missão em voo"
-                    else -> null
-                }
-                add(JButton(name, AllIcons.Actions.Execute).apply {
-                    isEnabled = why == null
-                    toolTipText = why ?: skill?.description?.takeIf { it.isNotBlank() } ?: "Roda a skill $name"
-                    addActionListener { skill?.let(::runSkill) }
-                })
-            }
-        })
-        skillsRow.revalidate()
-        skillsRow.repaint()
+        val keep = currentSkill
+        skillsLoading = true
+        try {
+            skillsModel.clear()
+            chosen.forEach { skillsModel.addElement(SkillRow(it, found?.get(it), found == null)) }
+            if (chosen.isNotEmpty()) skillList.selectedIndex = chosen.indexOf(keep).coerceAtLeast(0)
+        } finally {
+            skillsLoading = false
+        }
+        skillChanged()
     }
 
-    /** Pede uma instrução opcional e roda a skill com o CLI, o host e as proteções do Arsenal, sobre a feature escolhida. */
-    private fun runSkill(skill: Skill) {
-        val text = Messages.showMultilineInputDialog(
-            project,
-            "Instrução opcional para a skill ${skill.name}. Pode deixar em branco.",
-            "Skill ${skill.name}",
-            "",
-            AllIcons.Actions.Execute,
-            null,
-        ) ?: return
+    /** Trocar de skill guarda o rascunho da anterior e traz o da escolhida. */
+    private fun skillChanged() {
+        val name = skillList.selectedValue?.name
+        if (name != currentSkill) {
+            currentSkill?.let { skillDrafts[it] = skillInput.text }
+            currentSkill = name
+            skillInput.text = name?.let { skillDrafts[it] }.orEmpty()
+            skillError = null
+        }
+        skillTitle.text = name.orEmpty()
+        skillFormScroll.isVisible = name != null
+        skillFormScroll.parent?.revalidate()
+        updateSkillButton()
+    }
+
+    /** O botão desliga se a skill sumiu ou a IA não pode rodar agora; o motivo vai no tooltip e na linha abaixo. */
+    private fun updateSkillButton() {
+        val row = skillList.selectedValue
+        val why = when {
+            row == null -> "Escolha uma skill"
+            row.searching -> "Procurando a skill…"
+            row.skill == null -> "Skill não encontrada no projeto nem nesta máquina. Confira no Arsenal."
+            !agent.available() -> "Teste a integração com a IA no Arsenal"
+            agent.running != null -> "A IA já está trabalhando. Espere ela terminar."
+            runner.progress != null -> "Há uma missão em voo. Espere ela terminar."
+            else -> null
+        }
+        runSkill.isEnabled = why == null
+        runSkill.toolTipText = why ?: "Ctrl+Enter"
+        skillWhy.text = skillError ?: why.orEmpty()
+        skillWhy.isVisible = skillWhy.text.isNotEmpty()
+        skillForm.revalidate()
+        skillForm.repaint()
+    }
+
+    /** Roda a skill escolhida com o CLI, o host e as proteções do Arsenal, sobre a feature escolhida na aba Spec Kit. */
+    private fun runSelectedSkill() {
+        val skill = skillList.selectedValue?.skill ?: return
         val content = runCatching { Files.readString(skill.file) }.getOrNull()
         if (content == null) {
-            Messages.showErrorDialog(project, "Não consegui ler ${skill.file}.", "Skill ${skill.name}")
+            skillError = "Não foi possível ler a skill. Confira a pasta no Arsenal."
+            updateSkillButton()
             return
         }
+        skillError = null
         val feature = selectedFeature()?.let { service.snapshot.relative(it.dir) }
         val safeName = skill.name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val text = skillInput.text
         val file = agent.writeInstructions("skill-$safeName.md", ExtraSkills.instructions(skill, content, feature, text)) ?: return
-        agent.run(
+        val started = agent.run(
             AgentTask(
                 "Skill ${skill.name}",
                 "Execute a skill ${skill.name} seguindo as instruções em $file.",
@@ -608,6 +696,11 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
                 origin = AttackTabs.LAUNCHER,
             ),
         )
+        if (started) {
+            skillDrafts.remove(skill.name)
+            skillInput.text = ""
+        }
+        updateSkillButton()
     }
 
     /** Lançar confirma a feature escolhida: o [MissionRunner] grava a ativa antes de disparar. */
@@ -698,7 +791,31 @@ class LauncherPanel(private val project: Project) : SimpleToolWindowPanel(true, 
         }
     }
 
+    /** Linha da skill extra: o nome e a primeira frase da descrição, ou por que ela não pode rodar. */
+    private class SkillRenderer : ListCellRenderer<SkillRow> {
+        override fun getListCellRendererComponent(list: JList<out SkillRow>, value: SkillRow?, index: Int, selected: Boolean, focused: Boolean): Component {
+            val row = JPanel(VerticalLayout(JBUI.scale(2))).apply {
+                isOpaque = true
+                background = UIUtil.getListBackground(selected, focused)
+                border = JBUI.Borders.empty(5, 10)
+            }
+            value ?: return row
+            val width = (list.width - JBUI.scale(20)).coerceAtLeast(JBUI.scale(120))
+            val textColor = UIUtil.getListForeground(selected, focused)
+            val muted = if (selected) textColor else UIUtil.getContextHelpForeground()
+            row.add(WrapText(value.name, JBFont.label().asBold(), textColor).fit(width))
+            val detail = when {
+                value.searching -> "Procurando a skill…"
+                value.skill == null -> "Não encontrada no projeto nem nesta máquina"
+                else -> firstSentence(value.skill.description.trim())
+            }
+            if (detail.isNotEmpty()) row.add(WrapText(detail, JBFont.small(), muted).fit(width))
+            return row
+        }
+    }
+
     private companion object {
+        const val SPEC_KIT_TAB = "Spec Kit"
         val ACTIVE = setOf(StepState.READY, StepState.PARTIAL, StepState.RECOMMENDED)
     }
 }

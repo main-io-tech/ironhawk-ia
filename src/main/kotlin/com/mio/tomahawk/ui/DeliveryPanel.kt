@@ -10,7 +10,6 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.SimpleListCellRenderer
-import com.mio.irondome.base.Collapsible
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
@@ -53,7 +52,7 @@ import javax.swing.text.JTextComponent
 /**
  * A Entrega (a Extração): commit, push e pull request, quando o projeto está num repositório do GitHub. Os campos
  * começam com o que sai da spec e das tarefas da feature que [featureOf] devolve (a escolhida no Lançador); o que o
- * usuário escreve fica até a entrega dar certo. A seção começa recolhida, com o resumo no título.
+ * usuário escreve fica até a entrega dar certo. Fica numa aba própria do Lançador; sem Git e GitHub, diz o que falta.
  */
 class DeliveryPanel(
     private val project: Project,
@@ -64,6 +63,7 @@ class DeliveryPanel(
     private val pr = PullRequestService.getInstance(project)
     private val service = SpecKitService.getInstance(project)
 
+    private val unavailable = WrapText(font = JBFont.label(), color = UIUtil.getContextHelpForeground())
     private val pills = wrapRow()
     private val notices = JPanel(VerticalLayout(JBUI.scale(6), VerticalLayout.FILL)).apply { isOpaque = false }
     private val mode = ComboBox(DefaultComboBoxModel(DeliveryMode.entries.toTypedArray())).apply {
@@ -126,19 +126,15 @@ class DeliveryPanel(
     private var busy = false
     private var sentMode = DeliveryMode.PULL_REQUEST
 
-    private val content = JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)).apply {
-        isOpaque = false
-        border = JBUI.Borders.emptyTop(4)
-    }
-    private val section = Collapsible(this, TITLE_TEXT, false)
+    private val content = JPanel(VerticalLayout(JBUI.scale(8), VerticalLayout.FILL)).apply { isOpaque = false }
 
     init {
         isOpaque = false
+        content.add(unavailable)
         content.add(pills)
         content.add(notices)
         content.add(form)
-        section.setContentComponent(content)
-        section.setOn(false)
+        add(content, BorderLayout.CENTER)
         track(branch, BRANCH)
         track(commit, COMMIT)
         track(title, TITLE)
@@ -171,33 +167,39 @@ class DeliveryPanel(
     fun update() {
         val state = pr.state
         val local = state?.local
-        isVisible = pr.gateway != null && (state == null || local != null)
-        if (!isVisible) return
+        // Na aba própria, sumir deixaria a aba em branco: o texto diz o que falta para a Entrega funcionar.
+        unavailable.text = when {
+            pr.gateway == null -> "A Entrega precisa dos plugins Git e GitHub da IDE. Ligue os dois em Settings > Plugins."
+            state != null && local == null -> "A Entrega precisa de um repositório Git com remote do GitHub."
+            else -> ""
+        }
+        unavailable.isVisible = unavailable.text.isNotEmpty()
+        pills.removeAll()
+        notices.removeAll()
+        pills.isVisible = false
+        notices.isVisible = false
+        form.isVisible = false
+        if (unavailable.isVisible) {
+            revalidate()
+            repaint()
+            return
+        }
         val active = featureOf()
         if (active?.dir != feature) {
             edited.clear()
             feature = active?.dir
         }
-        pills.removeAll()
-        notices.removeAll()
         if (local == null) {
-            section.setTitle(TITLE_TEXT)
             notices.add(WrapText("Lendo o repositório Git…", JBFont.label(), UIUtil.getContextHelpForeground()))
-            form.isVisible = false
+            notices.isVisible = true
             revalidate()
             repaint()
             return
         }
         form.isVisible = true
+        pills.isVisible = true
         val remote = state.remote
         val open = remote?.openPr
-        section.setTitle(
-            listOfNotNull(
-                TITLE_TEXT,
-                "${local.changes.size} alteração(ões)".takeIf { local.changes.isNotEmpty() },
-                "PR #${open?.number} aberto".takeIf { open != null },
-            ).joinToString("  ·  "),
-        )
         pills.add(Pill(local.repo, Tone.GRAY, bold = true))
         pills.add(Pill(local.branch ?: "sem branch", Tone.BLUE))
         pills.add(Pill("${local.changes.size} alteração(ões)", if (local.changes.isNotEmpty()) Tone.YELLOW else Tone.GRAY))
@@ -390,7 +392,6 @@ class DeliveryPanel(
     private fun wrapRow() = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(3))).apply { isOpaque = false }
 
     private companion object {
-        const val TITLE_TEXT = "Entrega (commit, push e PR)"
         const val MAX_FILES = 40
         const val BRANCH = "branch"
         const val BASE = "base"

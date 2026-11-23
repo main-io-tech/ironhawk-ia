@@ -1,5 +1,6 @@
 package com.mio.tomahawk.run
 
+import com.mio.ironhawk.IronHawkFolder
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -104,7 +105,7 @@ object Guardrails {
     private val SECRET_GLOBS = SECRET_DIRS.map { "$it/**" } + SECRET_FILES
 
     private val SECRET_PATTERN = Regex(
-        """(?i)(^|[\\/~\s'"])(""" + SECRETS.joinToString("|") { Regex.escape(it).replace("/", """[\\/]""") } + """)([\\/\s'"]|$)|\bid_(rsa|ed25519|ecdsa|dsa)\b""",
+        """(?i)(^|[\\/~\s'"])(""" + SECRETS.joinToString("|") { secret -> secret.split('/').joinToString("""[\\/]""") { Regex.escape(it) } } + """)([\\/\s'"]|$)|\bid_(rsa|ed25519|ecdsa|dsa)\b""",
     )
 
     /** Variáveis de ambiente com segredos que a IA não recebe; as do próprio CLI passam. */
@@ -133,7 +134,8 @@ object Guardrails {
                 gitInternals(text, root) -> "a IA tentou alterar o repositório Git por dentro: $text"
                 else -> null
             }
-            kind in READ_TOOLS -> if (SECRET_PATTERN.containsMatchIn(text.replace('\\', '/'))) "a IA tentou ler credenciais da máquina: $text" else null
+            // Um `.npmrc` do próprio projeto não é credencial da máquina: só conta o que está fora da pasta do projeto.
+            kind in READ_TOOLS -> if (!inside(text, root) && SECRET_PATTERN.containsMatchIn(text.replace('\\', '/'))) "a IA tentou ler credenciais da máquina: $text" else null
             else -> null
         }
     }
@@ -230,6 +232,7 @@ object Guardrails {
     fun writeClaudeSettings(root: Path): Path {
         val file = root.resolve(RunStore.DIR).resolve("protecoes").resolve("claude.json")
         Files.createDirectories(file.parent)
+        IronHawkFolder.keepLocal(root)
         val text = claudeSettings()
         if (!Files.isRegularFile(file) || Files.readString(file) != text) Files.writeString(file, text)
         return file

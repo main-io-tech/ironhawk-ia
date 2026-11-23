@@ -1,5 +1,6 @@
 package com.mio.tomahawk.ui
 
+import com.mio.irondome.base.PulseBar
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -10,7 +11,6 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.panels.HorizontalLayout
 import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.util.ui.AsyncProcessIcon
-import com.intellij.util.ui.GraphicsUtil
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -23,15 +23,8 @@ import com.mio.irondome.base.WrapText
 import com.intellij.util.ui.WrapLayout
 import com.mio.tomahawk.run.MissionRunner
 import java.awt.BorderLayout
-import java.awt.Color
-import java.awt.Dimension
 import java.awt.FlowLayout
-import java.awt.GradientPaint
-import java.awt.Graphics
-import java.awt.Graphics2D
-import java.awt.geom.RoundRectangle2D
 import javax.swing.JButton
-import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.SwingConstants
 import javax.swing.Timer
@@ -152,56 +145,5 @@ class MissionProgressPanel(project: Project, parent: Disposable) : JPanel(Border
 
     private companion object {
         const val TICK_MS = 500
-    }
-}
-
-/** Barra fina com um brilho que percorre o trilho enquanto [running], para dizer "em andamento" sem porcentagem. */
-class PulseBar(private val tone: Tone) : JComponent() {
-
-    var running = true
-    private var phase = 0f
-    private val animation = Timer(40) {
-        phase = (phase + 0.012f) % 1f
-        repaint()
-    }
-
-    init {
-        isOpaque = false
-    }
-
-    fun tick() {
-        if (running && !animation.isRunning) animation.start()
-        if (!running && animation.isRunning) animation.stop()
-    }
-
-    override fun removeNotify() {
-        animation.stop()
-        super.removeNotify()
-    }
-
-    override fun getPreferredSize() = Dimension(JBUI.scale(160), JBUI.scale(8))
-
-    override fun paintComponent(g: Graphics) {
-        val g2 = g.create() as Graphics2D
-        try {
-            GraphicsUtil.setupAAPainting(g2)
-            val height = JBUI.scale(4).toFloat()
-            val top = (this.height - height) / 2
-            val track = RoundRectangle2D.Float(0f, top, width.toFloat(), height, height, height)
-            g2.color = Tone.GRAY.background
-            g2.fill(track)
-            if (!running) return
-            g2.clip(track)
-            val span = width * 0.35f
-            val x = -span + (width + span) * phase
-            val accent = tone.accent
-            val clear = Color(accent.red, accent.green, accent.blue, 0)
-            g2.paint = GradientPaint(x, 0f, clear, x + span / 2, 0f, accent)
-            g2.fill(RoundRectangle2D.Float(x, top, span / 2, height, height, height))
-            g2.paint = GradientPaint(x + span / 2, 0f, accent, x + span, 0f, clear)
-            g2.fill(RoundRectangle2D.Float(x + span / 2, top, span / 2, height, height, height))
-        } finally {
-            g2.dispose()
-        }
     }
 }

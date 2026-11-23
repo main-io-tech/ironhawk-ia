@@ -78,7 +78,7 @@ class AgentSettingsPlatformTest : BasePlatformTestCase() {
             val html = allTabsText(tab)
             AgentProvider.entries.forEach { assertTrue("${it.title} no seletor", it.title in html) }
             assertTrue("Configuração automática" in html)
-            assertTrue("tempo máximo e argumentos ficam recolhidos", "Opções avançadas" in html && "Argumentos extras" !in html)
+            assertTrue("tempo máximo e argumentos saíram da aba", "Opções avançadas" !in html && "Argumentos extras" !in html)
             assertTrue("sem o texto de divulgação", "O que a IA libera" !in html)
             assertTrue("as flags ficam recolhidas", "acceptEdits" !in html)
             assertTrue("a contenção aparece no Arsenal", "Contenção da IA" in html && "Desfazer Alterações da IA" in html)

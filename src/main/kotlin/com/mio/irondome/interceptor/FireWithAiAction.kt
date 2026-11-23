@@ -172,7 +172,10 @@ class FireWithAiAction : DumbAwareAction() {
                     origin = DefenseTabs.RADAR,
                 ),
                 "Abrir ${written.fileName}" to { _ -> runner.open(written) },
-            ) { if (discuss.isNotEmpty()) project.service<DiscussionService>().start(discuss) }
+            ) { result ->
+                // Cancelado ou com falha, o disparo não emenda outra execução da IA por conta própria.
+                if (result.ok && discuss.isNotEmpty()) project.service<DiscussionService>().start(discuss)
+            }
         }
 
         private fun relativeTo(base: String?, file: Path): String =

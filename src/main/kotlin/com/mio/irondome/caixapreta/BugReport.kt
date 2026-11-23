@@ -9,9 +9,8 @@ private const val DEFENSE = "com.mio.irondome"
 enum class Mechanism(val title: String, val qualifiedPackage: String, val contents: String, private val tabs: Set<String> = setOf(title)) {
     RADAR("Radar", "$DEFENSE.radar", "comentários, formulário, margem do editor, cartões e a aba Radar"),
     COMANDO("Centro de Comando", "$DEFENSE.comando", "geração e leitura do .md, histórico consolidado e as ações de salvar"),
-    IMPACTO("Raio de Impacto", "$DEFENSE.impacto", "análise de dependências, diagrama e métricas"),
     SENTINELA("Sentinela", "$DEFENSE.sentinela", "aba Sentinela e o diff dos arquivos não commitados"),
-    ESCUDO("Escudo", "$DEFENSE.escudo", "execução dos testes JUnit, formatação do @DisplayName e a aba Escudo"),
+    ESCUDO("Escudo", "$DEFENSE.escudo", "execução dos testes JUnit e a aba Escudo"),
     PATRULHA("Patrulha", "$DEFENSE.patrulha", "pull requests do GitHub, envio dos pedidos de alteração e a verificação deles"),
     DEFESA("Inteligência da IA", "$DEFENSE.defesa", "dossiê das classes, histórico do git, aprendizado e conflitos entre comentários"),
     INTERCEPTOR("Arsenal", "$DEFENSE.interceptor", "integração com a IA pelo CLI (Cursor, Claude Code, Codex ou Antigravity): configuração, execução e registro"),

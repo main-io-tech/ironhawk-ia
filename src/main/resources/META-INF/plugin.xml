@@ -19,17 +19,16 @@
         <kbd>Ctrl+Alt+Shift+M</kbd>, em modo <i>Aplicar direto</i> ou <i>Discutir antes de alterar</i>, e acompanhe
         pendentes e interceptados.</li>
       <li><b>👁️ Sentinela:</b> os arquivos não commitados, com o diff a um clique.</li>
-      <li><b>💥 Raio de Impacto:</b> o diagrama de classes de uma classe Java ou Kotlin e da vizinhança dela, com as
-        aferentes e eferentes.</li>
-      <li><b>🛡️ Escudo:</b> os testes JUnit organizados por <code>@Tag</code> ou por critério de aceite, com os cenários
-        Cucumber rodados fora da IDE.</li>
+      <li><b>🛡️ Escudo:</b> os testes JUnit por <code>@Tag</code>, com a ficha de cada teste: o resultado e o que ele
+        verifica de fato, lido do código.</li>
       <li><b>🛰️ Patrulha:</b> revisão dos pull requests do GitHub, com as respostas da IA nas conversas.</li>
     </ul>
     <h3>🚀 Ataque: Tomahawk</h3>
     <p>Conduz o Spec-Driven Development do <a href="https://github.com/github/spec-kit">Spec Kit</a> etapa por etapa:
     lança os comandos <code>/speckit</code> pelo CLI de IA, avalia os artefatos e acompanha cada execução.</p>
     <ul>
-      <li><b>🚀 Lançador:</b> as nove etapas da feature, com a próxima em destaque, e a Entrega (commit, push e PR).</li>
+      <li><b>🚀 Lançador:</b> as nove etapas da feature, com a próxima em destaque, as skills extras e a Entrega
+        (commit, push e PR), cada uma na sua aba.</li>
       <li><b>🎯 Avaliação:</b> spec, plano, tarefas e checklists gerados em <code>specs/NNN-feature/</code>, só leitura.</li>
       <li><b>📡 Telemetria:</b> o log ao vivo de cada passo da IA e o histórico das execuções.</li>
       <li><b>📻 Rádio:</b> os comentários dos seus PRs, com a resposta escrita pela IA.</li>
@@ -50,11 +49,43 @@
         Ctrl+S só grava o .md.</li>
       <li>Menu do editor com Marcar Trecho como Alvo, Marcar Arquivo Inteiro ou Pacote como Alvo e Cancelar Alvo do
         Trecho. A contagem de alvos é a mesma na árvore do projeto e na Sentinela (só pendentes).</li>
-      <li>Raio de Impacto sem risco nem cobertura de testes: o diagrama de classes e a tabela de aferentes e eferentes.</li>
-      <li>Escudo organizado por <code>@Tag</code> ou por critério de aceite, num menu só; sai o agrupamento pela chave do
-        <code>@DisplayName</code> e a visão Por execução. Os cenários Cucumber do XML entram nos mesmos grupos, com a
-        idade do XML e sem mudar o veredito, e repetidos valem uma vez. <b>Padronizar Testes</b> substitui Deixar no
-        Padrão e Ligar Testes aos Critérios. O catálogo aceita <code>exige:</code> em lista de bloco.</li>
+      <li>Escudo mais simples: uma árvore só, pela <code>@Tag</code> e pela classe, com o <code>@DisplayName</code> como
+        está escrito. A ficha mostra o resultado e o que cada teste verifica, lido do código e dito em português
+        (<i>checklist.tarefas tem 1 item</i>); num teste que confere pelo ator de um teste de aceitação, cada passo
+        aparece em palavras, com as asserções a um clique. Saem os critérios de aceite (o catálogo, Criar e Gerar
+        Critérios), Padronizar Testes, a aba Atenção, a prova fraca, Conferido e Está Errado e a leitura do
+        Cucumber.</li>
+      <li>Arsenal: a aba Recursos ganha as subabas <b>Skills</b> e <b>Spec Kit</b>. Em Skills, busca, filtro (Todas, No
+        Lançador, Disponíveis) e os botões <b>Adicionar</b> e <b>Remover</b>, com confirmação. A aba Execução fica em
+        seções recolhíveis, com <b>Defesa</b> e <b>Ataque</b> separados. Tempo máximo e argumentos extras saem da aba
+        IA e ficam só nas Settings.</li>
+      <li>Lançador em abas: <b>Spec Kit</b>, <b>Skills extras</b> e <b>Entrega</b>. A instrução de uma skill extra vai
+        num campo fixo da aba, sem janela. Sai Atualizar o Spec Kit: o plugin não consulta mais a versão nova.</li>
+      <li>Discutir antes de alterar virou uma entrevista, na aba <b>Discussão</b> do Radar: a IA responde ao comentário
+        em uma ou duas frases e traz uma decisão por vez, com a opção recomendada. Um texto seu é respondido e a
+        pergunta volta: a IA não decide por você. Nada é alterado antes de você confirmar o que ficou decidido, e aí o
+        comentário vira uma alteração, com a decisão escrita, para a IA aplicar.</li>
+      <li>Correção: com o tema da IDE fixando a altura das linhas, tudo o que passava para a segunda linha nas árvores
+        sumia, como o ENTÃO dos testes no Escudo. As linhas voltam a ter a altura do conteúdo.</li>
+      <li>Correção: no Claude Code, uma decisão de remover código não era aplicada, porque apagar arquivo é comando de
+        terminal. As tarefas que alteram arquivos passam a poder apagar arquivos versionados com <code>git rm</code>,
+        um a um.</li>
+      <li>A pasta <code>ironhawk/</code> fica fora do git por um <code>.gitignore</code> próprio, os registros antigos
+        da IA saem sozinhos (Registros guardados, nas Settings) e a resposta do terminal não fica mais duplicada.</li>
+      <li>Mais leve: as linhas das árvores são montadas uma vez e reaproveitadas, as animações param com a aba
+        escondida, e há o <b>Visual leve</b> nas Settings. Sai o Raio de Impacto.</li>
+      <li>Correção: o texto de apoio das linhas (motivo da falha, texto do alvo) era espremido em 60 px de largura.</li>
+      <li>Correções no Radar: o alvo pendente não desloca mais quando o arquivo é recarregado; um rascunho de PR não
+        vira "já salvo" ao reabrir a IDE; uma resposta da IA fora do formato não leva a discussão direto para aplicar;
+        cancelar o disparo não emenda uma discussão.</li>
+      <li>Correções na Patrulha: PRs com mais de 100 conversas não perdem as mais novas; cancelar o envio não duplica
+        mais os comentários; o ponto de volta não se perde quando o checkout de outro PR falha; comentários da IA
+        publicados pelo Concluir Revisão não contam mais como descartados no aprendizado.</li>
+      <li>Correções no Ataque e na IA: Desfazer a Missão acerta os arquivos quando o projeto é subpasta do repositório;
+        aspas tipográficas não quebram nem injetam comandos no PowerShell; a conferência do devcontainer barra
+        <code>--privileged=true</code> e <code>-v/:/host</code>; uma missão e uma tarefa da Defesa não rodam mais ao
+        mesmo tempo; um caminho colado com aspas não trava mais as telas; o Rádio não para num comentário de conta
+        apagada; fechar o projeto para a IA.</li>
       <li>Patrulha: Enviar ao GitHub sempre envia como rascunho e Concluir Revisão é a única forma de publicar.
         Mostrar Comentários do PR traz também os ocultados um a um. A lista de PRs abertos lê todas as páginas.</li>
       <li>Ataque: a Extração vira a seção Entrega do Lançador, com Gerar com IA para o título e a descrição do PR. A
@@ -93,9 +124,6 @@
     <incompatible-with>com.mio.irondome</incompatible-with>
     <incompatible-with>com.mio.tomahawk</incompatible-with>
     <incompatible-with>com.mio.review</incompatible-with>
-    <depends optional="true" config-file="raio-de-impacto-java.xml">com.intellij.java</depends>
-    <!-- Da 2026.2 em diante o navegador embutido (JCEF) do diagrama vem neste plugin; antes, da plataforma. -->
-    <depends optional="true" config-file="raio-de-impacto-jcef.xml">com.intellij.modules.jcef</depends>
     <depends optional="true" config-file="escudo-junit.xml">JUnit</depends>
     <depends optional="true" config-file="ironhawk-git.xml">Git4Idea</depends>
     <depends optional="true" config-file="ironhawk-github.xml">org.jetbrains.plugins.github</depends>

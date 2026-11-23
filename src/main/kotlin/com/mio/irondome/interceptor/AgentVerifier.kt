@@ -116,9 +116,12 @@ object AgentVerifier {
             val shellPath = terminal.shellPath(project)
             val shell = ShellKind.of(shellPath, SystemInfo.isWindows)
             val prompt = "Teste de integracao do IronHawk IA: grave apenas a palavra OK no arquivo $relative (crie as pastas se faltarem) e termine, sem fazer mais nada."
-            val command = runCatching { launch.terminal(provider, prompt, AgentSettings.model, 2, shell, root, interactive = false) }
+            val exit = file.resolveSibling("${file.fileName}.fim")
+            val command = runCatching {
+                AgentCommand.withExitMarker(launch.terminal(provider, prompt, AgentSettings.model, 2, shell, root, interactive = false), exit.toString(), shell)
+            }
             ApplicationManager.getApplication().invokeLater({
-                try {
+                val session = try {
                     Files.createDirectories(dir)
                     terminal.run(project, root, "IA: Teste", command.getOrThrow())
                 } catch (e: Exception) {
@@ -127,25 +130,43 @@ object AgentVerifier {
                     return@invokeLater
                 }
                 val shellName = shellPath?.replace('\\', '/')?.substringAfterLast('/') ?: shell.name.lowercase()
-                waitForTerminalAnswer(file, provider, launch, shellName, onDone)
+                waitForTerminalAnswer(file, exit, session, provider, launch, shellName, onDone)
             }, ModalityState.any())
         }
     }
 
-    private fun waitForTerminalAnswer(file: Path, provider: AgentProvider, launch: AgentLaunch, shellName: String, onDone: (Outcome) -> Unit) {
+    /** Espera o OK; para antes do tempo limite se o CLI terminar ([exit] aparece) ou a aba do terminal fechar sem ele. */
+    private fun waitForTerminalAnswer(
+        file: Path,
+        exit: Path,
+        session: AgentTerminal.Session,
+        provider: AgentProvider,
+        launch: AgentLaunch,
+        shellName: String,
+        onDone: (Outcome) -> Unit,
+    ) {
         ApplicationManager.getApplication().executeOnPooledThread {
             val started = System.currentTimeMillis()
             var answer: String? = null
+            var endedAt = 0L
+            var ended: String? = null
             while (System.currentTimeMillis() - started < TIMEOUT_MS) {
                 if (Files.isRegularFile(file)) {
                     answer = runCatching { Files.readString(file).trim() }.getOrNull()?.takeIf { it.isNotEmpty() }
                     if (answer != null) break
                 }
+                if (endedAt == 0L && (Files.exists(exit) || session.ended())) endedAt = System.currentTimeMillis()
+                if (endedAt > 0 && System.currentTimeMillis() - endedAt > EXIT_GRACE_MS) {
+                    ended = TerminalEnd.describe(Files.exists(exit), runCatching { Files.readString(exit) }.getOrNull())
+                    break
+                }
                 Thread.sleep(1_000)
             }
             runCatching { Files.deleteIfExists(file) }
+            runCatching { Files.deleteIfExists(exit) }
             val seconds = (System.currentTimeMillis() - started) / 1000
             val outcome = when {
+                answer == null && ended != null -> Outcome(false, "$ended Confira a aba \"IA: Teste\": o comando, o login e o PATH do $shellName.")
                 answer == null -> Outcome(
                     false,
                     "A resposta não chegou em ${TIMEOUT_MS / 60_000} minutos. Confira a aba \"IA: Teste\" do terminal: o comando, o login e o PATH do $shellName.",
@@ -161,4 +182,5 @@ object AgentVerifier {
     }
 
     private const val TERMINAL_TEST_DIR = "respostas"
+    private const val EXIT_GRACE_MS = 4_000L
 }

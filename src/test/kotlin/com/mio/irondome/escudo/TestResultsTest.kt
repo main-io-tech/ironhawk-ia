@@ -57,11 +57,8 @@ class TestResultsTest : LightJavaCodeInsightFixtureTestCase() {
             listOf("[Estoque] Reserva de itens", "[Pedido] Cálculo de frete", "[pedido] Cupom de desconto", "AbcTest", "Nota fiscal"),
             classes.map { it.label },
         )
-        assertTrue(classes.all { it.kind == TestKind.CLASS })
-        assertEquals(
-            listOf(Convention.OK, Convention.OK, Convention.OK, Convention.MISSING_DISPLAY_NAME, Convention.OK),
-            classes.map { it.convention },
-        )
+        assertTrue(classes.all { it.kind == TestKind.CLASS && it.topLevel })
+        assertEquals("sem tag nenhuma, o grupo Sem tag não entra: ficam as classes", classes.map { it.label }, TestResults.byTagOrClasses(classes).map { it.label })
         assertNull(classes.single { it.label == "AbcTest" }.codeName)
 
         val freteNode = classes.single { it.codeName == "FreteTest" }
@@ -73,7 +70,8 @@ class TestResultsTest : LightJavaCodeInsightFixtureTestCase() {
         assertEquals("gratis()", freteNode.children[0].codeName)
         assertNull(freteNode.children[1].codeName)
         assertEquals(TestKind.CLASS, freteNode.children[2].kind)
-        assertNull("classe aninhada não entra na convenção", freteNode.children[2].convention)
+        assertFalse("classe aninhada não é de topo", freteNode.children[2].topLevel)
+        assertEquals("só as classes de topo contam no cabeçalho", 1, freteNode.classes.size)
         assertEquals("recusa o pedido", freteNode.children[2].children.single().label)
         assertEquals(2, freteNode.count(TestOutcome.PASSED))
         assertEquals(1, freteNode.count(TestOutcome.FAILED))
@@ -95,17 +93,18 @@ class TestResultsTest : LightJavaCodeInsightFixtureTestCase() {
         assertEquals(2, group.tests.size)
     }
 
-    fun testTestsAreGroupedByTagWithTheMethodTagOverTheClassTag() {
+    fun testTheTagsOfTheMethodTheClassAndTheBaseClassAddUpAndEachOneGroups() {
         myFixture.addClass("package org.junit.jupiter.api; @java.lang.annotation.Repeatable(Tags.class) public @interface Tag { String value(); }")
         myFixture.addClass("package org.junit.jupiter.api; public @interface Tags { Tag[] value(); }")
         myFixture.addClass("package loja; @org.junit.jupiter.api.Tag(\"lento\") public @interface Lento { }")
+        myFixture.addClass("package loja; @org.junit.jupiter.api.Tag(\"aceitacao\") public abstract class BaseAceitacao { }")
         myFixture.addClass(
             """
             package loja;
             import org.junit.jupiter.api.*;
             @DisplayName("Criar conta")
             @Tag("funcionalidade")
-            public class ContaTest {
+            public class ContaTest extends BaseAceitacao {
                 void cria() { }
                 @Tag("tecnico") void valida() { }
                 @Lento void importa() { }
@@ -120,12 +119,24 @@ class TestResultsTest : LightJavaCodeInsightFixtureTestCase() {
         conta.child(suite("Aninhada", "java:suite://loja.ContaTest\$Aninhada")).child(passed("herda()", "loja.ContaTest\$Aninhada/herda"))
         root.child(testClass("AbcTest", passed("um()", "loja.AbcTest/um")))
 
-        val tagged = TestResults.byTag(TestResults.build(root, names::of, names::tagsOf))
+        val tagged = TestResults.byTagOrClasses(TestResults.build(root, names::of, names::tagsOf))
 
-        assertEquals(listOf("funcionalidade", "lento", "seguranca", "tecnico", TestResults.NO_TAG), tagged.map { it.label })
+        assertEquals(
+            "como no JUnit: as do método, as da classe e as herdadas da classe base",
+            listOf("tecnico", "funcionalidade", "aceitacao"),
+            names.tagsOf("java:test://loja.ContaTest/valida"),
+        )
+        assertEquals(
+            "a classe aninhada soma as da classe de fora",
+            listOf("funcionalidade", "aceitacao"),
+            names.tagsOf("java:test://loja.ContaTest\$Aninhada/herda"),
+        )
+        assertEquals(listOf("aceitacao", "funcionalidade", "lento", "seguranca", "tecnico", TestResults.NO_TAG), tagged.map { it.label })
         assertTrue(tagged.all { it.kind == TestKind.TAG })
         fun testsIn(tag: String) = tagged.single { it.label == tag }.tests.map { it.codeName ?: it.label }
-        assertEquals(listOf("cria()", "herda()"), testsIn("funcionalidade"))
+        assertEquals(listOf("cria()", "valida()", "importa()", "criptografa()", "herda()"), testsIn("funcionalidade"))
+        assertEquals("a tag da classe base vale para todos os testes da classe", testsIn("funcionalidade"), testsIn("aceitacao"))
+        assertEquals(listOf("criptografa()"), testsIn("seguranca"))
         assertEquals(listOf("valida()", "criptografa()"), testsIn("tecnico"))
         assertEquals(listOf("importa()"), testsIn("lento"))
         assertEquals(listOf("um()"), testsIn(TestResults.NO_TAG))

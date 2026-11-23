@@ -32,7 +32,8 @@ object DevContainer {
     private const val TIMEOUT_MS = 60_000
     private const val WORKSPACE = "\${localWorkspaceFolder}"
     private val DOCKER_FEATURES = listOf("docker-outside-of-docker", "docker-in-docker", "docker-from-docker")
-    private val HOST_ARGS = Regex("""^(--privileged|--(network|net|pid|ipc|uts|userns|cgroupns)(=host)?|--cap-add.*|--security-opt.*|--device.*|-v|--volume.*|--mount.*)$""")
+    /** Com o valor colado também: `--privileged=true` e `-v/:/host` dão o mesmo acesso que `--privileged` e `-v /:/host`. */
+    private val HOST_ARGS = Regex("""^(--privileged(=.*)?|--(network|net|pid|ipc|uts|userns|cgroupns)(=host)?|--cap-add.*|--security-opt.*|--device.*|-v.*|--volume.*|--mount.*)$""")
     private val NAMESPACES = listOf("NetworkMode" to "a rede", "PidMode" to "os processos", "IpcMode" to "a memória compartilhada", "UTSMode" to "o nome de rede", "UsernsMode" to "os usuários")
 
     /** O container de pé: [folder] é a pasta do projeto lá dentro. */
@@ -290,7 +291,11 @@ object DevContainer {
         return items.mapNotNull { item ->
             val fields = when {
                 item.isJsonObject -> item.asJsonObject.entrySet().associate { (key, value) -> key.lowercase() to value.str().orEmpty() }
-                item.isJsonPrimitive -> item.asString.split(',').associate { part -> part.substringBefore('=').trim().lowercase() to part.substringAfter('=', "").trim() }
+                // Campo entre aspas, como `"source=/"`, continua sendo o mesmo campo para o Docker.
+                item.isJsonPrimitive -> item.asString.split(',').associate { part ->
+                    val field = part.trim().trim('"', '\'')
+                    field.substringBefore('=').trim().trim('"', '\'').lowercase() to field.substringAfter('=', "").trim().trim('"', '\'')
+                }
                 else -> return@mapNotNull null
             }
             val source = fields["source"] ?: fields["src"] ?: return@mapNotNull null
